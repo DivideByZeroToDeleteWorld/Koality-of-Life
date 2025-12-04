@@ -43,7 +43,7 @@ All documentation is in the `docs/` folder:
 
 - **INDEX.md** - Start here! Overview of everything
 - **QUICKSTART_CHECKLIST.md** - Step-by-step setup guide
-- **LIBRARY_INSTALLATION.md** - How to install Ace3 libraries
+- **LIBRARY_INSTALLATION.md** - How to install Ace3 libraries -- ONLY DO THIS IF YOU DONT WANT THE LIBRARIES I INCLUDED WITH THIS ALREADY!! *WARNING*
 - **README_CONFIG_SYSTEM.md** - Using the config system
 - **SLASH_COMMANDS.md** - All available commands
 - **ARCHITECTURE.md** - Technical details
