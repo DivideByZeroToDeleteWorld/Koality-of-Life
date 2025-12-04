@@ -1,0 +1,51 @@
+## Interface: 30300
+## Title: |cFFFF0000K|cFFFF4400o|cFFFF8800a|cFFFFCC00l|cFFFFFF00i|cFFCCFF00t|cFF88FF00y|cFF44FF00-|cFF00FF00o|cFF00FF88f|cFF00FFFF-|cFF55AAFFL|cFF7799FFi|cFF8888FFf|cFFAA66FFe|r
+## Notes: Quality of life improvements for Synastria
+## Author: Fostot
+## Version: 0.0.7.59
+## SavedVariables: KoalityOfLifeDB
+## OptionalDeps: Ace3, LibSharedMedia-3.0
+
+# Libraries - Core
+libs\LibStub\LibStub.lua
+libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
+
+# Libraries - Ace3
+libs\AceAddon-3.0\AceAddon-3.0.lua
+libs\AceConsole-3.0\AceConsole-3.0.lua
+libs\AceDB-3.0\AceDB-3.0.lua
+libs\AceDBOptions-3.0\AceDBOptions-3.0.lua
+libs\AceEvent-3.0\AceEvent-3.0.lua
+libs\AceGUI-3.0\AceGUI-3.0.lua
+libs\AceConfig-3.0\AceConfig-3.0.lua
+libs\AceConfigRegistry-3.0\AceConfigRegistry-3.0.lua
+libs\AceConfigDialog-3.0\AceConfigDialog-3.0.lua
+libs\AceConfigCmd-3.0\AceConfigCmd-3.0.lua
+
+# Libraries - SharedMedia
+libs\LibSharedMedia-3.0\LibSharedMedia-3.0.lua
+libs\AceGUI-3.0-SharedMediaWidgets\widget.xml
+
+# Libraries - Other
+libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
+libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
+
+# Core
+core.lua
+
+# Modules (load before other features that depend on them)
+modules\chat.lua
+modules\data.lua
+modules\fishing.lua
+
+# UI System
+ui.lua
+
+# Splash Screen (depends on slash.lua for command registration)
+splash.lua
+
+# Additional Modules
+modules\itemtracker.lua
+
+# Custom Features
+custom\whatever.lua
