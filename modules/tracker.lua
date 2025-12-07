@@ -490,13 +490,13 @@ function Tracker:CreateWatchFrame(instanceId)
         instanceColorHex = KOL.Colors:ToHex(instanceColor)
     end
 
-    -- Get font settings (per-instance overrides)
-    -- Default to general font if no custom title font is set
-    local titleFont = GetInstanceSetting(instanceId, "titleFont") or config.baseFont or KOL.db.profile.generalFont or "Friz Quadrata TT"
+    -- Get font settings (use same font system as body for consistency)
+    local fontScale = config.fontScale or 1.0
     local titleFontSize = GetInstanceSetting(instanceId, "titleFontSize") or 13
     local titleFontScale = GetInstanceSetting(instanceId, "titleFontScale") or 1.0
-    local titleFontOutline = GetInstanceSetting(instanceId, "titleFontOutline") or KOL.db.profile.generalFontOutline or "THICKOUTLINE"
-    local fontScale = config.fontScale or 1.0
+
+    -- Use GetAveragedFont for title to ensure same font as body
+    local titleFontPath, _, titleFontOutline = GetAveragedFont(titleFontSize * titleFontScale)
 
     -- Create main frame
     local frame = CreateFrame("Frame", "KOLTrackerFrame_" .. instanceId, UIParent)
@@ -551,32 +551,6 @@ function Tracker:CreateWatchFrame(instanceId)
     frame.titleBar = titleBar
 
     -- Title text (interactive - for dragging and double-click)
-    -- Use per-instance font settings with fallback chain
-    local titleFontPath
-    if LSM then
-        -- Try requested title font first
-        local success, result = pcall(function() return LSM:Fetch("font", titleFont) end)
-        if success and result then
-            titleFontPath = result
-            KOL:DebugPrint("Tracker: Title font loaded: " .. titleFont, 3)
-        else
-            KOL:DebugPrint("Tracker: Failed to load title font '" .. titleFont .. "', trying general font", 2)
-            -- Try general font as fallback
-            local generalFont = KOL.db.profile.generalFont or "Friz Quadrata TT"
-            success, result = pcall(function() return LSM:Fetch("font", generalFont) end)
-            if success and result then
-                titleFontPath = result
-                KOL:DebugPrint("Tracker: Using general font: " .. generalFont, 3)
-            end
-        end
-    else
-        KOL:DebugPrint("Tracker: LSM not available", 2)
-    end
-
-    -- Final fallback to hardcoded default
-    titleFontPath = titleFontPath or "Fonts\\FRIZQT__.TTF"
-    KOL:DebugPrint("Tracker: Final title font path: " .. titleFontPath, 3)
-
     local actualTitleFontSize = math.floor(titleFontSize * titleFontScale)
     local titleText = CreateFrame("Button", nil, titleBar)
     titleText:SetPoint("TOPLEFT", titleBar, "TOPLEFT", 8, 0)
@@ -1091,6 +1065,37 @@ function Tracker:UpdateWatchFrame(instanceId)
 
     -- Update content size
     content:SetHeight(math.max(contentHeight, 1))
+
+    -- Auto-calculate frame width to prevent text truncation
+    local maxTextWidth = 0
+    for _, bossText in ipairs(frame.bossTexts) do
+        local textWidth = bossText:GetStringWidth()
+        if textWidth > maxTextWidth then
+            maxTextWidth = textWidth
+        end
+    end
+
+    -- Calculate required frame width
+    -- Padding: left (4) + right (4) + scrollbar space (when visible) + some buffer (16)
+    local scrollBarPadding = 0
+    if frame.scrollBar and frame.scrollBar:IsShown() then
+        local scrollBarWidth = frame.scrollBar:GetWidth() or 16
+        scrollBarPadding = scrollBarWidth + 8
+    end
+
+    local requiredWidth = maxTextWidth + 8 + scrollBarPadding + 16  -- left + right + scrollbar + buffer
+
+    -- Use the larger of: configured width or required width (never truncate)
+    local currentWidth = frame:GetWidth()
+    local configWidth = GetInstanceSetting(instanceId, "frameWidth") or KOL.db.profile.tracker.frameWidth or 200
+    local finalWidth = math.max(configWidth, requiredWidth)
+
+    if finalWidth ~= currentWidth then
+        frame:SetWidth(finalWidth)
+        frame.titleBar:SetWidth(finalWidth - 2)
+        KOL:DebugPrint(string.format("Tracker: Auto-adjusted width from %.0f to %.0f (text=%.0f, config=%.0f)",
+            currentWidth, finalWidth, requiredWidth, configWidth), 3)
+    end
 
     KOL:DebugPrint("Tracker: Updated watch frame: " .. instanceId, 3)
 end
