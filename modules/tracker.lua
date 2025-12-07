@@ -473,7 +473,7 @@ function Tracker:CreateWatchFrame(instanceId)
 
     -- Get config settings (per-instance overrides global)
     local config = KOL.db.profile.tracker
-    local frameWidth = GetInstanceSetting(instanceId, "frameWidth") or config.frameWidth or 250
+    local frameWidth = GetInstanceSetting(instanceId, "frameWidth") or config.frameWidth or 200
     local frameHeight = GetInstanceSetting(instanceId, "frameHeight") or config.frameHeight or 300
     local scrollBarWidth = GetInstanceSetting(instanceId, "scrollBarWidth") or config.scrollBarWidth or 16
     local showMinimizeBtn = data.showMinimizeButton ~= false and config.showMinimizeButton ~= false
@@ -491,10 +491,11 @@ function Tracker:CreateWatchFrame(instanceId)
     end
 
     -- Get font settings (per-instance overrides)
-    local titleFont = GetInstanceSetting(instanceId, "titleFont") or config.baseFont or "Friz Quadrata TT"
+    -- Default to general font if no custom title font is set
+    local titleFont = GetInstanceSetting(instanceId, "titleFont") or config.baseFont or KOL.db.profile.generalFont or "Friz Quadrata TT"
     local titleFontSize = GetInstanceSetting(instanceId, "titleFontSize") or 13
     local titleFontScale = GetInstanceSetting(instanceId, "titleFontScale") or 1.0
-    local titleFontOutline = GetInstanceSetting(instanceId, "titleFontOutline") or "THICKOUTLINE"
+    local titleFontOutline = GetInstanceSetting(instanceId, "titleFontOutline") or KOL.db.profile.generalFontOutline or "THICKOUTLINE"
     local fontScale = config.fontScale or 1.0
 
     -- Create main frame
@@ -534,7 +535,7 @@ function Tracker:CreateWatchFrame(instanceId)
 
     -- Title bar (with per-instance color)
     local titleBar = CreateFrame("Frame", nil, frame)
-    titleBar:SetSize(frameWidth - 2, 26)
+    titleBar:SetSize(frameWidth - 2, 20)
     titleBar:SetPoint("TOPLEFT", frame, "TOPLEFT", 1, -1)
     titleBar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -1, -1)
     titleBar:SetBackdrop({
@@ -628,8 +629,8 @@ function Tracker:CreateWatchFrame(instanceId)
     local minimizeBtn
     if showMinimizeBtn then
         minimizeBtn = CreateFrame("Button", nil, titleBar)
-        minimizeBtn:SetSize(20, 20)
-        minimizeBtn:SetPoint("RIGHT", titleBar, "RIGHT", -3, 0)
+        minimizeBtn:SetSize(16, 16)
+        minimizeBtn:SetPoint("RIGHT", titleBar, "RIGHT", -2, 0)
         minimizeBtn:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8X8",
             edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -641,7 +642,7 @@ function Tracker:CreateWatchFrame(instanceId)
         minimizeBtn:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
 
         local minBtnText = minimizeBtn:CreateFontString(nil, "OVERLAY")
-        local minFontPath, minFontSize, minFontOutline = GetAveragedFont(11 * fontScale)
+        local minFontPath, minFontSize, minFontOutline = GetAveragedFont(9 * fontScale)
         minBtnText:SetFont(minFontPath, minFontSize, minFontOutline)
         minBtnText:SetPoint("CENTER")
         minBtnText:SetText("-")
