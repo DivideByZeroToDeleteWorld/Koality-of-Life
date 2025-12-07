@@ -35,7 +35,7 @@ local function CreateSplashFrame()
     logo:SetSize(logoWidth, logoHeight)  -- 512x256
     
     -- Load power-of-2 texture (WoW requirement!)
-    local texturePath = "Interface\\AddOns\\Koality-of-Life\\media\\kol-splash.tga"
+    local texturePath = "Interface\\AddOns\\Koality-of-Life\\media\\images\\kol-splash.tga"
     logo:SetTexture(texturePath)
     
     -- Debug

@@ -86,7 +86,7 @@ function Tracker:Initialize()
     -- Register event handlers
     self:RegisterEvents()
 
-    KOL:DebugPrint("Tracker: Module initialized", 1)
+    KOL:PrintTag("Tracker module initialized - calling UpdateZoneTracking")
 
     -- Perform initial zone check (in case we're already in a zone on reload)
     self:UpdateZoneTracking()
@@ -314,6 +314,11 @@ end
 
 -- Check current zone and show/hide watch frames
 function Tracker:UpdateZoneTracking()
+    -- Count registered instances
+    local instanceCount = 0
+    for _ in pairs(self.instances) do instanceCount = instanceCount + 1 end
+    KOL:PrintTag("UpdateZoneTracking called - " .. instanceCount .. " instances registered")
+
     if not KOL.db.profile.tracker.autoShow then
         KOL:DebugPrint("Tracker: AutoShow disabled, skipping zone tracking", 3)
         return
@@ -386,7 +391,18 @@ function Tracker:UpdateZoneTracking()
     -- Show frame for current zone if found
     if instanceId and instanceData then
         KOL:DebugPrint("Tracker: Showing watch frame for: " .. instanceId, 2)
-        self:ShowWatchFrame(instanceId)
+
+        -- Wrap in pcall to catch any errors
+        local success, err = pcall(function()
+            self:ShowWatchFrame(instanceId)
+        end)
+
+        if not success then
+            KOL:PrintTag("ERROR: Failed to show watch frame: " .. tostring(err))
+            KOL:DebugPrint("Tracker: ShowWatchFrame error: " .. tostring(err), 1)
+        else
+            KOL:DebugPrint("Tracker: ShowWatchFrame completed successfully", 2)
+        end
 
         -- Execute command block if specified
         if instanceData.commandBlock and KOL.CommandBlocks then
@@ -1443,8 +1459,14 @@ function Tracker:DebugCommand(...)
     elseif cmd == "show" then
         local instanceId = args[2]
         if instanceId then
-            self:ShowWatchFrame(instanceId)
-            KOL:PrintTag("Showed watch frame: " .. instanceId)
+            local success, err = pcall(function()
+                self:ShowWatchFrame(instanceId)
+            end)
+            if success then
+                KOL:PrintTag("Showed watch frame: " .. instanceId)
+            else
+                KOL:PrintTag("ERROR showing frame: " .. tostring(err))
+            end
         else
             KOL:PrintTag("Usage: /kol tracker show <instanceId>")
         end

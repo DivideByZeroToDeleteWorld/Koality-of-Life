@@ -14,6 +14,10 @@ local GHOSTFISH_NAME = "Phantom Ghostfish"
 local INVISIBILITY_BUFF = "Invisibility"
 local CANCEL_DELAY = 1.0  -- Wait 1 second after using fish before canceling buff
 
+-- Kalu'ak Fishing Derby - Blacktip Shark
+local BLACKTIP_SHARK_ID = 50289
+local BLACKTIP_SHARK_NAME = "Blacktip Shark"
+
 -- State tracking
 local fishUsedTime = 0
 local waitingToCancel = false
@@ -76,10 +80,9 @@ function Fishing:CleanupOrphanedKeybinds()
     end
 
     if foundOrphans then
-        KOL:PrintTag(ORANGE("Cleaned up orphaned keybinds from previous session"))
-        KOL:DebugPrint("[" .. timestamp .. "] " .. GREEN("Orphaned keybinds cleanup complete!"))
+        KOL:DebugPrint("[" .. timestamp .. "] " .. GREEN("Orphaned keybinds cleanup complete!"), 1)
     else
-        KOL:DebugPrint("[" .. timestamp .. "] Startup check: No orphaned keybinds found (all clear)")
+        KOL:DebugPrint("[" .. timestamp .. "] Startup check: No orphaned keybinds found (all clear)", 3)
     end
 end
 
@@ -106,39 +109,16 @@ function Fishing:Initialize()
     -- Initialize config UI
     self:InitializeConfig()
 
-    -- Register slash commands
-    if KOL.RegisterSlashCommand then
-        KOL:RegisterSlashCommand("checkfish", function()
-            Fishing:CheckForGhostfish()
-        end, "Manually check for Phantom Ghostfish")
-        
-        KOL:RegisterSlashCommand("usefish", function()
-            Fishing:ForceUseContainerItem()
-        end, "Force use Ghostfish by container (for testing)")
-        
-        KOL:RegisterSlashCommand("testhijack", function()
-            KOL:DebugPrint("=== MANUAL HIJACK TEST ===")
-            local success = Fishing:HijackBagToggle()
-            if success then
-                KOL:PrintTag(GREEN("Hijack test: SUCCESS! Press your bag key now!"))
-            else
-                KOL:PrintTag(RED("Hijack test: FAILED! Check debug output."))
-            end
-        end, "Test bag toggle hijacking manually")
+    -- Create Notify batch channel for efficient notification detection
+    KOL:BatchConfigure("Notify", {
+        interval = 0.5,       -- Run every 0.5 seconds when queue has items
+        processMode = "limit", -- Consume queue (remove tasks after processing)
+        triggerMode = "interval",
+        maxQueueSize = 20,    -- Prevent runaway growth
+    })
+    KOL:DebugPrint("Fishing: Created 'Notify' batch channel (0.5s interval, limit mode)", 1)
 
-        KOL:RegisterSlashCommand("clickbutton", function()
-            if secureButton then
-                KOL:DebugPrint("=== MANUAL BUTTON CLICK TEST ===")
-                KOL:DebugPrint("Attempting to click secure button directly...")
-                secureButton:Click("LeftButton")
-                KOL:DebugPrint("Click command sent!")
-            else
-                KOL:PrintTag(RED("No secure button exists! Run /kol testhijack first."))
-            end
-        end, "Test clicking the secure button directly")
-    end
-    
-    KOL:DebugPrint("Fishing module initialized - enabled: " .. tostring(KOL.db.profile.fishing.enabled))
+    KOL:DebugPrint("Fishing: Module initialized - enabled: " .. tostring(KOL.db.profile.fishing.enabled))
 end
 
 -- ============================================================================
@@ -146,29 +126,47 @@ end
 -- ============================================================================
 
 function Fishing:CheckForGhostfish()
-    KOL:DebugPrint("Fishing: Checking for Ghostfish...")
-    
     if not KOL.db.profile.fishing then
         KOL:DebugPrint("Fishing: ERROR - fishing profile not initialized!")
         return
     end
-    
+
     if not KOL.db.profile.fishing.enabled then
-        KOL:DebugPrint("Fishing: Module disabled in config")
         return
     end
-    
+
     if not KOL.db.profile.fishing.autoUse then
-        KOL:DebugPrint("Fishing: Auto-use disabled in config")
         return
     end
-    
+
     -- Don't use in combat (protected)
     if InCombatLockdown() then
-        KOL:DebugPrint("Fishing: In combat, cannot use items")
         return
     end
-    
+
+    -- Only check in Sholazar Basin (zone ID: 3711, or check by name)
+    local zoneName = GetZoneText()
+    if zoneName ~= "Sholazar Basin" then
+        return
+    end
+
+    -- Only check if we have the quest active (quest ID: 13830)
+    -- Check if quest is in log
+    local hasQuest = false
+    for i = 1, GetNumQuestLogEntries() do
+        local questID = select(8, GetQuestLogTitle(i))
+        if questID == 13830 then
+            hasQuest = true
+            break
+        end
+    end
+
+    if not hasQuest then
+        return
+    end
+
+    KOL:DebugPrint("Fishing: Checking for Ghostfish (in Sholazar + quest active)...")
+
     -- Scan bags for Phantom Ghostfish
     local itemsFound = 0
     for bag = 0, 4 do
@@ -185,8 +183,93 @@ function Fishing:CheckForGhostfish()
             end
         end
     end
-    
+
     KOL:DebugPrint("Fishing: Scanned " .. itemsFound .. " items, no Ghostfish found")
+end
+
+-- ============================================================================
+-- Kalu'ak Fishing Derby - Blacktip Shark Detection
+-- ============================================================================
+
+-- Track if we've already notified about this shark to avoid spam
+local blacktipNotified = false
+local lastBlacktipCheck = 0
+
+function Fishing:CheckForBlacktipShark()
+    -- Throttle checks to once per second to avoid spam
+    local now = GetTime()
+    if now - lastBlacktipCheck < 1.0 then
+        return
+    end
+    lastBlacktipCheck = now
+
+    -- Don't check if we already notified (until it's gone)
+    if blacktipNotified then
+        -- Check if shark is still in bags
+        local stillHave = false
+        for bag = 0, 4 do
+            for slot = 1, GetContainerNumSlots(bag) do
+                local itemLink = GetContainerItemLink(bag, slot)
+                if itemLink then
+                    local itemID = tonumber(string.match(itemLink, "item:(%d+)"))
+                    if itemID == BLACKTIP_SHARK_ID then
+                        stillHave = true
+                        break
+                    end
+                end
+            end
+            if stillHave then break end
+        end
+
+        -- If we don't have it anymore, reset notification state
+        if not stillHave then
+            blacktipNotified = false
+            KOL:NotifyRemove("BLACKTIP-ALERT")
+            KOL:DebugPrint("Fishing: Blacktip Shark removed from bags, reset notification", 3)
+        end
+        return
+    end
+
+    -- Scan bags for Blacktip Shark
+    for bag = 0, 4 do
+        for slot = 1, GetContainerNumSlots(bag) do
+            local itemLink = GetContainerItemLink(bag, slot)
+            if itemLink then
+                local itemID = tonumber(string.match(itemLink, "item:(%d+)"))
+                if itemID == BLACKTIP_SHARK_ID then
+                    -- Found it! Show notification
+                    blacktipNotified = true
+
+                    -- Show notification with looping sound for 30 seconds with flashing
+                    KOL:Notify("BLACKTIP-ALERT", "TEXT", "-34,310", "30s", "FLASH",
+                        "\\CBLACKTIP SHARK CAUGHT!!!\\nKALU'AK FISHING DERBY - Turn in at Dalaran Fountain NOW!!!",
+                        "Expressway", "THICK", nil, "RaidWarning:LOOP:6S")
+
+                    KOL:DebugPrint("Fishing: BLACKTIP SHARK DETECTED - Notification shown!", 1)
+                    KOL:PrintTag(GREEN("BLACKTIP SHARK CAUGHT!") .. " Turn in at Dalaran Fountain!")
+                    return
+                end
+            end
+        end
+    end
+end
+
+-- ============================================================================
+-- Unified Notification Check (Batch Queue Task)
+-- ============================================================================
+
+-- This function is queued to the Notify batch channel on BAG_UPDATE
+-- It runs both Ghostfish and Blacktip checks in a single task
+function Fishing:CheckAllNotifications()
+    -- Check for Phantom Ghostfish (auto-use)
+    if not hijackActive then
+        self:CheckForGhostfish()
+    end
+
+    -- Check for Blacktip Shark (notification)
+    self:CheckForBlacktipShark()
+
+    KOL:DebugPrint("Fishing: Notification checks completed", 5)
 end
 
 -- Keybind hijack state
@@ -500,8 +583,10 @@ function Fishing:HijackBagToggle()
             secureButton.bindText:SetTextColor(0, 1, 0, 1)  -- Green = active
         end
 
-        -- Show alert
-        self:ShowBigAlert()
+        -- Show notification using new Notify system (with looping sound for infinite duration)
+        KOL:Notify("GHOSTFISH-ALERT", "TEXT", "0,-150", "INF", "FLASH",
+            "\\CPHANTOM GHOSTFISH CAUGHT!!!\\nURGENT Hit [" .. bagToggleKey .. "] to Open Bags and Automatically Use [Phantom Ghostfish] / Remove Buff!!!",
+            "Expressway", "THICK", nil, "RaidWarning:LOOP:6S")
 
         -- FAIL-SAFE: Multiple safety timeouts
         -- Backup timeout #1: 5 seconds (in case BAG_UPDATE doesn't fire)
@@ -599,9 +684,9 @@ function Fishing:RestoreBagToggle()
     originalBagBinding = nil
     bagsWereOpen = false
 
-    -- Hide alert (ALWAYS)
+    -- Hide notification (ALWAYS)
     pcall(function()
-        self:HideBigAlert()
+        KOL:NotifyRemove("GHOSTFISH-ALERT")
     end)
 
     -- Reset button text and hide (ALWAYS)
@@ -620,41 +705,6 @@ function Fishing:RestoreBagToggle()
 
     KOL:DebugPrint("[" .. timestamp .. "] " .. GREEN("=== BAG TOGGLE FULLY RESTORED ==="))
     KOL:PrintTag(GREEN("Controls restored to normal"))
-end
-
--- Big blinking alert
-local alertFrame = nil
-
-function Fishing:ShowBigAlert()
-    if not alertFrame then
-        alertFrame = CreateFrame("Frame", "KOL_GhostfishAlert", UIParent)
-        alertFrame:SetSize(800, 60)
-        alertFrame:SetPoint("TOP", UIParent, "TOP", 0, -150)
-
-        local text = alertFrame:CreateFontString(nil, "OVERLAY")
-        text:SetFont("Fonts\\FRIZQT__.TTF", 24, "THICKOUTLINE")
-        text:SetPoint("CENTER")
-        text:SetTextColor(1, 1, 0, 1)  -- Yellow
-        alertFrame.text = text
-
-        -- Blinking animation
-        alertFrame.elapsed = 0
-        alertFrame:SetScript("OnUpdate", function(self, elapsed)
-            self.elapsed = self.elapsed + elapsed
-            local alpha = (math.sin(self.elapsed * 3) + 1) / 2  -- Blink effect
-            self.text:SetAlpha(alpha)
-        end)
-    end
-
-    local key = bagToggleKey or "B"
-    alertFrame.text:SetText("GHOSTFISH CAUGHT!!! PRESS [" .. key .. "] TO PERFORM AUTOMATION AND USE/CANCEL BUFF!")
-    alertFrame:Show()
-end
-
-function Fishing:HideBigAlert()
-    if alertFrame then
-        alertFrame:Hide()
-    end
 end
 
 function Fishing:UseGhostfish()
@@ -823,8 +873,14 @@ function Fishing:OnBagUpdate()
                 waitingToCancel = true
             end
         else
-            -- Normal mode: Check for Ghostfish being looted
-            self:CheckForGhostfish()
+            -- Normal mode: Queue notification checks to run via Notify batch channel
+            -- This prevents BAG_UPDATE spam from running checks every frame
+            KOL:BatchAdd("Notify", "Notifications", function()
+                Fishing:CheckAllNotifications()
+            end, 3)  -- Priority 3 = NORMAL
+
+            -- Start the batch channel if not already running
+            KOL:BatchStart("Notify")
         end
     end)
 
@@ -851,37 +907,37 @@ end
 function Fishing:InitializeConfig()
     -- Create config group
     KOL:UIAddConfigGroup("fishing", "Fishing", 30)
-    
+
     -- Title
-    KOL:UIAddConfigTitle("fishing", "Phantom Ghostfish Auto-Use")
-    
+    KOL:UIAddConfigTitle("fishing", "header", "Phantom Ghostfish Auto-Use", 1)
+
     -- Description
-    KOL:UIAddConfigDescription("fishing", "Automatically uses Phantom Ghostfish and cancels Invisibility buff after 1 second.")
-    
+    KOL:UIAddConfigDescription("fishing", "desc", "Automatically uses Phantom Ghostfish and cancels Invisibility buff after 1 second.", 2)
+
     -- Enable module
     KOL:UIAddConfigToggle("fishing", "enabled", {
         name = "Enable Fishing Module",
         desc = "Enable automatic Phantom Ghostfish handling",
-        order = 1,
+        order = 10,
     })
-    
+
     -- Auto-use toggle
     KOL:UIAddConfigToggle("fishing", "autoUse", {
         name = "Auto-Use Ghostfish",
         desc = "Automatically use Phantom Ghostfish when found in bags",
-        order = 2,
+        order = 11,
     })
-    
+
     -- Auto-cancel toggle
     KOL:UIAddConfigToggle("fishing", "autoCancel", {
         name = "Auto-Cancel Invisibility",
         desc = "Automatically cancel Invisibility buff 1 second after using Ghostfish",
-        order = 3,
+        order = 12,
     })
-    
+
     -- Spacer
-    KOL:UIAddConfigSpacer("fishing", 10)
-    
+    KOL:UIAddConfigSpacer("fishing", "spacer1", 15)
+
     -- Test button
     KOL:UIAddConfigExecute("fishing", "test", {
         name = "Test: Check for Ghostfish",
