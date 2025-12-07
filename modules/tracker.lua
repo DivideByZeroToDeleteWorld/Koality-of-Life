@@ -87,6 +87,9 @@ function Tracker:Initialize()
     self:RegisterEvents()
 
     KOL:DebugPrint("Tracker: Module initialized", 1)
+
+    -- Perform initial zone check (in case we're already in a zone on reload)
+    self:UpdateZoneTracking()
 end
 
 -- ============================================================================
