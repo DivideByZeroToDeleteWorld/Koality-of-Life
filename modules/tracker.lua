@@ -682,6 +682,9 @@ function Tracker:CreateWatchFrame(instanceId)
     local scrollBarBottomOffset = 4
 
     if showScrollButtons then
+        -- Get font for scroll buttons
+        local btnFontPath, btnFontSize, btnFontOutline = GetAveragedFont(scrollBarWidth - 2)
+
         -- Up button
         scrollUpBtn = CreateFrame("Button", nil, frame)
         scrollUpBtn:SetSize(scrollBarWidth, scrollBarWidth)
@@ -697,7 +700,7 @@ function Tracker:CreateWatchFrame(instanceId)
         scrollUpBtn:SetBackdropBorderColor(0.2, 0.2, 0.2, 1)
 
         local upText = scrollUpBtn:CreateFontString(nil, "OVERLAY")
-        upText:SetFont(fontPath, scrollBarWidth - 2, fontOutline)
+        upText:SetFont(btnFontPath, btnFontSize, btnFontOutline)
         upText:SetPoint("CENTER", 0, 0)
         upText:SetText("▲")
         upText:SetTextColor(0.6, 0.6, 0.6, 1)
@@ -729,7 +732,7 @@ function Tracker:CreateWatchFrame(instanceId)
         scrollDownBtn:SetBackdropBorderColor(0.2, 0.2, 0.2, 1)
 
         local downText = scrollDownBtn:CreateFontString(nil, "OVERLAY")
-        downText:SetFont(fontPath, scrollBarWidth - 2, fontOutline)
+        downText:SetFont(btnFontPath, btnFontSize, btnFontOutline)
         downText:SetPoint("CENTER", 0, 0)
         downText:SetText("▼")
         downText:SetTextColor(0.6, 0.6, 0.6, 1)
