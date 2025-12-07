@@ -1,8 +1,8 @@
 ## Interface: 30300
 ## Title: |cFFFF0000K|cFFFF4400o|cFFFF8800a|cFFFFCC00l|cFFFFFF00i|cFFCCFF00t|cFF88FF00y|cFF44FF00-|cFF00FF00o|cFF00FF88f|cFF00FFFF-|cFF55AAFFL|cFF7799FFi|cFF8888FFf|cFFAA66FFe|r
 ## Notes: Quality of life improvements for Synastria
-## Author: Fostot
-## Version: 0.0.7.59
+## Author: |cFF00FF00Z|r|cFFCC00FFero|r
+## Version: 0.0.12.38
 ## SavedVariables: KoalityOfLifeDB
 ## OptionalDeps: Ace3, LibSharedMedia-3.0
 
@@ -30,22 +30,52 @@ libs\AceGUI-3.0-SharedMediaWidgets\widget.xml
 libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
 libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
 
-# Core
+# Core - MUST load first (creates KOL, DB)
 core.lua
 
-# Modules (load before other features that depend on them)
+# Colors - Unified color library (needs KOL and DB, provides global color functions)
+modules\colors.lua
+
+# FAIAP - Syntax highlighting library (needs KOL to exist)
+libs\FAIAP.lua
+
+# Main - Slash commands, events, etc. (depends on core.lua)
+main.lua
+
+# Modules (all can now safely use KOL, colors, etc.)
 modules\chat.lua
+modules\batch.lua
 modules\data.lua
+modules\notify.lua
 modules\fishing.lua
+modules\changes.lua
+modules\tweaks.lua
+modules\commandblocks.lua
 
 # UI System
 ui.lua
 
+# UI Factory (must load after ui.lua for font settings)
+modules\ui-factory.lua
+
+# Batch UI (must load after ui.lua so config system is initialized)
+modules\batch-ui.lua
+
+# Debug UI (must load after ui.lua so config system is initialized)
+modules\debug-ui.lua
+
 # Splash Screen (depends on slash.lua for command registration)
 splash.lua
 
-# Additional Modules
-modules\itemtracker.lua
+# Additional Modules (load after UI for config access)
+modules\media.lua
+modules\macroupdater.lua
+modules\tracker.lua
+modules\tracker-data.lua
+modules\tracker-editor.lua
+
+# Tests Module (load last - depends on all other modules)
+modules\tests.lua
 
 # Custom Features
 custom\whatever.lua
