@@ -715,6 +715,7 @@ function Tracker:CreateWatchFrame(instanceId)
             self.text:SetTextColor(0.6, 0.6, 0.6, 1)
         end)
 
+        scrollUpBtn:Hide()  -- Start hidden, will show if needed by OnScrollRangeChanged
         frame.scrollUpBtn = scrollUpBtn
 
         -- Down button
@@ -747,6 +748,7 @@ function Tracker:CreateWatchFrame(instanceId)
             self.text:SetTextColor(0.6, 0.6, 0.6, 1)
         end)
 
+        scrollDownBtn:Hide()  -- Start hidden, will show if needed by OnScrollRangeChanged
         frame.scrollDownBtn = scrollDownBtn
 
         -- Adjust scroll bar position to account for buttons
@@ -761,9 +763,10 @@ function Tracker:CreateWatchFrame(instanceId)
     scrollBar:SetWidth(scrollBarWidth)
     scrollBar:SetOrientation("VERTICAL")
     scrollBar:SetValueStep(1)
-    scrollBar:SetMinMaxValues(0, 100)
+    scrollBar:SetMinMaxValues(0, 0)  -- Start with 0 range (will be updated by OnScrollRangeChanged)
     scrollBar:SetValue(0)
     scrollBar:EnableMouseWheel(true)
+    scrollBar:Hide()  -- Start hidden, will show if needed by OnScrollRangeChanged
     frame.scrollBar = scrollBar
 
     -- Scroll bar backdrop (with per-instance colors)
