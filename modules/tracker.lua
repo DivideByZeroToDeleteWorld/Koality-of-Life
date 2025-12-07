@@ -882,18 +882,19 @@ function Tracker:CreateWatchFrame(instanceId)
                 frame:SetBackdropColor(showBg[1], showBg[2], showBg[3], showBg[4])
                 frame:SetBackdropBorderColor(showBorder[1], showBorder[2], showBorder[3], showBorder[4])
                 frame.titleBar:SetBackdropColor(showTitle[1], showTitle[2], showTitle[3], showTitle[4])
-                if frame.scrollBar then frame.scrollBar:SetAlpha(1) end
-                if frame.scrollUpBtn then frame.scrollUpBtn:SetAlpha(1) end
-                if frame.scrollDownBtn then frame.scrollDownBtn:SetAlpha(1) end
+                -- Only set alpha if scroll bar is actually shown (has scrollable content)
+                if frame.scrollBar and frame.scrollBar:IsShown() then frame.scrollBar:SetAlpha(1) end
+                if frame.scrollUpBtn and frame.scrollUpBtn:IsShown() then frame.scrollUpBtn:SetAlpha(1) end
+                if frame.scrollDownBtn and frame.scrollDownBtn:IsShown() then frame.scrollDownBtn:SetAlpha(1) end
                 if frame.minimizeBtn then frame.minimizeBtn:SetAlpha(1) end
             else
                 -- Hide all UI elements (set alpha to 0)
                 frame:SetBackdropColor(showBg[1], showBg[2], showBg[3], 0)
                 frame:SetBackdropBorderColor(showBorder[1], showBorder[2], showBorder[3], 0)
                 frame.titleBar:SetBackdropColor(showTitle[1], showTitle[2], showTitle[3], 0)
-                if frame.scrollBar then frame.scrollBar:SetAlpha(0) end
-                if frame.scrollUpBtn then frame.scrollUpBtn:SetAlpha(0) end
-                if frame.scrollDownBtn then frame.scrollDownBtn:SetAlpha(0) end
+                if frame.scrollBar and frame.scrollBar:IsShown() then frame.scrollBar:SetAlpha(0) end
+                if frame.scrollUpBtn and frame.scrollUpBtn:IsShown() then frame.scrollUpBtn:SetAlpha(0) end
+                if frame.scrollDownBtn and frame.scrollDownBtn:IsShown() then frame.scrollDownBtn:SetAlpha(0) end
                 if frame.minimizeBtn then frame.minimizeBtn:SetAlpha(0) end
             end
         else
@@ -901,9 +902,10 @@ function Tracker:CreateWatchFrame(instanceId)
             frame:SetBackdropColor(showBg[1], showBg[2], showBg[3], showBg[4])
             frame:SetBackdropBorderColor(showBorder[1], showBorder[2], showBorder[3], showBorder[4])
             frame.titleBar:SetBackdropColor(showTitle[1], showTitle[2], showTitle[3], showTitle[4])
-            if frame.scrollBar then frame.scrollBar:SetAlpha(1) end
-            if frame.scrollUpBtn then frame.scrollUpBtn:SetAlpha(1) end
-            if frame.scrollDownBtn then frame.scrollDownBtn:SetAlpha(1) end
+            -- Only set alpha if scroll bar is actually shown (has scrollable content)
+            if frame.scrollBar and frame.scrollBar:IsShown() then frame.scrollBar:SetAlpha(1) end
+            if frame.scrollUpBtn and frame.scrollUpBtn:IsShown() then frame.scrollUpBtn:SetAlpha(1) end
+            if frame.scrollDownBtn and frame.scrollDownBtn:IsShown() then frame.scrollDownBtn:SetAlpha(1) end
             if frame.minimizeBtn then frame.minimizeBtn:SetAlpha(1) end
         end
     end
