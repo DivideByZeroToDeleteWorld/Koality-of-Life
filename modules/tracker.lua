@@ -879,32 +879,32 @@ function Tracker:CreateWatchFrame(instanceId)
         if hideUI then
             if showOnMouseover and isMouseOver then
                 -- Show all UI elements on mouseover with configured colors
-                self:SetBackdropColor(showBg[1], showBg[2], showBg[3], showBg[4])
-                self:SetBackdropBorderColor(showBorder[1], showBorder[2], showBorder[3], showBorder[4])
-                self.titleBar:SetBackdropColor(showTitle[1], showTitle[2], showTitle[3], showTitle[4])
-                if self.scrollBar then self.scrollBar:SetAlpha(1) end
-                if self.scrollUpBtn then self.scrollUpBtn:SetAlpha(1) end
-                if self.scrollDownBtn then self.scrollDownBtn:SetAlpha(1) end
-                if self.minimizeBtn then self.minimizeBtn:SetAlpha(1) end
+                frame:SetBackdropColor(showBg[1], showBg[2], showBg[3], showBg[4])
+                frame:SetBackdropBorderColor(showBorder[1], showBorder[2], showBorder[3], showBorder[4])
+                frame.titleBar:SetBackdropColor(showTitle[1], showTitle[2], showTitle[3], showTitle[4])
+                if frame.scrollBar then frame.scrollBar:SetAlpha(1) end
+                if frame.scrollUpBtn then frame.scrollUpBtn:SetAlpha(1) end
+                if frame.scrollDownBtn then frame.scrollDownBtn:SetAlpha(1) end
+                if frame.minimizeBtn then frame.minimizeBtn:SetAlpha(1) end
             else
                 -- Hide all UI elements (set alpha to 0)
-                self:SetBackdropColor(showBg[1], showBg[2], showBg[3], 0)
-                self:SetBackdropBorderColor(showBorder[1], showBorder[2], showBorder[3], 0)
-                self.titleBar:SetBackdropColor(showTitle[1], showTitle[2], showTitle[3], 0)
-                if self.scrollBar then self.scrollBar:SetAlpha(0) end
-                if self.scrollUpBtn then self.scrollUpBtn:SetAlpha(0) end
-                if self.scrollDownBtn then self.scrollDownBtn:SetAlpha(0) end
-                if self.minimizeBtn then self.minimizeBtn:SetAlpha(0) end
+                frame:SetBackdropColor(showBg[1], showBg[2], showBg[3], 0)
+                frame:SetBackdropBorderColor(showBorder[1], showBorder[2], showBorder[3], 0)
+                frame.titleBar:SetBackdropColor(showTitle[1], showTitle[2], showTitle[3], 0)
+                if frame.scrollBar then frame.scrollBar:SetAlpha(0) end
+                if frame.scrollUpBtn then frame.scrollUpBtn:SetAlpha(0) end
+                if frame.scrollDownBtn then frame.scrollDownBtn:SetAlpha(0) end
+                if frame.minimizeBtn then frame.minimizeBtn:SetAlpha(0) end
             end
         else
             -- Normal visibility (UI always shown) with configured colors
-            self:SetBackdropColor(showBg[1], showBg[2], showBg[3], showBg[4])
-            self:SetBackdropBorderColor(showBorder[1], showBorder[2], showBorder[3], showBorder[4])
-            self.titleBar:SetBackdropColor(showTitle[1], showTitle[2], showTitle[3], showTitle[4])
-            if self.scrollBar then self.scrollBar:SetAlpha(1) end
-            if self.scrollUpBtn then self.scrollUpBtn:SetAlpha(1) end
-            if self.scrollDownBtn then self.scrollDownBtn:SetAlpha(1) end
-            if self.minimizeBtn then self.minimizeBtn:SetAlpha(1) end
+            frame:SetBackdropColor(showBg[1], showBg[2], showBg[3], showBg[4])
+            frame:SetBackdropBorderColor(showBorder[1], showBorder[2], showBorder[3], showBorder[4])
+            frame.titleBar:SetBackdropColor(showTitle[1], showTitle[2], showTitle[3], showTitle[4])
+            if frame.scrollBar then frame.scrollBar:SetAlpha(1) end
+            if frame.scrollUpBtn then frame.scrollUpBtn:SetAlpha(1) end
+            if frame.scrollDownBtn then frame.scrollDownBtn:SetAlpha(1) end
+            if frame.minimizeBtn then frame.minimizeBtn:SetAlpha(1) end
         end
     end
 
