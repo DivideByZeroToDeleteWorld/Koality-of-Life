@@ -1076,14 +1076,14 @@ function Tracker:UpdateWatchFrame(instanceId)
     end
 
     -- Calculate required frame width
-    -- Padding: left (4) + right (4) + scrollbar space (when visible) + some buffer (16)
-    local scrollBarPadding = 0
-    if frame.scrollBar and frame.scrollBar:IsShown() then
-        local scrollBarWidth = frame.scrollBar:GetWidth() or 16
-        scrollBarPadding = scrollBarWidth + 8
-    end
-
-    local requiredWidth = maxTextWidth + 8 + scrollBarPadding + 16  -- left + right + scrollbar + buffer
+    -- Frame structure: Frame > ScrollFrame > Content > Text
+    -- Text has: 8px left + 4px right padding within content = 12px
+    -- Content width = frameWidth - scrollBarPadding - 8
+    -- ScrollBarPadding = scrollBarWidth + 8
+    -- So: frameWidth >= textWidth + 12 + scrollBarPadding + 8 + buffer
+    local scrollBarWidth = (frame.scrollBar and frame.scrollBar:GetWidth()) or 16
+    local scrollBarPadding = scrollBarWidth + 8
+    local requiredWidth = maxTextWidth + 12 + scrollBarPadding + 8 + 20  -- text + content padding + scrollbar padding + frame padding + buffer
 
     -- Use the larger of: configured width or required width (never truncate)
     local currentWidth = frame:GetWidth()
@@ -1093,8 +1093,13 @@ function Tracker:UpdateWatchFrame(instanceId)
     if finalWidth ~= currentWidth then
         frame:SetWidth(finalWidth)
         frame.titleBar:SetWidth(finalWidth - 2)
-        KOL:DebugPrint(string.format("Tracker: Auto-adjusted width from %.0f to %.0f (text=%.0f, config=%.0f)",
-            currentWidth, finalWidth, requiredWidth, configWidth), 3)
+
+        -- CRITICAL: Update content width to match new frame width
+        local newContentWidth = finalWidth - scrollBarPadding - 8
+        content:SetWidth(newContentWidth)
+
+        KOL:DebugPrint(string.format("Tracker: Auto-adjusted width from %.0f to %.0f (text=%.0f, content=%.0f, config=%.0f)",
+            currentWidth, finalWidth, maxTextWidth, newContentWidth, configWidth), 2)
     end
 
     KOL:DebugPrint("Tracker: Updated watch frame: " .. instanceId, 3)
