@@ -17,7 +17,19 @@ local function GetAveragedFont(requestedSize)
 
     local fontName = KOL.db.profile.generalFont or "Friz Quadrata TT"
     local fontOutline = KOL.db.profile.generalFontOutline or "THICKOUTLINE"
-    local fontPath = LibStub("LibSharedMedia-3.0"):Fetch("font", fontName)
+
+    local fontPath
+    local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+    if LSM then
+        local success, result = pcall(function() return LSM:Fetch("font", fontName) end)
+        if success then
+            fontPath = result
+        else
+            fontPath = "Fonts\\FRIZQT__.TTF"
+        end
+    else
+        fontPath = "Fonts\\FRIZQT__.TTF"
+    end
 
     return fontPath, averageSize, fontOutline
 end
@@ -431,11 +443,15 @@ end
 -- @param instanceId: Instance identifier
 -- @return: The created watch frame
 function Tracker:CreateWatchFrame(instanceId)
+    KOL:DebugPrint("Tracker: CreateWatchFrame called for: " .. instanceId, 2)
+
     local data = self.instances[instanceId]
     if not data then
-        KOL:DebugPrint("Tracker: Cannot create watch frame for unknown instance: " .. instanceId, 1)
+        KOL:DebugPrint("Tracker: ERROR - Cannot create watch frame for unknown instance: " .. instanceId, 1)
         return nil
     end
+
+    KOL:DebugPrint("Tracker: Instance data found: " .. data.name, 3)
 
     -- Get config settings (per-instance overrides global)
     local config = KOL.db.profile.tracker
@@ -517,7 +533,21 @@ function Tracker:CreateWatchFrame(instanceId)
 
     -- Title text (interactive - for dragging and double-click)
     -- Use per-instance font settings
-    local titleFontPath = LSM:Fetch("font", titleFont)
+    local titleFontPath
+    if LSM then
+        local success, result = pcall(function() return LSM:Fetch("font", titleFont) end)
+        if success then
+            titleFontPath = result
+            KOL:DebugPrint("Tracker: Font loaded: " .. titleFont, 3)
+        else
+            KOL:DebugPrint("Tracker: ERROR loading font '" .. titleFont .. "', using default", 1)
+            titleFontPath = "Fonts\\FRIZQT__.TTF"
+        end
+    else
+        KOL:DebugPrint("Tracker: LSM not available, using default font", 2)
+        titleFontPath = "Fonts\\FRIZQT__.TTF"
+    end
+
     local actualTitleFontSize = math.floor(titleFontSize * titleFontScale)
     local titleText = CreateFrame("Button", nil, titleBar)
     titleText:SetPoint("TOPLEFT", titleBar, "TOPLEFT", 8, 0)
@@ -1022,26 +1052,36 @@ end
 
 -- Show watch frame for an instance
 function Tracker:ShowWatchFrame(instanceId)
+    KOL:DebugPrint("Tracker: ShowWatchFrame called for: " .. instanceId, 2)
+
     local frame = self.activeFrames[instanceId]
 
     -- Create frame if it doesn't exist
     if not frame then
+        KOL:DebugPrint("Tracker: Frame doesn't exist, creating new frame for: " .. instanceId, 2)
         frame = self:CreateWatchFrame(instanceId)
         if not frame then
+            KOL:DebugPrint("Tracker: ERROR - CreateWatchFrame returned nil for: " .. instanceId, 1)
             return
         end
+        KOL:DebugPrint("Tracker: Frame created successfully for: " .. instanceId, 2)
+    else
+        KOL:DebugPrint("Tracker: Frame already exists for: " .. instanceId, 3)
     end
 
     -- Update content
+    KOL:DebugPrint("Tracker: Updating watch frame content for: " .. instanceId, 3)
     self:UpdateWatchFrame(instanceId)
 
     -- Restore position
+    KOL:DebugPrint("Tracker: Restoring frame position for: " .. instanceId, 3)
     self:RestoreFramePosition(instanceId)
 
     -- Show frame
+    KOL:DebugPrint("Tracker: Calling Show() on frame for: " .. instanceId, 3)
     frame:Show()
 
-    KOL:DebugPrint("Tracker: Showed watch frame: " .. instanceId, 2)
+    KOL:DebugPrint("Tracker: Watch frame shown successfully: " .. instanceId .. " (IsShown: " .. tostring(frame:IsShown()) .. ")", 2)
 end
 
 -- Toggle minimize/maximize
