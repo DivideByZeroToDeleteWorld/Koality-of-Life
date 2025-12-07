@@ -717,6 +717,22 @@ function KOL:InitializeUI()
                                         KOL.db.profile.tracker = {}
                                     end
                                     KOL.db.profile.tracker.scrollBarWidth = value
+
+                                    -- Recreate all active frames to apply new scrollbar width
+                                    if KOL.Tracker and KOL.Tracker.activeFrames then
+                                        for instanceId, frame in pairs(KOL.Tracker.activeFrames) do
+                                            -- Only recreate if this instance doesn't have a per-instance override
+                                            local hasOverride = KOL.db.profile.tracker.instances and
+                                                               KOL.db.profile.tracker.instances[instanceId] and
+                                                               KOL.db.profile.tracker.instances[instanceId].scrollBarWidth and
+                                                               KOL.db.profile.tracker.instances[instanceId].scrollBarWidth > 0
+                                            if not hasOverride then
+                                                frame:Hide()
+                                                KOL.Tracker.activeFrames[instanceId] = nil
+                                                KOL.Tracker:ShowWatchFrame(instanceId)
+                                            end
+                                        end
+                                    end
                                 end,
                                 order = 15,
                             },
@@ -1552,6 +1568,19 @@ function KOL:PopulateTrackerConfigUI()
                                 SetInstanceSetting(instanceId, "frameHeight", value)
                             end,
                             order = 2,
+                        },
+                        scrollBarWidth = {
+                            type = "range",
+                            name = "Scrollbar Width",
+                            desc = "Width of the scrollbar in pixels (0 = use global setting, min 8, max 32)",
+                            min = 0,
+                            max = 32,
+                            step = 2,
+                            get = function() return GetInstanceSetting(instanceId, "scrollBarWidth", 0) end,
+                            set = function(_, value)
+                                SetInstanceSetting(instanceId, "scrollBarWidth", value)
+                            end,
+                            order = 3,
                         },
                     }
                 },

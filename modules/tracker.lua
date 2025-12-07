@@ -475,7 +475,7 @@ function Tracker:CreateWatchFrame(instanceId)
     local config = KOL.db.profile.tracker
     local frameWidth = GetInstanceSetting(instanceId, "frameWidth") or config.frameWidth or 250
     local frameHeight = GetInstanceSetting(instanceId, "frameHeight") or config.frameHeight or 300
-    local scrollBarWidth = config.scrollBarWidth or 16
+    local scrollBarWidth = GetInstanceSetting(instanceId, "scrollBarWidth") or config.scrollBarWidth or 16
     local showMinimizeBtn = data.showMinimizeButton ~= false and config.showMinimizeButton ~= false
     local showScrollButtons = config.showScrollButtons ~= false
 
@@ -841,17 +841,25 @@ function Tracker:CreateWatchFrame(instanceId)
     -- Update scroll bar range when content changes (hide if not needed)
     scrollFrame:SetScript("OnScrollRangeChanged", function(self, xRange, yRange)
         local scrollRange = yRange
+        local scrollFrameHeight = self:GetHeight()
+        local contentHeight = content:GetHeight()
+
+        KOL:DebugPrint(string.format("Tracker: Scroll range changed - yRange=%.1f, scrollFrameHeight=%.1f, contentHeight=%.1f",
+            yRange or 0, scrollFrameHeight or 0, contentHeight or 0), 2)
+
         if scrollRange > 0 then
             scrollBar:SetMinMaxValues(0, scrollRange)
             scrollBar:Show()
             if scrollUpBtn then scrollUpBtn:Show() end
             if scrollDownBtn then scrollDownBtn:Show() end
+            KOL:DebugPrint("Tracker: Scrollbar shown (content exceeds frame)", 3)
         else
             scrollBar:SetMinMaxValues(0, 0)
             scrollBar:SetValue(0)
             scrollBar:Hide()
             if scrollUpBtn then scrollUpBtn:Hide() end
             if scrollDownBtn then scrollDownBtn:Hide() end
+            KOL:DebugPrint("Tracker: Scrollbar hidden (content fits in frame)", 3)
         end
     end)
 
