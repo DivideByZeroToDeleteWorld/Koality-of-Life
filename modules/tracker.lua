@@ -22,14 +22,13 @@ local function GetAveragedFont(requestedSize)
     local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
     if LSM then
         local success, result = pcall(function() return LSM:Fetch("font", fontName) end)
-        if success then
+        if success and result then
             fontPath = result
-        else
-            fontPath = "Fonts\\FRIZQT__.TTF"
         end
-    else
-        fontPath = "Fonts\\FRIZQT__.TTF"
     end
+
+    -- Fallback chain: LSM font → hardcoded default
+    fontPath = fontPath or "Fonts\\FRIZQT__.TTF"
 
     return fontPath, averageSize, fontOutline
 end
@@ -532,21 +531,31 @@ function Tracker:CreateWatchFrame(instanceId)
     frame.titleBar = titleBar
 
     -- Title text (interactive - for dragging and double-click)
-    -- Use per-instance font settings
+    -- Use per-instance font settings with fallback chain
     local titleFontPath
     if LSM then
+        -- Try requested title font first
         local success, result = pcall(function() return LSM:Fetch("font", titleFont) end)
-        if success then
+        if success and result then
             titleFontPath = result
-            KOL:DebugPrint("Tracker: Font loaded: " .. titleFont, 3)
+            KOL:DebugPrint("Tracker: Title font loaded: " .. titleFont, 3)
         else
-            KOL:DebugPrint("Tracker: ERROR loading font '" .. titleFont .. "', using default", 1)
-            titleFontPath = "Fonts\\FRIZQT__.TTF"
+            KOL:DebugPrint("Tracker: Failed to load title font '" .. titleFont .. "', trying general font", 2)
+            -- Try general font as fallback
+            local generalFont = KOL.db.profile.generalFont or "Friz Quadrata TT"
+            success, result = pcall(function() return LSM:Fetch("font", generalFont) end)
+            if success and result then
+                titleFontPath = result
+                KOL:DebugPrint("Tracker: Using general font: " .. generalFont, 3)
+            end
         end
     else
-        KOL:DebugPrint("Tracker: LSM not available, using default font", 2)
-        titleFontPath = "Fonts\\FRIZQT__.TTF"
+        KOL:DebugPrint("Tracker: LSM not available", 2)
     end
+
+    -- Final fallback to hardcoded default
+    titleFontPath = titleFontPath or "Fonts\\FRIZQT__.TTF"
+    KOL:DebugPrint("Tracker: Final title font path: " .. titleFontPath, 3)
 
     local actualTitleFontSize = math.floor(titleFontSize * titleFontScale)
     local titleText = CreateFrame("Button", nil, titleBar)
