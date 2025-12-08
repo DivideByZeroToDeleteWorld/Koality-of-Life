@@ -144,6 +144,18 @@ function KOL:OnEnable()
     self:RegisterChatCommand("koality", "SlashCommand")
     self:RegisterChatCommand("kt", "TestSlashCommand")  -- Alias for test commands
     self:RegisterChatCommand("kdc", function() self:ToggleDebugConsole() end)  -- Koality Debug Console
+    self:RegisterChatCommand("kc", function()
+        -- Open config panel
+        InterfaceOptionsFrame_OpenToCategory(self.optionsFrame)
+        InterfaceOptionsFrame_OpenToCategory(self.optionsFrame)  -- Call twice for WoW 3.3.5a bug
+    end)  -- Koality Config
+    self:RegisterChatCommand("kcpt", function()
+        -- Open config and navigate to Progress Tracker
+        InterfaceOptionsFrame_OpenToCategory(self.optionsFrame)
+        InterfaceOptionsFrame_OpenToCategory(self.optionsFrame)  -- Call twice for WoW 3.3.5a bug
+        -- Select the tracker tab
+        LibStub("AceConfigDialog-3.0"):SelectGroup("Koality-of-Life", "tracker")
+    end)  -- Koality Config Progress Tracker
     self:RegisterChatCommand("kmu", function()
         if KoalityOfLife.MacroUpdater then
             KoalityOfLife.MacroUpdater:ShowUI()
@@ -395,13 +407,20 @@ function KOL:SafeCall(func, ...)
 end
 
 -- Debug print function with levels
--- Level 1: Critical/important debug info
+-- Level 0: CRITICAL - Always prints to BOTH chat AND debug console, bypassing all filters (for critical diagnostic info)
+-- Level 1: Basic debug (default)
 -- Level 2: Unused (reserved)
 -- Level 3: Moderate detail (skip repetitive/aggressive logs)
 -- Level 4: Unused (reserved)
 -- Level 5: Maximum verbosity (everything)
 function KOL:DebugPrint(msg, level)
     level = level or 1  -- Default to level 1 if not specified
+
+    -- Level 0: CRITICAL - Always print to chat, bypass all debug settings
+    if level == 0 then
+        self:PrintTag("|cFFFF0000[DEBUG][CRITICAL]|r " .. tostring(msg))
+        return
+    end
 
     if self.db and self.db.profile and self.db.profile.debug then
         local currentLevel = self.db.profile.debugLevel or 1

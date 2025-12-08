@@ -736,6 +736,14 @@ function KOL:DebugPrint(message, level)
     -- Always add to console (even during early load)
     AddDebugMessage(message, level)
 
+    -- Level 0: CRITICAL - Always print to BOTH console AND chat, bypassing all filters
+    if level == 0 then
+        if originalDebugPrint then
+            originalDebugPrint(self, message, 0)
+        end
+        return
+    end
+
     -- If db not initialized yet, we're in early load - just store message and return
     if not self.db or not self.db.profile then
         return

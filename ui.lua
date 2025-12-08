@@ -668,11 +668,11 @@ function KOL:InitializeUI()
                             },
                             frameWidth = {
                                 type = "range",
-                                name = "Default Frame Width",
-                                desc = "Default width for watch frames (in pixels)",
+                                name = "Default Max Frame Width",
+                                desc = "Maximum width for watch frames (in pixels)",
                                 min = 150,
                                 max = 500,
-                                step = 10,
+                                step = 1,
                                 get = function()
                                     return (KOL.db.profile.tracker and KOL.db.profile.tracker.frameWidth) or 250
                                 end,
@@ -686,11 +686,11 @@ function KOL:InitializeUI()
                             },
                             frameHeight = {
                                 type = "range",
-                                name = "Default Frame Height",
-                                desc = "Default height for watch frames when maximized (in pixels)",
+                                name = "Default Max Frame Height",
+                                desc = "Maximum height for watch frames when maximized (in pixels)",
                                 min = 100,
                                 max = 800,
-                                step = 10,
+                                step = 1,
                                 get = function()
                                     return (KOL.db.profile.tracker and KOL.db.profile.tracker.frameHeight) or 300
                                 end,
@@ -708,7 +708,7 @@ function KOL:InitializeUI()
                                 desc = "Width of the scrollbar (in pixels)",
                                 min = 8,
                                 max = 32,
-                                step = 2,
+                                step = 1,
                                 get = function()
                                     return (KOL.db.profile.tracker and KOL.db.profile.tracker.scrollBarWidth) or 16
                                 end,
@@ -741,15 +741,152 @@ function KOL:InitializeUI()
                                 name = " ",
                                 order = 16,
                             },
-                            fontHeader = {
+                            colorHeader = {
                                 type = "header",
-                                name = "Font Settings",
+                                name = "Colors",
                                 order = 17,
                             },
-                            baseFont = {
+                            titleFontColor = {
+                                type = "color",
+                                name = "Title Font Color",
+                                desc = "Color for the instance title text",
+                                hasAlpha = false,
+                                get = function()
+                                    -- Returns RGB (instance color used for title)
+                                    return 0.7, 0.9, 1  -- Default SKY blue
+                                end,
+                                set = function(_, r, g, b)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.titleFontColor = {r, g, b}
+                                    -- Refresh all active frames
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                order = 18,
+                            },
+                            groupIncompleteColor = {
+                                type = "color",
+                                name = "Group Header Incomplete Color",
+                                desc = "Color for group headers when not all bosses are killed (uses instance color by default)",
+                                hasAlpha = false,
+                                get = function()
+                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.groupIncompleteColor
+                                    if color then
+                                        return color[1], color[2], color[3]
+                                    end
+                                    return 0.7, 0.9, 1  -- Default uses instance color
+                                end,
+                                set = function(_, r, g, b)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.groupIncompleteColor = {r, g, b}
+                                    -- Refresh all active frames
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                order = 19,
+                            },
+                            groupCompleteColor = {
+                                type = "color",
+                                name = "Group Header Complete Color",
+                                desc = "Color for group headers when all bosses are killed",
+                                hasAlpha = false,
+                                get = function()
+                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.groupCompleteColor
+                                    if color then
+                                        return color[1], color[2], color[3]
+                                    end
+                                    return 0.75, 1, 0.75  -- Default Pastel Easter Green
+                                end,
+                                set = function(_, r, g, b)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.groupCompleteColor = {r, g, b}
+                                    -- Refresh all active frames
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                order = 20,
+                            },
+                            objectiveIncompleteColor = {
+                                type = "color",
+                                name = "Objective Incomplete Color",
+                                desc = "Color for bosses/objectives that are not yet killed/completed",
+                                hasAlpha = false,
+                                get = function()
+                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.objectiveIncompleteColor
+                                    if color then
+                                        return color[1], color[2], color[3]
+                                    end
+                                    return 1, 0.6, 0.6  -- Default Pastel Red
+                                end,
+                                set = function(_, r, g, b)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.objectiveIncompleteColor = {r, g, b}
+                                    -- Refresh all active frames
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                order = 21,
+                            },
+                            objectiveCompleteColor = {
+                                type = "color",
+                                name = "Objective Complete Color",
+                                desc = "Color for bosses/objectives that are killed/completed",
+                                hasAlpha = false,
+                                get = function()
+                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.objectiveCompleteColor
+                                    if color then
+                                        return color[1], color[2], color[3]
+                                    end
+                                    return 0.7, 1, 0.7  -- Default Pastel Green
+                                end,
+                                set = function(_, r, g, b)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.objectiveCompleteColor = {r, g, b}
+                                    -- Refresh all active frames
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                order = 22,
+                            },
+                            spacerColors = {
+                                type = "description",
+                                name = " ",
+                                order = 23,
+                            },
+                            fontHeader = {
+                                type = "header",
+                                name = "Fonts",
+                                order = 24,
+                            },
+                            globalFont = {
                                 type = "select",
-                                name = "Watch Frame Font",
-                                desc = "Font used for watch frame text (averaged with General Font)",
+                                name = "Global Font",
+                                desc = "Default font for all watch frame text",
                                 dialogControl = "LSM30_Font",
                                 values = LibStub("LibSharedMedia-3.0"):HashTable("font"),
                                 get = function()
@@ -760,7 +897,6 @@ function KOL:InitializeUI()
                                         KOL.db.profile.tracker = {}
                                     end
                                     KOL.db.profile.tracker.baseFont = value
-                                    KOL:PrintTag("Tracker font set to: " .. PASTEL_YELLOW(value))
                                     -- Refresh all active frames
                                     if KOL.Tracker then
                                         for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
@@ -768,39 +904,16 @@ function KOL:InitializeUI()
                                         end
                                     end
                                 end,
-                                order = 18,
-                            },
-                            baseFontSize = {
-                                type = "range",
-                                name = "Base Font Size",
-                                desc = "Base font size for watch frames (averaged with General Font Size)",
-                                min = 8,
-                                max = 24,
-                                step = 1,
-                                get = function()
-                                    return (KOL.db.profile.tracker and KOL.db.profile.tracker.baseFontSize) or 12
-                                end,
-                                set = function(_, value)
-                                    if not KOL.db.profile.tracker then
-                                        KOL.db.profile.tracker = {}
-                                    end
-                                    KOL.db.profile.tracker.baseFontSize = value
-                                    -- Refresh all active frames
-                                    if KOL.Tracker then
-                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
-                                            KOL.Tracker:UpdateWatchFrame(instanceId)
-                                        end
-                                    end
-                                end,
-                                order = 19,
+                                order = 25,
+                                width = "double",
                             },
                             fontScale = {
                                 type = "range",
-                                name = "Font Scale Multiplier",
+                                name = "Font Scale (All Content)",
                                 desc = "Scale multiplier for all tracker fonts",
                                 min = 0.5,
                                 max = 2.0,
-                                step = 0.1,
+                                step = 0.05,
                                 get = function()
                                     return (KOL.db.profile.tracker and KOL.db.profile.tracker.fontScale) or 1.0
                                 end,
@@ -816,17 +929,269 @@ function KOL:InitializeUI()
                                         end
                                     end
                                 end,
-                                order = 20,
+                                order = 26,
+                                width = "full",
+                            },
+                            spacerFonts1 = {
+                                type = "description",
+                                name = "\n|cFFFFFFFFSpecific Font Settings:|r",
+                                order = 27,
+                            },
+                            titleFont = {
+                                type = "select",
+                                name = "Title Bar Font",
+                                desc = "Font for instance title bar (leave empty to use Global Font)",
+                                dialogControl = "LSM30_Font",
+                                values = function()
+                                    local fonts = LibStub("LibSharedMedia-3.0"):HashTable("font")
+                                    fonts[""] = "Use Global Font"
+                                    return fonts
+                                end,
+                                get = function()
+                                    return (KOL.db.profile.tracker and KOL.db.profile.tracker.titleFont) or ""
+                                end,
+                                set = function(_, value)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.titleFont = (value ~= "" and value or nil)
+                                    -- Refresh all active frames
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                order = 28,
+                                width = "double",
+                            },
+                            titleFontSize = {
+                                type = "range",
+                                name = "Title Bar Size",
+                                desc = "Font size for title bar (0 = auto, min: 8, max: 32)",
+                                min = 0,
+                                max = 32,
+                                step = 1,
+                                get = function()
+                                    return (KOL.db.profile.tracker and KOL.db.profile.tracker.titleFontSize) or 0
+                                end,
+                                set = function(_, value)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.titleFontSize = (value > 0 and value or nil)
+                                    -- Refresh all active frames
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                order = 29,
+                                width = "normal",
+                            },
+                            titleFontOutline = {
+                                type = "select",
+                                name = "Title Bar Outline",
+                                desc = "Font outline for title bar",
+                                values = {
+                                    ["NONE"] = "None",
+                                    ["OUTLINE"] = "Outline",
+                                    ["THICKOUTLINE"] = "Thick Outline",
+                                    ["MONOCHROME"] = "Monochrome",
+                                    ["OUTLINE, MONOCHROME"] = "Outline + Monochrome",
+                                },
+                                get = function()
+                                    return (KOL.db.profile.tracker and KOL.db.profile.tracker.titleFontOutline) or "OUTLINE"
+                                end,
+                                set = function(_, value)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.titleFontOutline = value
+                                    -- Refresh all active frames
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                order = 29.5,
+                                width = "normal",
+                            },
+                            groupFont = {
+                                type = "select",
+                                name = "Group Header Font",
+                                desc = "Font for group headers (leave empty to use Global Font)",
+                                dialogControl = "LSM30_Font",
+                                values = function()
+                                    local fonts = LibStub("LibSharedMedia-3.0"):HashTable("font")
+                                    fonts[""] = "Use Global Font"
+                                    return fonts
+                                end,
+                                get = function()
+                                    return (KOL.db.profile.tracker and KOL.db.profile.tracker.groupFont) or ""
+                                end,
+                                set = function(_, value)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.groupFont = (value ~= "" and value or nil)
+                                    -- Refresh all active frames
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                order = 30,
+                                width = "double",
+                            },
+                            groupFontSize = {
+                                type = "range",
+                                name = "Group Header Size",
+                                desc = "Font size for group headers (0 = auto, min: 8, max: 32)",
+                                min = 0,
+                                max = 32,
+                                step = 1,
+                                get = function()
+                                    return (KOL.db.profile.tracker and KOL.db.profile.tracker.groupFontSize) or 0
+                                end,
+                                set = function(_, value)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.groupFontSize = (value > 0 and value or nil)
+                                    -- Refresh all active frames
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                order = 31,
+                                width = "normal",
+                            },
+                            groupFontOutline = {
+                                type = "select",
+                                name = "Group Header Outline",
+                                desc = "Font outline for group headers",
+                                values = {
+                                    ["NONE"] = "None",
+                                    ["OUTLINE"] = "Outline",
+                                    ["THICKOUTLINE"] = "Thick Outline",
+                                    ["MONOCHROME"] = "Monochrome",
+                                    ["OUTLINE, MONOCHROME"] = "Outline + Monochrome",
+                                },
+                                get = function()
+                                    return (KOL.db.profile.tracker and KOL.db.profile.tracker.groupFontOutline) or "OUTLINE"
+                                end,
+                                set = function(_, value)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.groupFontOutline = value
+                                    -- Refresh all active frames
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                order = 31.5,
+                                width = "normal",
+                            },
+                            objectiveFont = {
+                                type = "select",
+                                name = "Objective Font",
+                                desc = "Font for boss names and objectives (leave empty to use Global Font)",
+                                dialogControl = "LSM30_Font",
+                                values = function()
+                                    local fonts = LibStub("LibSharedMedia-3.0"):HashTable("font")
+                                    fonts[""] = "Use Global Font"
+                                    return fonts
+                                end,
+                                get = function()
+                                    return (KOL.db.profile.tracker and KOL.db.profile.tracker.objectiveFont) or ""
+                                end,
+                                set = function(_, value)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.objectiveFont = (value ~= "" and value or nil)
+                                    -- Refresh all active frames
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                order = 32,
+                                width = "double",
+                            },
+                            objectiveFontSize = {
+                                type = "range",
+                                name = "Objective Size",
+                                desc = "Font size for boss names and objectives (0 = auto, min: 8, max: 32)",
+                                min = 0,
+                                max = 32,
+                                step = 1,
+                                get = function()
+                                    return (KOL.db.profile.tracker and KOL.db.profile.tracker.objectiveFontSize) or 0
+                                end,
+                                set = function(_, value)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.objectiveFontSize = (value > 0 and value or nil)
+                                    -- Refresh all active frames
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                order = 33,
+                                width = "normal",
+                            },
+                            objectiveFontOutline = {
+                                type = "select",
+                                name = "Objective Outline",
+                                desc = "Font outline for boss names and objectives",
+                                values = {
+                                    ["NONE"] = "None",
+                                    ["OUTLINE"] = "Outline",
+                                    ["THICKOUTLINE"] = "Thick Outline",
+                                    ["MONOCHROME"] = "Monochrome",
+                                    ["OUTLINE, MONOCHROME"] = "Outline + Monochrome",
+                                },
+                                get = function()
+                                    return (KOL.db.profile.tracker and KOL.db.profile.tracker.objectiveFontOutline) or "OUTLINE"
+                                end,
+                                set = function(_, value)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.objectiveFontOutline = value
+                                    -- Refresh all active frames
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                order = 33.5,
+                                width = "normal",
                             },
                             spacer2 = {
                                 type = "description",
                                 name = " ",
-                                order = 21,
+                                order = 34,
                             },
                             resetHeader = {
                                 type = "header",
                                 name = "Reset Progress",
-                                order = 22,
+                                order = 28,
                             },
                             resetAll = {
                                 type = "execute",
@@ -891,7 +1256,7 @@ function KOL:InitializeUI()
                                     classic = "Classic",
                                     tbc = "The Burning Crusade",
                                     wotlk = "Wrath of the Lich King",
-                                    all = "All Expansions (Slow!)",
+                                    all = "All Expansions",
                                 },
                                 get = function()
                                     return KOL.db.profile.tracker.dungeonFilterExpansion or ""
@@ -938,10 +1303,61 @@ function KOL:InitializeUI()
                                 end,
                                 order = 2,
                             },
+                            selectInstance = {
+                                type = "select",
+                                name = "Select Instance",
+                                desc = "Choose which instance to configure",
+                                values = function()
+                                    -- Build list of instances that match current filters
+                                    local instances = {[""] = "-- Select Instance --"}
+                                    if not KOL.Tracker or not KOL.Tracker.instances then
+                                        return instances
+                                    end
+
+                                    local expansion = KOL.db.profile.tracker.dungeonFilterExpansion or ""
+                                    local difficulty = KOL.db.profile.tracker.dungeonFilterDifficulty or "all"
+
+                                    if expansion == "" then
+                                        return instances
+                                    end
+
+                                    for instanceId, data in pairs(KOL.Tracker.instances) do
+                                        if data.type == "dungeon" then
+                                            -- Check expansion filter
+                                            if expansion == "all" or data.expansion == expansion then
+                                                -- Check difficulty filter
+                                                local matchesDifficulty = false
+                                                if difficulty == "all" then
+                                                    matchesDifficulty = true
+                                                elseif difficulty == "normal" and (data.difficulty == nil or data.difficulty == 1) then
+                                                    matchesDifficulty = true
+                                                elseif difficulty == "heroic" and data.difficulty == 2 then
+                                                    matchesDifficulty = true
+                                                end
+
+                                                if matchesDifficulty then
+                                                    instances[instanceId] = data.name
+                                                end
+                                            end
+                                        end
+                                    end
+
+                                    return instances
+                                end,
+                                get = function()
+                                    return KOL.db.profile.tracker.selectedDungeonInstance or ""
+                                end,
+                                set = function(_, value)
+                                    KOL.db.profile.tracker.selectedDungeonInstance = value
+                                    KOL:PopulateTrackerConfigUI()
+                                    LibStub("AceConfigRegistry-3.0"):NotifyChange("Koality-of-Life")
+                                end,
+                                order = 3,
+                            },
                             spacer = {
                                 type = "description",
                                 name = " ",
-                                order = 3,
+                                order = 4,
                             },
                             -- Dungeon instances will be populated below this
                         }
@@ -966,7 +1382,7 @@ function KOL:InitializeUI()
                                     classic = "Classic",
                                     tbc = "The Burning Crusade",
                                     wotlk = "Wrath of the Lich King",
-                                    all = "All Expansions (Slow!)",
+                                    all = "All Expansions",
                                 },
                                 get = function()
                                     return KOL.db.profile.tracker.raidFilterExpansion or ""
@@ -1028,10 +1444,86 @@ function KOL:InitializeUI()
                                 end,
                                 order = 2,
                             },
+                            selectInstance = {
+                                type = "select",
+                                name = "Select Instance",
+                                desc = "Choose which instance to configure",
+                                values = function()
+                                    -- Build list of instances that match current filters
+                                    local instances = {[""] = "-- Select Instance --"}
+                                    if not KOL.Tracker or not KOL.Tracker.instances then
+                                        return instances
+                                    end
+
+                                    local expansion = KOL.db.profile.tracker.raidFilterExpansion or ""
+                                    local difficulty = KOL.db.profile.tracker.raidFilterDifficulty or "all"
+
+                                    if expansion == "" then
+                                        return instances
+                                    end
+
+                                    for instanceId, data in pairs(KOL.Tracker.instances) do
+                                        if data.type == "raid" then
+                                            -- Check expansion filter
+                                            if expansion == "all" or data.expansion == expansion then
+                                                -- Check difficulty/size filter
+                                                local matchesDifficulty = false
+                                                if difficulty == "all" then
+                                                    matchesDifficulty = true
+                                                else
+                                                    -- Similar logic to PassesFilters in PopulateTrackerConfigUI
+                                                    if data.expansion == "classic" then
+                                                        if difficulty == "20" then
+                                                            matchesDifficulty = (string.find(data.name, "Zul'Gurub") or string.find(data.name, "AQ20") or string.find(data.name, "Ruins"))
+                                                        elseif difficulty == "40" then
+                                                            matchesDifficulty = not (string.find(data.name, "Zul'Gurub") or string.find(data.name, "AQ20") or string.find(data.name, "Ruins"))
+                                                        end
+                                                    elseif data.expansion == "tbc" then
+                                                        if difficulty == "10" then
+                                                            matchesDifficulty = (string.find(data.name, "10") or string.find(data.name, "Karazhan") or string.find(data.name, "Zul'Aman"))
+                                                        elseif difficulty == "25" then
+                                                            matchesDifficulty = not (string.find(data.name, "10") or string.find(data.name, "Karazhan") or string.find(data.name, "Zul'Aman"))
+                                                        end
+                                                    elseif data.expansion == "wotlk" then
+                                                        if difficulty == "10n" and data.difficulty == 1 then
+                                                            matchesDifficulty = true
+                                                        elseif difficulty == "25n" and data.difficulty == 2 then
+                                                            matchesDifficulty = true
+                                                        elseif difficulty == "10h" and data.difficulty == 3 then
+                                                            matchesDifficulty = true
+                                                        elseif difficulty == "25h" and data.difficulty == 4 then
+                                                            matchesDifficulty = true
+                                                        elseif difficulty == "10" and (data.difficulty == 1 or data.difficulty == 3) then
+                                                            matchesDifficulty = true
+                                                        elseif difficulty == "25" and (data.difficulty == 2 or data.difficulty == 4) then
+                                                            matchesDifficulty = true
+                                                        end
+                                                    end
+                                                end
+
+                                                if matchesDifficulty then
+                                                    instances[instanceId] = data.name
+                                                end
+                                            end
+                                        end
+                                    end
+
+                                    return instances
+                                end,
+                                get = function()
+                                    return KOL.db.profile.tracker.selectedRaidInstance or ""
+                                end,
+                                set = function(_, value)
+                                    KOL.db.profile.tracker.selectedRaidInstance = value
+                                    KOL:PopulateTrackerConfigUI()
+                                    LibStub("AceConfigRegistry-3.0"):NotifyChange("Koality-of-Life")
+                                end,
+                                order = 3,
+                            },
                             spacer = {
                                 type = "description",
                                 name = " ",
-                                order = 3,
+                                order = 4,
                             },
                             -- Raid instances will be populated below this
                         }
@@ -1105,17 +1597,19 @@ function KOL:PopulateTrackerConfigUI()
     -- Get filter settings (default to empty = no content shown)
     local dungeonFilterExpansion = KOL.db.profile.tracker.dungeonFilterExpansion or ""
     local dungeonFilterDifficulty = KOL.db.profile.tracker.dungeonFilterDifficulty or "all"
+    local selectedDungeonInstance = KOL.db.profile.tracker.selectedDungeonInstance or ""
     local raidFilterExpansion = KOL.db.profile.tracker.raidFilterExpansion or ""
     local raidFilterDifficulty = KOL.db.profile.tracker.raidFilterDifficulty or "all"
+    local selectedRaidInstance = KOL.db.profile.tracker.selectedRaidInstance or ""
 
     -- Clear existing instance entries (keep filter UI)
     for k, _ in pairs(dungeonsArgs) do
-        if k ~= "header" and k ~= "filterExpansion" and k ~= "filterDifficulty" and k ~= "spacer" then
+        if k ~= "header" and k ~= "filterExpansion" and k ~= "filterDifficulty" and k ~= "selectInstance" and k ~= "spacer" then
             dungeonsArgs[k] = nil
         end
     end
     for k, _ in pairs(raidsArgs) do
-        if k ~= "header" and k ~= "filterExpansion" and k ~= "filterDifficulty" and k ~= "spacer" then
+        if k ~= "header" and k ~= "filterExpansion" and k ~= "filterDifficulty" and k ~= "selectInstance" and k ~= "spacer" then
             raidsArgs[k] = nil
         end
     end
@@ -1237,8 +1731,25 @@ function KOL:PopulateTrackerConfigUI()
 
     -- Iterate through all registered instances
     for instanceId, data in pairs(KOL.Tracker.instances) do
-        -- Only process if passes filters
-        if PassesFilters(data) then
+        -- Check if we should only show a specific instance
+        local shouldShow = false
+        if data.type == "dungeon" then
+            -- Only show if a specific dungeon is selected AND it matches
+            if selectedDungeonInstance ~= "" and instanceId == selectedDungeonInstance then
+                shouldShow = true
+            end
+        elseif data.type == "raid" then
+            -- Only show if a specific raid is selected AND it matches
+            if selectedRaidInstance ~= "" and instanceId == selectedRaidInstance then
+                shouldShow = true
+            end
+        else
+            -- Custom panels - always show if they pass filters
+            shouldShow = PassesFilters(data)
+        end
+
+        -- Only process if should be shown
+        if shouldShow then
             local args, order
             if data.type == "dungeon" then
                 args = dungeonsArgs
@@ -1306,85 +1817,31 @@ function KOL:PopulateTrackerConfigUI()
                     order = 2,
                 },
 
-                -- Title Settings Group
-                titleSettings = {
+                -- Custom Zone Text
+                customZoneText = {
+                    type = "input",
+                    name = "Custom Zone Text",
+                    desc = "Override the default title text (leave empty to use default: " .. data.name .. ")",
+                    get = function() return GetInstanceSetting(instanceId, "titleText", "") end,
+                    set = function(_, value)
+                        SetInstanceSetting(instanceId, "titleText", value)
+                        KOL:PrintTag("Title text updated for: " .. data.name)
+                    end,
+                    width = "full",
+                    order = 5,
+                },
+
+                -- Colors Group
+                colorsGroup = {
                     type = "group",
-                    name = "Title Bar Settings",
+                    name = "Colors",
                     inline = true,
                     order = 10,
                     args = {
-                        titleText = {
-                            type = "input",
-                            name = "Custom Title Text",
-                            desc = "Override the default title text (leave empty to use default: " .. data.name .. ")",
-                            get = function() return GetInstanceSetting(instanceId, "titleText", "") end,
-                            set = function(_, value)
-                                SetInstanceSetting(instanceId, "titleText", value)
-                                KOL:PrintTag("Title text updated for: " .. data.name)
-                            end,
-                            width = "full",
-                            order = 1,
-                        },
-                        titleFont = {
-                            type = "select",
-                            name = "Title Font",
-                            desc = "Font for the title bar text",
-                            dialogControl = "LSM30_Font",
-                            values = LibStub("LibSharedMedia-3.0"):HashTable("font"),
-                            get = function() return GetInstanceSetting(instanceId, "titleFont", KOL.db.profile.generalFont or "Friz Quadrata TT") end,
-                            set = function(_, value)
-                                SetInstanceSetting(instanceId, "titleFont", value)
-                            end,
-                            order = 2,
-                        },
-                        titleFontSize = {
-                            type = "range",
-                            name = "Title Font Size",
-                            desc = "Size of the title text",
-                            min = 8,
-                            max = 24,
-                            step = 1,
-                            get = function() return GetInstanceSetting(instanceId, "titleFontSize", 13) end,
-                            set = function(_, value)
-                                SetInstanceSetting(instanceId, "titleFontSize", value)
-                            end,
-                            order = 3,
-                        },
-                        titleFontScale = {
-                            type = "range",
-                            name = "Title Font Scale",
-                            desc = "Scale multiplier for title font",
-                            min = 0.5,
-                            max = 2.0,
-                            step = 0.05,
-                            get = function() return GetInstanceSetting(instanceId, "titleFontScale", 1.0) end,
-                            set = function(_, value)
-                                SetInstanceSetting(instanceId, "titleFontScale", value)
-                            end,
-                            order = 4,
-                        },
-                        titleFontOutline = {
-                            type = "select",
-                            name = "Title Font Outline",
-                            desc = "Outline style for title text",
-                            values = {
-                                ["NONE"] = "None",
-                                ["OUTLINE"] = "Outline",
-                                ["THICKOUTLINE"] = "Thick Outline",
-                                ["MONOCHROME"] = "Monochrome",
-                                ["OUTLINE, MONOCHROME"] = "Outline + Monochrome",
-                                ["THICKOUTLINE, MONOCHROME"] = "Thick Outline + Monochrome",
-                            },
-                            get = function() return GetInstanceSetting(instanceId, "titleFontOutline", "THICKOUTLINE") end,
-                            set = function(_, value)
-                                SetInstanceSetting(instanceId, "titleFontOutline", value)
-                            end,
-                            order = 5,
-                        },
                         titleFontColor = {
                             type = "color",
                             name = "Title Font Color",
-                            desc = "Color of the title text (supports hex input)",
+                            desc = "Color of the title text",
                             hasAlpha = false,
                             get = function()
                                 local color = GetInstanceSetting(instanceId, "titleFontColor", nil)
@@ -1398,10 +1855,268 @@ function KOL:PopulateTrackerConfigUI()
                             end,
                             set = function(_, r, g, b)
                                 SetInstanceSetting(instanceId, "titleFontColor", {r, g, b})
-                                local hex = KOL.Colors:ToHex({r, g, b})
-                                KOL:PrintTag("Title color set to |cFF" .. hex .. "■■■|r")
+                            end,
+                            order = 1,
+                        },
+                        groupIncompleteColor = {
+                            type = "color",
+                            name = "Group Header Incomplete Color",
+                            desc = "Color for group headers when not all bosses are killed",
+                            hasAlpha = false,
+                            get = function()
+                                local color = GetInstanceSetting(instanceId, "groupIncompleteColor", nil)
+                                if color then
+                                    return color[1], color[2], color[3]
+                                end
+                                -- Default to instance color
+                                local colorName = data.color or "PINK"
+                                local rgb = KOL.Colors:GetPastel(colorName)
+                                return rgb[1], rgb[2], rgb[3]
+                            end,
+                            set = function(_, r, g, b)
+                                SetInstanceSetting(instanceId, "groupIncompleteColor", {r, g, b})
+                            end,
+                            order = 2,
+                        },
+                        groupCompleteColor = {
+                            type = "color",
+                            name = "Group Header Complete Color",
+                            desc = "Color for group headers when all bosses are killed",
+                            hasAlpha = false,
+                            get = function()
+                                local color = GetInstanceSetting(instanceId, "groupCompleteColor", nil)
+                                if color then
+                                    return color[1], color[2], color[3]
+                                end
+                                return 0.75, 1, 0.75  -- Default Pastel Easter Green
+                            end,
+                            set = function(_, r, g, b)
+                                SetInstanceSetting(instanceId, "groupCompleteColor", {r, g, b})
+                            end,
+                            order = 3,
+                        },
+                        objectiveIncompleteColor = {
+                            type = "color",
+                            name = "Objective Incomplete Color",
+                            desc = "Color for bosses/objectives that are not yet completed",
+                            hasAlpha = false,
+                            get = function()
+                                local color = GetInstanceSetting(instanceId, "objectiveIncompleteColor", nil)
+                                if color then
+                                    return color[1], color[2], color[3]
+                                end
+                                return 1, 0.6, 0.6  -- Default Pastel Red
+                            end,
+                            set = function(_, r, g, b)
+                                SetInstanceSetting(instanceId, "objectiveIncompleteColor", {r, g, b})
+                            end,
+                            order = 4,
+                        },
+                        objectiveCompleteColor = {
+                            type = "color",
+                            name = "Objective Complete Color",
+                            desc = "Color for bosses/objectives that are completed",
+                            hasAlpha = false,
+                            get = function()
+                                local color = GetInstanceSetting(instanceId, "objectiveCompleteColor", nil)
+                                if color then
+                                    return color[1], color[2], color[3]
+                                end
+                                return 0.7, 1, 0.7  -- Default Pastel Green
+                            end,
+                            set = function(_, r, g, b)
+                                SetInstanceSetting(instanceId, "objectiveCompleteColor", {r, g, b})
+                            end,
+                            order = 5,
+                        },
+                    }
+                },
+
+                -- Fonts Group
+                fontsGroup = {
+                    type = "group",
+                    name = "Fonts",
+                    inline = true,
+                    order = 15,
+                    args = {
+                        globalFont = {
+                            type = "select",
+                            name = "Global Font",
+                            desc = "Default font for all text (used when specific fonts are not set)",
+                            dialogControl = "LSM30_Font",
+                            values = LibStub("LibSharedMedia-3.0"):HashTable("font"),
+                            get = function() return GetInstanceSetting(instanceId, "globalFont", KOL.db.profile.generalFont or "Friz Quadrata TT") end,
+                            set = function(_, value)
+                                SetInstanceSetting(instanceId, "globalFont", value)
+                            end,
+                            order = 1,
+                            width = "double",
+                        },
+                        fontScale = {
+                            type = "range",
+                            name = "Font Scale (All Content)",
+                            desc = "Scale multiplier for ALL fonts",
+                            min = 0.5,
+                            max = 2.0,
+                            step = 0.05,
+                            get = function() return GetInstanceSetting(instanceId, "fontScale", 1.0) end,
+                            set = function(_, value)
+                                SetInstanceSetting(instanceId, "fontScale", value)
+                            end,
+                            order = 2,
+                            width = "normal",
+                        },
+                        spacer1 = {
+                            type = "description",
+                            name = "\n|cFFFFFFFFSpecific Font Settings:|r",
+                            order = 2.5,
+                        },
+                        titleFont = {
+                            type = "select",
+                            name = "Title Bar Font",
+                            desc = "Font for title bar (leave empty to use Global Font)",
+                            dialogControl = "LSM30_Font",
+                            values = function()
+                                local fonts = LibStub("LibSharedMedia-3.0"):HashTable("font")
+                                fonts[""] = "Use Global Font"
+                                return fonts
+                            end,
+                            get = function() return GetInstanceSetting(instanceId, "titleFont", "") end,
+                            set = function(_, value)
+                                SetInstanceSetting(instanceId, "titleFont", value ~= "" and value or nil)
+                            end,
+                            order = 3,
+                            width = "double",
+                        },
+                        titleFontSize = {
+                            type = "range",
+                            name = "Title Bar Size",
+                            desc = "Font size for title bar (0 = auto, min: 8, max: 32)",
+                            min = 0,
+                            max = 32,
+                            step = 1,
+                            get = function() return GetInstanceSetting(instanceId, "titleFontSize", 0) end,
+                            set = function(_, value)
+                                SetInstanceSetting(instanceId, "titleFontSize", value > 0 and value or nil)
+                            end,
+                            order = 4,
+                            width = "normal",
+                        },
+                        titleFontOutline = {
+                            type = "select",
+                            name = "Title Bar Outline",
+                            desc = "Outline style for title bar",
+                            values = {
+                                ["NONE"] = "None",
+                                ["OUTLINE"] = "Outline",
+                                ["THICKOUTLINE"] = "Thick Outline",
+                                ["MONOCHROME"] = "Monochrome",
+                                ["OUTLINE, MONOCHROME"] = "Outline + Monochrome",
+                            },
+                            get = function() return GetInstanceSetting(instanceId, "titleFontOutline", "OUTLINE") end,
+                            set = function(_, value)
+                                SetInstanceSetting(instanceId, "titleFontOutline", value)
+                            end,
+                            order = 5,
+                            width = "normal",
+                        },
+                        groupFont = {
+                            type = "select",
+                            name = "Group Header Font",
+                            desc = "Font for group headers (leave empty to use Global Font)",
+                            dialogControl = "LSM30_Font",
+                            values = function()
+                                local fonts = LibStub("LibSharedMedia-3.0"):HashTable("font")
+                                fonts[""] = "Use Global Font"
+                                return fonts
+                            end,
+                            get = function() return GetInstanceSetting(instanceId, "groupFont", "") end,
+                            set = function(_, value)
+                                SetInstanceSetting(instanceId, "groupFont", value ~= "" and value or nil)
                             end,
                             order = 6,
+                            width = "double",
+                        },
+                        groupFontSize = {
+                            type = "range",
+                            name = "Group Header Size",
+                            desc = "Font size for group headers (0 = auto, min: 8, max: 32)",
+                            min = 0,
+                            max = 32,
+                            step = 1,
+                            get = function() return GetInstanceSetting(instanceId, "groupFontSize", 0) end,
+                            set = function(_, value)
+                                SetInstanceSetting(instanceId, "groupFontSize", value > 0 and value or nil)
+                            end,
+                            order = 7,
+                            width = "normal",
+                        },
+                        groupFontOutline = {
+                            type = "select",
+                            name = "Group Header Outline",
+                            desc = "Outline style for group headers",
+                            values = {
+                                ["NONE"] = "None",
+                                ["OUTLINE"] = "Outline",
+                                ["THICKOUTLINE"] = "Thick Outline",
+                                ["MONOCHROME"] = "Monochrome",
+                                ["OUTLINE, MONOCHROME"] = "Outline + Monochrome",
+                            },
+                            get = function() return GetInstanceSetting(instanceId, "groupFontOutline", "OUTLINE") end,
+                            set = function(_, value)
+                                SetInstanceSetting(instanceId, "groupFontOutline", value)
+                            end,
+                            order = 8,
+                            width = "normal",
+                        },
+                        objectiveFont = {
+                            type = "select",
+                            name = "Objective Font",
+                            desc = "Font for boss names/objectives (leave empty to use Global Font)",
+                            dialogControl = "LSM30_Font",
+                            values = function()
+                                local fonts = LibStub("LibSharedMedia-3.0"):HashTable("font")
+                                fonts[""] = "Use Global Font"
+                                return fonts
+                            end,
+                            get = function() return GetInstanceSetting(instanceId, "objectiveFont", "") end,
+                            set = function(_, value)
+                                SetInstanceSetting(instanceId, "objectiveFont", value ~= "" and value or nil)
+                            end,
+                            order = 9,
+                            width = "double",
+                        },
+                        objectiveFontSize = {
+                            type = "range",
+                            name = "Objective Size",
+                            desc = "Font size for boss names/objectives (0 = auto, min: 8, max: 32)",
+                            min = 0,
+                            max = 32,
+                            step = 1,
+                            get = function() return GetInstanceSetting(instanceId, "objectiveFontSize", 0) end,
+                            set = function(_, value)
+                                SetInstanceSetting(instanceId, "objectiveFontSize", value > 0 and value or nil)
+                            end,
+                            order = 10,
+                            width = "normal",
+                        },
+                        objectiveFontOutline = {
+                            type = "select",
+                            name = "Objective Outline",
+                            desc = "Outline style for boss names/objectives",
+                            values = {
+                                ["NONE"] = "None",
+                                ["OUTLINE"] = "Outline",
+                                ["THICKOUTLINE"] = "Thick Outline",
+                                ["MONOCHROME"] = "Monochrome",
+                                ["OUTLINE, MONOCHROME"] = "Outline + Monochrome",
+                            },
+                            get = function() return GetInstanceSetting(instanceId, "objectiveFontOutline", "OUTLINE") end,
+                            set = function(_, value)
+                                SetInstanceSetting(instanceId, "objectiveFontOutline", value)
+                            end,
+                            order = 11,
+                            width = "normal",
                         },
                     }
                 },
@@ -1545,11 +2260,11 @@ function KOL:PopulateTrackerConfigUI()
                     args = {
                         frameWidth = {
                             type = "range",
-                            name = "Frame Width",
-                            desc = "Width of the watch frame (0 = use global setting)",
+                            name = "Max Frame Width",
+                            desc = "Maximum width of the watch frame (0 = use global setting)",
                             min = 0,
                             max = 600,
-                            step = 10,
+                            step = 1,
                             get = function() return GetInstanceSetting(instanceId, "frameWidth", 0) end,
                             set = function(_, value)
                                 SetInstanceSetting(instanceId, "frameWidth", value)
@@ -1558,11 +2273,11 @@ function KOL:PopulateTrackerConfigUI()
                         },
                         frameHeight = {
                             type = "range",
-                            name = "Frame Height",
-                            desc = "Height of the watch frame (0 = use global setting)",
+                            name = "Max Frame Height",
+                            desc = "Maximum height of the watch frame (0 = use global setting)",
                             min = 0,
                             max = 800,
-                            step = 10,
+                            step = 1,
                             get = function() return GetInstanceSetting(instanceId, "frameHeight", 0) end,
                             set = function(_, value)
                                 SetInstanceSetting(instanceId, "frameHeight", value)
@@ -1575,7 +2290,7 @@ function KOL:PopulateTrackerConfigUI()
                             desc = "Width of the scrollbar in pixels (0 = use global setting, min 8, max 32)",
                             min = 0,
                             max = 32,
-                            step = 2,
+                            step = 1,
                             get = function() return GetInstanceSetting(instanceId, "scrollBarWidth", 0) end,
                             set = function(_, value)
                                 SetInstanceSetting(instanceId, "scrollBarWidth", value)

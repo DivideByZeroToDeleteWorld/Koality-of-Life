@@ -611,6 +611,8 @@ KOL.Tracker:RegisterInstance("naxx_10", {
     difficulty = 1,
     color = "SKY",
     zones = {"Naxxramas"},
+    frameWidth = 190,   -- Perfect width to fit all content
+    frameHeight = 292,  -- Perfect height to fit all 5 groups without scrolling
     groups = {
         {
             name = "Arachnid Quarter",
@@ -633,7 +635,7 @@ KOL.Tracker:RegisterInstance("naxx_10", {
             bosses = {
                 {name = "Instructor Razuvious", id = 16061},
                 {name = "Gothik the Harvester", id = 16060},
-                {name = "The Four Horsemen", id = 16063},
+                {name = "The Four Horsemen", id = {16063, 16062, 16064, 16065}},  -- Baron, Zeliek, Thane, Lady
             }
         },
         {
@@ -663,6 +665,8 @@ KOL.Tracker:RegisterInstance("naxx_25", {
     difficulty = 2,
     color = "SKY",
     zones = {"Naxxramas"},
+    frameWidth = 190,   -- Perfect width to fit all content
+    frameHeight = 292,  -- Perfect height to fit all 5 groups without scrolling
     groups = {
         {
             name = "Arachnid Quarter",
@@ -685,7 +689,7 @@ KOL.Tracker:RegisterInstance("naxx_25", {
             bosses = {
                 {name = "Instructor Razuvious", id = 16061},
                 {name = "Gothik the Harvester", id = 16060},
-                {name = "The Four Horsemen", id = 16063},
+                {name = "The Four Horsemen", id = {16063, 16062, 16064, 16065}},  -- Baron, Zeliek, Thane, Lady
             }
         },
         {

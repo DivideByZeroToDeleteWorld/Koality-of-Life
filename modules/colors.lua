@@ -58,6 +58,7 @@ Colors.PASTEL = {
     LIME = {0.85, 1, 0.7},
     CORAL = {1, 0.8, 0.75},
     AQUA = {0.75, 0.95, 0.9},
+    EASTER_GREEN = {0.75, 1, 0.75},  -- Light spring green for completed groups
 
     -- Neutral tones
     CREAM = {1, 0.98, 0.9},

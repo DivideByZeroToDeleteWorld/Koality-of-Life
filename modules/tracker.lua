@@ -49,6 +49,21 @@ Tracker.activeFrames = {}
 -- Boss kill state (persisted in DB)
 Tracker.bossKills = {}
 
+-- Multi-NPC boss tracking (which individual NPCs have died)
+-- Format: [instanceId][bossId][npcId] = true
+Tracker.multiNPCKills = {}
+
+-- Instance lockout IDs (to detect resets)
+-- Format: [instanceId] = lockoutInstanceID
+Tracker.instanceLockouts = {}
+
+-- Track last instance exit time (to detect resets on re-entry)
+-- Format: [instanceId] = timestamp
+Tracker.lastExitTime = {}
+
+-- Track current instance player is in (for exit detection)
+Tracker.currentInstanceId = nil
+
 -- ============================================================================
 -- Initialization
 -- ============================================================================
@@ -65,11 +80,21 @@ function Tracker:Initialize()
             -- Boss kill data (character-specific)
             bossKills = {},
 
+            -- Multi-NPC boss tracking (which individual NPCs have died)
+            multiNPCKills = {},
+
+            -- Instance lockout IDs (to detect resets)
+            instanceLockouts = {},
+
             -- Custom watch panels
             customPanels = {},
 
             -- Frame positions (saved per character)
             framePositions = {},
+
+            -- Collapsed group states (per instance, per group)
+            -- Format: [instanceId][groupIndex] = true/false
+            collapsedGroups = {},
 
             -- General settings
             autoShow = true,
@@ -79,6 +104,13 @@ function Tracker:Initialize()
 
     -- Load boss kills from DB
     self.bossKills = KOL.db.profile.tracker.bossKills or {}
+    self.multiNPCKills = KOL.db.profile.tracker.multiNPCKills or {}
+    self.instanceLockouts = KOL.db.profile.tracker.instanceLockouts or {}
+
+    -- Initialize collapsed groups if not exists (for existing users)
+    if not KOL.db.profile.tracker.collapsedGroups then
+        KOL.db.profile.tracker.collapsedGroups = {}
+    end
 
     -- Load custom panels from DB
     self:LoadCustomPanels()
@@ -187,6 +219,47 @@ function Tracker:FindInstanceByZone(zoneName)
 end
 
 -- ============================================================================
+-- Group Collapse/Expand State
+-- ============================================================================
+
+-- Check if a group is collapsed
+-- @param instanceId: Instance identifier
+-- @param groupIndex: Group index (1-based)
+-- @return: true if collapsed, false otherwise
+function Tracker:IsGroupCollapsed(instanceId, groupIndex)
+    if not KOL.db.profile.tracker.collapsedGroups then
+        KOL.db.profile.tracker.collapsedGroups = {}
+    end
+    if not KOL.db.profile.tracker.collapsedGroups[instanceId] then
+        return false
+    end
+    return KOL.db.profile.tracker.collapsedGroups[instanceId][groupIndex] == true
+end
+
+-- Toggle group collapsed state
+-- @param instanceId: Instance identifier
+-- @param groupIndex: Group index (1-based)
+function Tracker:ToggleGroupCollapsed(instanceId, groupIndex)
+    if not KOL.db.profile.tracker.collapsedGroups then
+        KOL.db.profile.tracker.collapsedGroups = {}
+    end
+    if not KOL.db.profile.tracker.collapsedGroups[instanceId] then
+        KOL.db.profile.tracker.collapsedGroups[instanceId] = {}
+    end
+
+    local currentState = KOL.db.profile.tracker.collapsedGroups[instanceId][groupIndex]
+    KOL.db.profile.tracker.collapsedGroups[instanceId][groupIndex] = not currentState
+
+    KOL:DebugPrint("Tracker: Toggled group " .. groupIndex .. " in " .. instanceId .. " to " ..
+        (KOL.db.profile.tracker.collapsedGroups[instanceId][groupIndex] and "collapsed" or "expanded"), 3)
+
+    -- Update watch frame
+    if self.activeFrames[instanceId] then
+        self:UpdateWatchFrame(instanceId)
+    end
+end
+
+-- ============================================================================
 -- Boss Kill Tracking
 -- ============================================================================
 
@@ -201,7 +274,45 @@ function Tracker:MarkBossKilled(instanceId, bossId)
     self.bossKills[instanceId][bossId] = true
     KOL.db.profile.tracker.bossKills = self.bossKills
 
-    KOL:DebugPrint("Tracker: Boss killed: " .. instanceId .. " / " .. tostring(bossId), 2)
+    KOL:DebugPrint("SAVED TO DB: Boss killed " .. instanceId .. " / " .. tostring(bossId), 2)
+
+    -- Check if this boss is part of a group, and if so, check for group completion
+    local instanceData = self.instances[instanceId]
+    if instanceData and instanceData.groups then
+        -- Extract group index from bossId (format: "g1-b2" = group 1, boss 2)
+        local groupIndex = string.match(tostring(bossId), "^g(%d+)%-")
+        if groupIndex then
+            groupIndex = tonumber(groupIndex)
+            local group = instanceData.groups[groupIndex]
+
+            if group and group.bosses then
+                -- Check if ALL bosses in this group are now killed
+                local allKilled = true
+                for bossIndex, _ in ipairs(group.bosses) do
+                    local checkBossId = "g" .. groupIndex .. "-b" .. bossIndex
+                    if not self.bossKills[instanceId][checkBossId] then
+                        allKilled = false
+                        break
+                    end
+                end
+
+                if allKilled then
+                    local colorHex = KOL.Colors:ToHex(KOL.Colors:GetPastel(instanceData.color))
+                    KOL:PrintTag("Quarter complete: |cFF" .. colorHex .. group.name .. "|r")
+
+                    -- Auto-collapse the completed group
+                    if not KOL.db.profile.tracker.collapsedGroups then
+                        KOL.db.profile.tracker.collapsedGroups = {}
+                    end
+                    if not KOL.db.profile.tracker.collapsedGroups[instanceId] then
+                        KOL.db.profile.tracker.collapsedGroups[instanceId] = {}
+                    end
+                    KOL.db.profile.tracker.collapsedGroups[instanceId][groupIndex] = true
+                    KOL:DebugPrint("Tracker: Auto-collapsed completed group " .. groupIndex .. " in " .. instanceId, 2)
+                end
+            end
+        end
+    end
 
     -- Update watch frame if active
     if self.activeFrames[instanceId] then
@@ -223,9 +334,15 @@ end
 -- Reset boss kills for an instance
 function Tracker:ResetInstance(instanceId)
     self.bossKills[instanceId] = {}
-    KOL.db.profile.tracker.bossKills = self.bossKills
+    self.multiNPCKills[instanceId] = {}
+    self.lastExitTime[instanceId] = nil  -- Clear exit time tracking
+    self.instanceLockouts[instanceId] = nil  -- Clear lockout ID
 
-    KOL:DebugPrint("Tracker: Reset instance: " .. instanceId, 2)
+    KOL.db.profile.tracker.bossKills = self.bossKills
+    KOL.db.profile.tracker.multiNPCKills = self.multiNPCKills
+    KOL.db.profile.tracker.instanceLockouts = self.instanceLockouts
+
+    KOL:DebugPrint("Reset triggered for: " .. instanceId, 2)
 
     -- Update watch frame if active
     if self.activeFrames[instanceId] then
@@ -236,7 +353,13 @@ end
 -- Reset all boss kills
 function Tracker:ResetAll()
     self.bossKills = {}
+    self.multiNPCKills = {}
+    self.lastExitTime = {}
+    self.instanceLockouts = {}
+
     KOL.db.profile.tracker.bossKills = self.bossKills
+    KOL.db.profile.tracker.multiNPCKills = self.multiNPCKills
+    KOL.db.profile.tracker.instanceLockouts = self.instanceLockouts
 
     KOL:DebugPrint("Tracker: Reset all instances", 2)
 
@@ -251,17 +374,47 @@ end
 -- ============================================================================
 
 -- Combat log event handler for boss kills
-function Tracker:OnCombatLogEvent(timestamp, eventType, _, sourceGUID, sourceName, sourceFlags, sourceRaidFlags,
-                                   destGUID, destName, destFlags, destRaidFlags, ...)
+function Tracker:OnCombatLogEvent(...)
+    local args = {...}
+
+    -- WotLK 3.3.5 combat log structure for UNIT_DIED:
+    -- arg1: timestamp
+    -- arg2: eventType
+    -- arg3: sourceGUID (always 0 for deaths)
+    -- arg4: sourceName (always nil for deaths)
+    -- arg5: sourceFlags
+    -- arg6: destGUID
+    -- arg7: destName
+    -- arg8: destFlags
+    local timestamp = args[1]
+    local eventType = args[2]
+    local sourceGUID = args[3]
+    local sourceName = args[4]
+    local sourceFlags = args[5]
+    local destGUID = args[6]
+    local destName = args[7]
+    local destFlags = args[8]
+
     -- Only process UNIT_DIED events
     if eventType ~= "UNIT_DIED" then
         return
     end
 
+    KOL:DebugPrint("UNIT_DIED: " .. tostring(destName) .. " | GUID: " .. tostring(destGUID), 3)
+
     -- Extract NPC ID from GUID
     local npcId = self:ExtractNPCID(destGUID)
     if not npcId then
+        KOL:DebugPrint("ERROR: Could not extract NPC ID from GUID: " .. tostring(destGUID), 1)
         return
+    end
+
+    KOL:DebugPrint("NPC ID: " .. tostring(npcId) .. " | Name: " .. tostring(destName), 3)
+
+    -- Extract Instance ID from the GUID for reset detection
+    local wowInstanceId = self:ExtractInstanceID(destGUID)
+    if wowInstanceId then
+        KOL:DebugPrint("Tracker: WoW Instance ID: " .. tostring(wowInstanceId), 3)
     end
 
     -- Check all registered instances for matching boss
@@ -269,11 +422,75 @@ function Tracker:OnCombatLogEvent(timestamp, eventType, _, sourceGUID, sourceNam
         -- Check flat bosses list
         if data.bosses and #data.bosses > 0 then
             for bossIndex, boss in ipairs(data.bosses) do
-                if boss.id == npcId then
-                    -- Boss killed!
-                    self:MarkBossKilled(instanceId, bossIndex)
-                    local colorHex = KOL.Colors:ToHex(KOL.Colors:GetPastel(data.color))
-                    KOL:PrintTag("Boss defeated: |cFF" .. colorHex .. boss.name .. "|r")
+                -- Support both single ID (number) and multiple IDs (table)
+                local matchFound = false
+                local isMultiNPC = type(boss.id) == "table"
+
+                if isMultiNPC then
+                    -- Multiple IDs (e.g., Four Horsemen) - check if this NPC is part of the encounter
+                    for _, id in ipairs(boss.id) do
+                        if id == npcId then
+                            matchFound = true
+                            break
+                        end
+                    end
+                else
+                    -- Single ID
+                    matchFound = (boss.id == npcId)
+                end
+
+                if matchFound then
+                    KOL:DebugPrint("MATCH FOUND: " .. boss.name .. " (Instance: " .. instanceId .. ", BossIndex: " .. bossIndex .. ", NPC: " .. npcId .. ")", 2)
+
+                    -- Store WoW instance ID for this tracker instance
+                    if wowInstanceId then
+                        self:StoreInstanceID(instanceId, wowInstanceId)
+                    end
+
+                    if isMultiNPC then
+                        -- Track individual NPC death for multi-NPC bosses
+                        if not self.multiNPCKills[instanceId] then
+                            self.multiNPCKills[instanceId] = {}
+                        end
+                        if not self.multiNPCKills[instanceId][bossIndex] then
+                            self.multiNPCKills[instanceId][bossIndex] = {}
+                        end
+                        self.multiNPCKills[instanceId][bossIndex][npcId] = true
+                        KOL.db.profile.tracker.multiNPCKills = self.multiNPCKills
+
+                        KOL:PrintTag("DEBUG: Marked NPC " .. npcId .. " as dead for " .. boss.name .. " (bossIndex=" .. bossIndex .. ")")
+
+                        -- Check if ALL NPCs for this boss are now dead
+                        local allDead = true
+                        local deadCount = 0
+                        local totalCount = #boss.id
+                        for _, id in ipairs(boss.id) do
+                            if self.multiNPCKills[instanceId][bossIndex][id] then
+                                deadCount = deadCount + 1
+                            else
+                                allDead = false
+                            end
+                        end
+
+                        KOL:PrintTag("DEBUG: " .. boss.name .. " progress: " .. deadCount .. "/" .. totalCount .. " killed")
+
+                        if allDead then
+                            -- All NPCs dead - mark boss as killed!
+                            KOL:PrintTag("DEBUG: ALL NPCs dead! Marking " .. boss.name .. " as complete")
+                            self:MarkBossKilled(instanceId, bossIndex)
+                            local colorHex = KOL.Colors:ToHex(KOL.Colors:GetPastel(data.color))
+                            KOL:PrintTag("Boss defeated: |cFF" .. colorHex .. boss.name .. "|r")
+                        else
+                            -- Partial progress
+                            KOL:PrintTag(destName .. " defeated (" .. boss.name .. " encounter - " .. deadCount .. "/" .. totalCount .. ")")
+                        end
+                    else
+                        -- Single NPC boss - mark as killed immediately
+                        KOL:DebugPrint("MARKING BOSS AS KILLED: " .. boss.name .. " (Instance: " .. instanceId .. ", BossIndex: " .. bossIndex .. ")", 2)
+                        self:MarkBossKilled(instanceId, bossIndex)
+                        local colorHex = KOL.Colors:ToHex(KOL.Colors:GetPastel(data.color))
+                        KOL:PrintTag("Boss defeated: |cFF" .. colorHex .. boss.name .. "|r")
+                    end
                     return
                 end
             end
@@ -284,12 +501,77 @@ function Tracker:OnCombatLogEvent(timestamp, eventType, _, sourceGUID, sourceNam
             for groupIndex, group in ipairs(data.groups) do
                 if group.bosses then
                     for bossIndex, boss in ipairs(group.bosses) do
-                        if boss.id == npcId then
-                            -- Boss killed! Use group-boss ID format "g1-b2"
+                        -- Support both single ID (number) and multiple IDs (table)
+                        local matchFound = false
+                        local isMultiNPC = type(boss.id) == "table"
+
+                        if isMultiNPC then
+                            -- Multiple IDs (e.g., Four Horsemen) - check if this NPC is part of the encounter
+                            for _, id in ipairs(boss.id) do
+                                if id == npcId then
+                                    matchFound = true
+                                    break
+                                end
+                            end
+                        else
+                            -- Single ID
+                            matchFound = (boss.id == npcId)
+                        end
+
+                        if matchFound then
                             local bossId = "g" .. groupIndex .. "-b" .. bossIndex
-                            self:MarkBossKilled(instanceId, bossId)
-                            local colorHex = KOL.Colors:ToHex(KOL.Colors:GetPastel(data.color))
-                            KOL:PrintTag("Boss defeated: |cFF" .. colorHex .. boss.name .. "|r")
+
+                            KOL:DebugPrint("MATCH FOUND: " .. boss.name .. " (Instance: " .. instanceId .. ", BossID: " .. bossId .. ", NPC: " .. npcId .. ")", 2)
+
+                            -- Store WoW instance ID for this tracker instance
+                            if wowInstanceId then
+                                self:StoreInstanceID(instanceId, wowInstanceId)
+                            end
+
+                            if isMultiNPC then
+                                -- Track individual NPC death for multi-NPC bosses
+                                if not self.multiNPCKills[instanceId] then
+                                    self.multiNPCKills[instanceId] = {}
+                                end
+                                if not self.multiNPCKills[instanceId][bossId] then
+                                    self.multiNPCKills[instanceId][bossId] = {}
+                                end
+                                self.multiNPCKills[instanceId][bossId][npcId] = true
+                                KOL.db.profile.tracker.multiNPCKills = self.multiNPCKills
+
+                                KOL:PrintTag("DEBUG: Marked NPC " .. npcId .. " as dead for " .. boss.name .. " (bossId=" .. bossId .. ")")
+
+                                -- Check if ALL NPCs for this boss are now dead
+                                local allDead = true
+                                local deadCount = 0
+                                local totalCount = #boss.id
+                                for _, id in ipairs(boss.id) do
+                                    if self.multiNPCKills[instanceId][bossId][id] then
+                                        deadCount = deadCount + 1
+                                    else
+                                        allDead = false
+                                    end
+                                end
+
+                                KOL:PrintTag("DEBUG: " .. boss.name .. " progress: " .. deadCount .. "/" .. totalCount .. " killed")
+
+                                if allDead then
+                                    -- All NPCs dead - mark boss as killed!
+                                    KOL:PrintTag("DEBUG: ALL NPCs dead! Marking " .. boss.name .. " as complete")
+                                    self:MarkBossKilled(instanceId, bossId)
+                                    local colorHex = KOL.Colors:ToHex(KOL.Colors:GetPastel(data.color))
+                                    KOL:PrintTag("Boss defeated: |cFF" .. colorHex .. boss.name .. "|r")
+                                else
+                                    -- Partial progress
+                                    KOL:PrintTag(destName .. " defeated (" .. boss.name .. " encounter - " .. deadCount .. "/" .. totalCount .. ")")
+                                end
+                            else
+                                -- Single NPC boss - mark as killed immediately
+                                KOL:DebugPrint("MARKING BOSS AS KILLED: " .. boss.name .. " (Instance: " .. instanceId .. ", BossID: " .. bossId .. ")", 2)
+                                self:MarkBossKilled(instanceId, bossId)
+                                local colorHex = KOL.Colors:ToHex(KOL.Colors:GetPastel(data.color))
+                                KOL:PrintTag("Boss defeated: |cFF" .. colorHex .. boss.name .. "|r")
+                            end
                             return
                         end
                     end
@@ -297,15 +579,76 @@ function Tracker:OnCombatLogEvent(timestamp, eventType, _, sourceGUID, sourceNam
             end
         end
     end
+
+    -- No match found for this NPC ID
+    KOL:DebugPrint("NO MATCH: NPC ID " .. tostring(npcId) .. " (" .. tostring(destName) .. ") is not a tracked boss", 3)
+end
+
+-- Get progress string for multi-NPC encounters (for debugging)
+function Tracker:GetMultiNPCProgress(instanceId, bossId, boss)
+    if not self.multiNPCKills[instanceId] or not self.multiNPCKills[instanceId][bossId] then
+        return "0/" .. #boss.id
+    end
+
+    local killed = 0
+    for _, id in ipairs(boss.id) do
+        if self.multiNPCKills[instanceId][bossId][id] then
+            killed = killed + 1
+        end
+    end
+
+    return killed .. "/" .. #boss.id
 end
 
 -- Extract NPC ID from GUID
 function Tracker:ExtractNPCID(guid)
     if not guid then return nil end
 
-    -- GUID format: "Creature-0-ServerID-MapID-InstanceID-NpcID-SpawnID"
-    local npcId = tonumber(string.match(guid, "Creature%-%d+%-%d+%-%d+%-%d+%-(%d+)"))
-    return npcId
+    -- WotLK 3.3.5 uses hexadecimal GUIDs like 0xF130003E8B0003CD
+    -- Format: 0xTTTTSSSSNNNNIIII where NNNN is the NPC ID
+    -- The NPC ID is bytes 5-6 (characters 7-10 after removing "0x")
+
+    local guidStr = tostring(guid)
+
+    -- Remove "0x" prefix if present
+    if string.sub(guidStr, 1, 2) == "0x" then
+        guidStr = string.sub(guidStr, 3)
+    end
+
+    -- Extract NPC ID (bytes 5-6 = characters 7-10 in hex string)
+    -- Example: "F130003E8B0003CD" -> "3E8B" -> 16011
+    if string.len(guidStr) >= 10 then
+        local npcIdHex = string.sub(guidStr, 7, 10)
+        local npcId = tonumber(npcIdHex, 16)  -- Convert from hex to decimal
+        return npcId
+    end
+
+    return nil
+end
+
+-- Extract Instance ID from creature GUID
+function Tracker:ExtractInstanceID(guid)
+    if not guid then return nil end
+
+    -- WotLK 3.3.5 GUID format: 0xTTTTSSSSNNNNIIII
+    -- Instance ID is the last 4 hex digits (bytes 7-8)
+    -- Example: "F130003E8B0003CD" -> "03CD" -> 973
+
+    local guidStr = tostring(guid)
+
+    -- Remove "0x" prefix if present
+    if string.sub(guidStr, 1, 2) == "0x" then
+        guidStr = string.sub(guidStr, 3)
+    end
+
+    -- Extract Instance ID (last 4 characters in hex string)
+    if string.len(guidStr) >= 14 then
+        local instanceIdHex = string.sub(guidStr, 11, 14)
+        local instanceId = tonumber(instanceIdHex, 16)  -- Convert from hex to decimal
+        return instanceId
+    end
+
+    return nil
 end
 
 -- ============================================================================
@@ -317,7 +660,7 @@ function Tracker:UpdateZoneTracking()
     -- Count registered instances
     local instanceCount = 0
     for _ in pairs(self.instances) do instanceCount = instanceCount + 1 end
-    KOL:PrintTag("UpdateZoneTracking called - " .. instanceCount .. " instances registered")
+    KOL:DebugPrint("UpdateZoneTracking called - " .. instanceCount .. " instances registered", 3)
 
     if not KOL.db.profile.tracker.autoShow then
         KOL:DebugPrint("Tracker: AutoShow disabled, skipping zone tracking", 3)
@@ -379,6 +722,26 @@ function Tracker:UpdateZoneTracking()
         KOL:DebugPrint("Tracker: Using fallback instance: " .. instanceId, 2)
     end
 
+    -- Detect if we're exiting an instance (for reset detection)
+    -- ONLY trigger exit if we're going from an instance to OUTSIDE (no instance, or world zone)
+    if self.currentInstanceId and self.currentInstanceId ~= instanceId then
+        local prevInstanceData = self.instances[self.currentInstanceId]
+
+        -- Only consider it an "exit" if we're leaving an instance/raid/dungeon to go to the world
+        -- Don't trigger on subzone changes within the same instance
+        if prevInstanceData and (not instanceId or (instanceType == "none")) then
+            -- We genuinely left the instance - we're now in the world
+            self:OnInstanceExit(self.currentInstanceId)
+            KOL:DebugPrint("Tracker: Detected genuine exit from " .. self.currentInstanceId .. " to outside", 2)
+        else
+            -- Just a zone/difficulty change within instances, ignore
+            KOL:DebugPrint("Tracker: Zone change from " .. tostring(self.currentInstanceId) .. " to " .. tostring(instanceId) .. " (not an exit)", 3)
+        end
+    end
+
+    -- Update current instance
+    self.currentInstanceId = instanceId
+
     -- Hide all active frames that don't match current zone
     for activeId, frame in pairs(self.activeFrames) do
         if activeId ~= instanceId then
@@ -390,7 +753,13 @@ function Tracker:UpdateZoneTracking()
 
     -- Show frame for current zone if found
     if instanceId and instanceData then
-        KOL:DebugPrint("Tracker: Showing watch frame for: " .. instanceId, 2)
+        KOL:DebugPrint("UpdateZoneTracking: Showing watch frame for " .. instanceId .. " (instanceType=" .. tostring(instanceType) .. ")", 3)
+
+        -- Check if this is a fresh instance lockout (auto-reset detection)
+        if instanceType ~= "none" then
+            KOL:DebugPrint("Calling CheckInstanceReset for " .. instanceId, 3)
+            self:CheckInstanceReset(instanceId, zoneName, difficultyIndex)
+        end
 
         -- Wrap in pcall to catch any errors
         local success, err = pcall(function()
@@ -416,6 +785,149 @@ function Tracker:UpdateZoneTracking()
     end
 end
 
+-- Store the WoW instance ID when we kill a boss
+function Tracker:StoreInstanceID(instanceId, wowInstanceId)
+    local storedId = self.instanceLockouts[instanceId]
+    local storedIdNum = storedId and tonumber(storedId)
+
+    -- Check if we have boss kills recorded
+    local hasKills = self.bossKills[instanceId] and next(self.bossKills[instanceId]) ~= nil
+
+    if storedIdNum and storedIdNum ~= wowInstanceId and hasKills then
+        -- DIFFERENT INSTANCE DETECTED!
+        -- This could mean: reset, different lockout, or just WoW reassigning IDs (not always reliable)
+        -- DON'T auto-reset here - just log it. Let the time-based exit/re-entry detection handle resets.
+        KOL:DebugPrint("Tracker: Instance ID changed from " .. storedIdNum .. " to " .. wowInstanceId ..
+            " for " .. instanceId .. " (not auto-resetting)", 2)
+    end
+
+    -- Store the current instance ID (for future reference, though we're not using it for resets anymore)
+    self.instanceLockouts[instanceId] = tostring(wowInstanceId)
+    KOL.db.profile.tracker.instanceLockouts = self.instanceLockouts
+    KOL:DebugPrint("Tracker: WoW Instance ID for " .. instanceId .. " = " .. wowInstanceId, 3)
+end
+
+-- Check if instance has reset when player re-enters
+function Tracker:CheckInstanceReset(instanceId, zoneName, difficultyIndex)
+    local instanceData = self.instances[instanceId]
+    if not instanceData then return end
+
+    -- Check if we have kills recorded
+    local hasKills = self.bossKills[instanceId] and next(self.bossKills[instanceId]) ~= nil
+
+    if not hasKills then
+        -- No kills recorded, nothing to reset
+        KOL:DebugPrint("Tracker: No kills recorded for " .. instanceId .. ", skipping reset check", 3)
+        return
+    end
+
+    -- Check when we last exited this instance
+    local lastExit = self.lastExitTime[instanceId]
+    local currentTime = time()
+
+    KOL:DebugPrint("Tracker: Checking reset for " .. instanceId .. " | hasKills=" .. tostring(hasKills) ..
+        " | lastExit=" .. tostring(lastExit) .. " | currentTime=" .. currentTime, 3)
+
+    if lastExit then
+        local timeSinceExit = currentTime - lastExit
+
+        -- For RAIDS: 30+ seconds outside = assume reset (covers manual reset, teleporting out, etc.)
+        -- For DUNGEONS: 10+ seconds outside = assume reset (they reset faster)
+        local threshold = instanceData.type == "raid" and 30 or 10
+
+        KOL:DebugPrint("CheckInstanceReset: " .. instanceId .. " | Time since exit: " .. math.floor(timeSinceExit) .. "s | Threshold: " .. threshold .. "s", 2)
+
+        if timeSinceExit >= threshold then
+            KOL:PrintTag("Fresh " .. instanceData.type .. " detected (outside for " .. math.floor(timeSinceExit) .. "s) - resetting " .. instanceData.name)
+            self:ResetInstance(instanceId)
+            self.lastExitTime[instanceId] = nil  -- Clear exit time
+            return
+        else
+            KOL:DebugPrint("Re-entry after " .. timeSinceExit .. "s (threshold=" .. threshold .. "s), keeping kills", 2)
+        end
+    else
+        KOL:DebugPrint("CheckInstanceReset: First entry to " .. instanceId .. " (no previous exit recorded)", 1)
+    end
+end
+
+-- Track when player exits an instance
+function Tracker:OnInstanceExit(instanceId)
+    -- Only track if we have kills
+    local hasKills = self.bossKills[instanceId] and next(self.bossKills[instanceId]) ~= nil
+
+    if hasKills then
+        local exitTime = time()
+        self.lastExitTime[instanceId] = exitTime
+        KOL:DebugPrint("Tracker: Exiting " .. instanceId .. " with kills - recorded exit time", 3)
+    end
+end
+
+-- ============================================================================
+-- Instance Reset Event Handlers (The SMART Way!)
+-- ============================================================================
+
+-- Called when instance info updates (including manual resets)
+function Tracker:OnInstanceInfoUpdate()
+    -- UPDATE_INSTANCE_INFO fires for MANY reasons:
+    -- - When you click "Reset All Instances" (OUTSIDE instances - what we want to detect!)
+    -- - When you kill a boss and lockout info updates (INSIDE instance - ignore!)
+    -- - When you request instance info
+    --
+    -- KEY INSIGHT: You can ONLY reset instances while OUTSIDE them!
+    -- So if this event fires while we're INSIDE an instance, it's just lockout info updating.
+    -- If it fires while we're OUTSIDE (in the world), that's a potential manual reset!
+
+    local name, instanceType, difficultyIndex, difficultyName, maxPlayers, dynamicDifficulty, isDynamic = GetInstanceInfo()
+
+    KOL:DebugPrint("UPDATE_INSTANCE_INFO fired | instanceType=" .. tostring(instanceType), 3)
+
+    -- If we're currently INSIDE an instance, this is just lockout info updating (boss kill, etc)
+    -- Ignore it - NOT a reset!
+    if instanceType ~= "none" then
+        KOL:DebugPrint("  -> Inside instance, ignoring (just lockout info update)", 3)
+        return
+    end
+
+    -- We're OUTSIDE instances - this could be a manual reset!
+    -- Check if we have any tracked instances with kills
+    KOL:DebugPrint("  -> Outside instances, checking for manual reset", 2)
+
+    local resetCount = 0
+
+    -- Check all registered instances for kills
+    for instanceId, killData in pairs(self.bossKills) do
+        local hasKills = killData and next(killData) ~= nil
+
+        if hasKills then
+            local instanceData = self.instances[instanceId]
+            local instanceName = instanceData and instanceData.name or instanceId
+
+            -- Reset ANY instance with kills (dungeons AND raids)
+            if instanceData then
+                KOL:PrintTag("Manual reset detected - clearing " .. instanceName)
+                self:ResetInstance(instanceId)
+                resetCount = resetCount + 1
+            end
+        end
+    end
+
+    if resetCount > 0 then
+        KOL:PrintTag("Reset " .. resetCount .. " instance(s)")
+    else
+        KOL:DebugPrint("UPDATE_INSTANCE_INFO while outside, but no instances with kills to reset", 1)
+    end
+end
+
+-- Called when you're about to be kicked from instance
+function Tracker:OnInstanceBootStart()
+    KOL:DebugPrint("Tracker: Instance boot starting", 2)
+end
+
+-- Called when instance boot is cancelled
+function Tracker:OnInstanceBootStop()
+    KOL:DebugPrint("Tracker: Instance boot stopped", 2)
+end
+
 -- ============================================================================
 -- Event Registration
 -- ============================================================================
@@ -425,6 +937,7 @@ function Tracker:RegisterEvents()
     KOL:RegisterEventCallback("COMBAT_LOG_EVENT_UNFILTERED", function(...)
         Tracker:OnCombatLogEvent(...)
     end, "Tracker")
+    KOL:DebugPrint("Tracker: COMBAT_LOG_EVENT_UNFILTERED registered", 3)
 
     -- Zone changes
     KOL:RegisterEventCallback("ZONE_CHANGED_NEW_AREA", function()
@@ -433,6 +946,19 @@ function Tracker:RegisterEvents()
 
     KOL:RegisterEventCallback("PLAYER_ENTERING_WORLD", function()
         Tracker:UpdateZoneTracking()
+    end, "Tracker")
+
+    -- Instance reset detection (the SMART way!)
+    KOL:RegisterEventCallback("UPDATE_INSTANCE_INFO", function()
+        Tracker:OnInstanceInfoUpdate()
+    end, "Tracker")
+
+    KOL:RegisterEventCallback("INSTANCE_BOOT_START", function()
+        Tracker:OnInstanceBootStart()
+    end, "Tracker")
+
+    KOL:RegisterEventCallback("INSTANCE_BOOT_STOP", function()
+        Tracker:OnInstanceBootStop()
     end, "Tracker")
 
     KOL:DebugPrint("Tracker: Events registered", 3)
@@ -472,9 +998,10 @@ function Tracker:CreateWatchFrame(instanceId)
     KOL:DebugPrint("Tracker: Instance data found: " .. data.name, 3)
 
     -- Get config settings (per-instance overrides global)
+    -- Priority: per-instance config override > instance data default > global config > hardcoded default
     local config = KOL.db.profile.tracker
-    local frameWidth = GetInstanceSetting(instanceId, "frameWidth") or config.frameWidth or 200
-    local frameHeight = GetInstanceSetting(instanceId, "frameHeight") or config.frameHeight or 300
+    local frameWidth = GetInstanceSetting(instanceId, "frameWidth") or data.frameWidth or config.frameWidth or 200
+    local frameHeight = GetInstanceSetting(instanceId, "frameHeight") or data.frameHeight or config.frameHeight or 300
     local scrollBarWidth = GetInstanceSetting(instanceId, "scrollBarWidth") or config.scrollBarWidth or 16
     local showMinimizeBtn = data.showMinimizeButton ~= false and config.showMinimizeButton ~= false
     local showScrollButtons = config.showScrollButtons ~= false
@@ -490,13 +1017,26 @@ function Tracker:CreateWatchFrame(instanceId)
         instanceColorHex = KOL.Colors:ToHex(instanceColor)
     end
 
-    -- Get font settings (use same font system as body for consistency)
-    local fontScale = config.fontScale or 1.0
-    local titleFontSize = GetInstanceSetting(instanceId, "titleFontSize") or 13
-    local titleFontScale = GetInstanceSetting(instanceId, "titleFontScale") or 1.0
+    -- Get font settings
+    local config = KOL.db.profile.tracker
+    local fontScale = GetInstanceSetting(instanceId, "fontScale") or config.fontScale or 1.0
 
-    -- Use GetAveragedFont for title to ensure same font as body
-    local titleFontPath, _, titleFontOutline = GetAveragedFont(titleFontSize * titleFontScale)
+    -- Get global defaults
+    local globalFont = config.baseFont or "Friz Quadrata TT"
+    local globalFontSize = config.baseFontSize or 12
+
+    -- Get specific font settings with fallback to global defaults
+    local titleFont = config.titleFont or globalFont
+    local titleFontSize = config.titleFontSize or globalFontSize
+    local groupFont = config.groupFont or globalFont
+    local groupFontSize = config.groupFontSize or globalFontSize
+    local objectiveFont = config.objectiveFont or globalFont
+    local objectiveFontSize = config.objectiveFontSize or globalFontSize
+
+    -- Get title font path and outline from LibSharedMedia
+    local LSM = LibStub("LibSharedMedia-3.0")
+    local titleFontPath = LSM:Fetch("font", titleFont) or "Fonts\\FRIZQT__.TTF"
+    local titleFontOutline = config.titleFontOutline or "OUTLINE"
 
     -- Create main frame
     local frame = CreateFrame("Frame", "KOLTrackerFrame_" .. instanceId, UIParent)
@@ -551,7 +1091,7 @@ function Tracker:CreateWatchFrame(instanceId)
     frame.titleBar = titleBar
 
     -- Title text (interactive - for dragging and double-click)
-    local actualTitleFontSize = math.floor(titleFontSize * titleFontScale)
+    local actualTitleFontSize = math.floor(titleFontSize * fontScale)
     local titleText = CreateFrame("Button", nil, titleBar)
     titleText:SetPoint("TOPLEFT", titleBar, "TOPLEFT", 8, 0)
     titleText:SetPoint("BOTTOMRIGHT", titleBar, "BOTTOMRIGHT", showMinimizeBtn and -30 or -8, 0)
@@ -616,7 +1156,7 @@ function Tracker:CreateWatchFrame(instanceId)
         minimizeBtn:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
 
         local minBtnText = minimizeBtn:CreateFontString(nil, "OVERLAY")
-        local minFontPath, minFontSize, minFontOutline = GetAveragedFont(9 * fontScale)
+        local minFontPath, minFontSize, minFontOutline = GetAveragedFont(9)
         minBtnText:SetFont(minFontPath, minFontSize, minFontOutline)
         minBtnText:SetPoint("CENTER")
         minBtnText:SetText("-")
@@ -925,9 +1465,17 @@ function Tracker:UpdateWatchFrame(instanceId)
     local data = frame.instanceData
     local content = frame.content
 
-    -- Clear existing boss texts
-    for _, text in ipairs(frame.bossTexts) do
-        text:Hide()
+    -- Clear existing boss texts and buttons
+    for _, element in ipairs(frame.bossTexts) do
+        if element.Hide then
+            element:Hide()
+        end
+        -- Clear scripts for buttons to prevent memory leaks
+        if element.SetScript then
+            element:SetScript("OnClick", nil)
+            element:SetScript("OnEnter", nil)
+            element:SetScript("OnLeave", nil)
+        end
     end
     frame.bossTexts = {}
 
@@ -940,9 +1488,32 @@ function Tracker:UpdateWatchFrame(instanceId)
     local killedColorHex = KOL.Colors:ToHex(killedColor)
     local unkilledColorHex = KOL.Colors:ToHex(unkilledColor)
 
-    -- Get font scale
-    local fontScale = KOL.db.profile.tracker.fontScale or 1.0
-    local fontPath, fontSize, fontOutline = GetAveragedFont(11 * fontScale)
+    -- Get font settings
+    local config = KOL.db.profile.tracker
+    local fontScale = GetInstanceSetting(instanceId, "fontScale") or config.fontScale or 1.0
+
+    -- Get global defaults
+    local globalFont = config.baseFont or "Friz Quadrata TT"
+    local globalFontSize = config.baseFontSize or 12
+
+    -- Get specific font settings with fallback to global defaults
+    local groupFont = config.groupFont or globalFont
+    local groupFontSize = config.groupFontSize or globalFontSize
+    local objectiveFont = config.objectiveFont or globalFont
+    local objectiveFontSize = config.objectiveFontSize or globalFontSize
+
+    -- Get font paths from LibSharedMedia
+    local LSM = LibStub("LibSharedMedia-3.0")
+    local groupFontPath = LSM:Fetch("font", groupFont) or "Fonts\\FRIZQT__.TTF"
+    local objectiveFontPath = LSM:Fetch("font", objectiveFont) or "Fonts\\FRIZQT__.TTF"
+
+    -- Get font outlines
+    local groupFontOutline = config.groupFontOutline or "OUTLINE"
+    local objectiveFontOutline = config.objectiveFontOutline or "OUTLINE"
+
+    -- Apply font scale to sizes
+    local scaledGroupFontSize = math.floor(groupFontSize * fontScale)
+    local scaledObjectiveFontSize = math.floor(objectiveFontSize * fontScale)
 
     -- Create boss texts
     local yOffset = -4
@@ -952,7 +1523,7 @@ function Tracker:UpdateWatchFrame(instanceId)
     if data.bosses and #data.bosses > 0 then
         for i, boss in ipairs(data.bosses) do
             local bossText = content:CreateFontString(nil, "OVERLAY")
-            bossText:SetFont(fontPath, fontSize, fontOutline)
+            bossText:SetFont(objectiveFontPath, scaledObjectiveFontSize, fontOutline)
             bossText:SetPoint("TOPLEFT", content, "TOPLEFT", 4, yOffset)
             bossText:SetPoint("TOPRIGHT", content, "TOPRIGHT", -4, yOffset)
             bossText:SetJustifyH("LEFT")
@@ -975,27 +1546,82 @@ function Tracker:UpdateWatchFrame(instanceId)
 
     -- Render grouped bosses (with group headers)
     elseif data.groups and #data.groups > 0 then
-        local groupFontPath, groupFontSize, groupFontOutline = GetAveragedFont(10 * fontScale)
-
         for groupIndex, group in ipairs(data.groups) do
-            -- Group header
-            local groupHeader = content:CreateFontString(nil, "OVERLAY")
-            groupHeader:SetFont(groupFontPath, groupFontSize, groupFontOutline)
-            groupHeader:SetPoint("TOPLEFT", content, "TOPLEFT", 2, yOffset)
-            groupHeader:SetPoint("TOPRIGHT", content, "TOPRIGHT", -2, yOffset)
-            groupHeader:SetJustifyH("LEFT")
-            groupHeader:SetText("|cFF" .. instanceColorHex .. "[" .. group.name .. "]|r")
-            table.insert(frame.bossTexts, groupHeader)
+            -- Check if group is collapsed
+            local isCollapsed = self:IsGroupCollapsed(instanceId, groupIndex)
+            local collapseIcon = isCollapsed and "> " or "v "
 
-            local headerHeight = groupHeader:GetStringHeight()
+            -- Check if all bosses in this group are killed
+            local allGroupBossesKilled = true
+            if group.bosses then
+                for bossIndex, boss in ipairs(group.bosses) do
+                    local bossId = "g" .. groupIndex .. "-b" .. bossIndex
+                    if not self:IsBossKilled(instanceId, bossId) then
+                        allGroupBossesKilled = false
+                        break
+                    end
+                end
+            else
+                allGroupBossesKilled = false
+            end
+
+            -- Use Easter Green for completed groups, instance color otherwise
+            local groupHeaderColor = allGroupBossesKilled and KOL.Colors:GetPastel("EASTER_GREEN") or instanceColor
+            local groupHeaderColorHex = KOL.Colors:ToHex(groupHeaderColor)
+
+            -- Group header (clickable button for collapse/expand)
+            local groupHeaderBtn = CreateFrame("Button", nil, content)
+            groupHeaderBtn:SetPoint("TOPLEFT", content, "TOPLEFT", 2, yOffset)
+            groupHeaderBtn:SetPoint("TOPRIGHT", content, "TOPRIGHT", -2, yOffset)
+            groupHeaderBtn:SetHeight(scaledGroupFontSize + 4)
+            groupHeaderBtn:EnableMouse(true)
+            groupHeaderBtn:RegisterForClicks("AnyUp")
+
+            local groupHeader = groupHeaderBtn:CreateFontString(nil, "OVERLAY")
+            groupHeader:SetFont(groupFontPath, scaledGroupFontSize, fontOutline)
+            groupHeader:SetPoint("LEFT", groupHeaderBtn, "LEFT", 0, 0)
+            groupHeader:SetJustifyH("LEFT")
+            groupHeader:SetText("|cFF" .. groupHeaderColorHex .. collapseIcon .. "[" .. group.name .. "]|r")
+            groupHeaderBtn.text = groupHeader
+            groupHeaderBtn.groupHeaderColorHex = groupHeaderColorHex  -- Store for mouseover
+
+            -- Double-click to toggle collapse
+            groupHeaderBtn.lastClick = 0
+            groupHeaderBtn.groupIndex = groupIndex
+            groupHeaderBtn:SetScript("OnClick", function(self, button)
+                if button == "LeftButton" then
+                    local currentTime = GetTime()
+                    if currentTime - self.lastClick < 0.3 then
+                        -- Double-click detected
+                        Tracker:ToggleGroupCollapsed(instanceId, self.groupIndex)
+                        self.lastClick = 0
+                    else
+                        self.lastClick = currentTime
+                    end
+                end
+            end)
+
+            -- Mouseover highlight
+            groupHeaderBtn:SetScript("OnEnter", function(self)
+                local currentIcon = Tracker:IsGroupCollapsed(instanceId, groupIndex) and "> " or "v "
+                self.text:SetText("|cFF" .. self.groupHeaderColorHex .. currentIcon .. "[" .. group.name .. "]|r|cFFFFFFFF <|r")
+            end)
+            groupHeaderBtn:SetScript("OnLeave", function(self)
+                local currentIcon = Tracker:IsGroupCollapsed(instanceId, groupIndex) and "> " or "v "
+                self.text:SetText("|cFF" .. self.groupHeaderColorHex .. currentIcon .. "[" .. group.name .. "]|r")
+            end)
+
+            table.insert(frame.bossTexts, groupHeaderBtn)
+
+            local headerHeight = groupHeader:GetStringHeight() + 4
             yOffset = yOffset - headerHeight - 1
             contentHeight = contentHeight + headerHeight + 1
 
-            -- Group bosses
-            if group.bosses then
+            -- Group bosses (only render if not collapsed)
+            if group.bosses and not isCollapsed then
                 for bossIndex, boss in ipairs(group.bosses) do
                     local bossText = content:CreateFontString(nil, "OVERLAY")
-                    bossText:SetFont(fontPath, fontSize, fontOutline)
+                    bossText:SetFont(objectiveFontPath, scaledObjectiveFontSize, fontOutline)
                     bossText:SetPoint("TOPLEFT", content, "TOPLEFT", 8, yOffset)  -- Indent bosses
                     bossText:SetPoint("TOPRIGHT", content, "TOPRIGHT", -4, yOffset)
                     bossText:SetJustifyH("LEFT")
@@ -1028,7 +1654,7 @@ function Tracker:UpdateWatchFrame(instanceId)
         -- Custom panel objectives
         for i, objective in ipairs(data.objectives) do
             local objText = content:CreateFontString(nil, "OVERLAY")
-            objText:SetFont(fontPath, fontSize, fontOutline)
+            objText:SetFont(objectiveFontPath, scaledObjectiveFontSize, fontOutline)
             objText:SetPoint("TOPLEFT", content, "TOPLEFT", 4, yOffset)
             objText:SetPoint("TOPRIGHT", content, "TOPRIGHT", -4, yOffset)
             objText:SetJustifyH("LEFT")
@@ -1056,7 +1682,7 @@ function Tracker:UpdateWatchFrame(instanceId)
     else
         -- No bosses or objectives
         local noDataText = content:CreateFontString(nil, "OVERLAY")
-        noDataText:SetFont(fontPath, fontSize, fontOutline)
+        noDataText:SetFont(objectiveFontPath, scaledObjectiveFontSize, fontOutline)
         noDataText:SetPoint("TOPLEFT", content, "TOPLEFT", 4, yOffset)
         noDataText:SetText("|cFFAAAAAAAANo objectives defined|r")
         table.insert(frame.bossTexts, noDataText)
@@ -1066,43 +1692,18 @@ function Tracker:UpdateWatchFrame(instanceId)
     -- Update content size
     content:SetHeight(math.max(contentHeight, 1))
 
-    -- Auto-calculate frame width to prevent text truncation
-    local maxTextWidth = 0
-    for _, bossText in ipairs(frame.bossTexts) do
-        local textWidth = bossText:GetStringWidth()
-        if textWidth > maxTextWidth then
-            maxTextWidth = textWidth
-        end
+    -- Dynamically resize frame to fit content (up to max height)
+    local titleBarHeight = 22  -- Title bar + borders
+    local minFrameHeight = 60  -- Minimum frame height to prevent issues
+    local actualFrameHeight = math.max(minFrameHeight, math.min(contentHeight + titleBarHeight, frameHeight))
+
+    -- Only resize if not minimized
+    if not frame.minimized then
+        frame:SetHeight(actualFrameHeight)
+        frame.maxHeight = frameHeight  -- Store max height for restore
     end
 
-    -- Calculate required frame width
-    -- Frame structure: Frame > ScrollFrame > Content > Text
-    -- Text has: 8px left + 4px right padding within content = 12px
-    -- Content width = frameWidth - scrollBarPadding - 8
-    -- ScrollBarPadding = scrollBarWidth + 8
-    -- So: frameWidth >= textWidth + 12 + scrollBarPadding + 8 + buffer
-    local scrollBarWidth = (frame.scrollBar and frame.scrollBar:GetWidth()) or 16
-    local scrollBarPadding = scrollBarWidth + 8
-    local requiredWidth = maxTextWidth + 12 + scrollBarPadding + 8 + 20  -- text + content padding + scrollbar padding + frame padding + buffer
-
-    -- Use the larger of: configured width or required width (never truncate)
-    local currentWidth = frame:GetWidth()
-    local configWidth = GetInstanceSetting(instanceId, "frameWidth") or KOL.db.profile.tracker.frameWidth or 200
-    local finalWidth = math.max(configWidth, requiredWidth)
-
-    if finalWidth ~= currentWidth then
-        frame:SetWidth(finalWidth)
-        frame.titleBar:SetWidth(finalWidth - 2)
-
-        -- CRITICAL: Update content width to match new frame width
-        local newContentWidth = finalWidth - scrollBarPadding - 8
-        content:SetWidth(newContentWidth)
-
-        KOL:DebugPrint(string.format("Tracker: Auto-adjusted width from %.0f to %.0f (text=%.0f, content=%.0f, config=%.0f)",
-            currentWidth, finalWidth, maxTextWidth, newContentWidth, configWidth), 2)
-    end
-
-    KOL:DebugPrint("Tracker: Updated watch frame: " .. instanceId, 3)
+    KOL:DebugPrint("Tracker: Updated watch frame: " .. instanceId .. " (content: " .. contentHeight .. ", frame: " .. actualFrameHeight .. ")", 3)
 end
 
 -- Show watch frame for an instance
@@ -1541,11 +2142,16 @@ KOL:RegisterEventCallback("PLAYER_ENTERING_WORLD", function()
     end
 end, "Tracker")
 
--- Register slash command
+-- Register slash commands
 KOL:RegisterEventCallback("PLAYER_ENTERING_WORLD", function()
     KOL:RegisterSlashCommand("tracker", function(...)
         KOL.Tracker:DebugCommand(...)
     end, "Progress Tracker debug commands", "module")
+
+    KOL:RegisterSlashCommand("ktr", function()
+        KOL.Tracker:ResetAll()
+        KOL:PrintTag("All tracker boss kills reset")
+    end, "Reset all tracker boss kills", "module")
 end, "Tracker")
 
 KOL:DebugPrint("Tracker module loaded", 1)
