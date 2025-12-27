@@ -1,4 +1,6 @@
-# !Koality-of-Life
+# Koality-of-Life
+
+> The addon folder is named `!Koality-of-Life` (with `!` prefix) to ensure it loads first alphabetically in WoW.
 
 Quality-of-life WoW addon for Chromie/Synastria (3.3.5a).
 
@@ -15,3 +17,7 @@ Quality-of-life WoW addon for Chromie/Synastria (3.3.5a).
 ## Install
 
 Symlink or copy `src/!Koality-of-Life/` to your `Interface/AddOns/` folder.
+
+---
+
+Lovingly developed by **Z**ero with the assistance of [Claude Code](https://claude.com/claude-code)
