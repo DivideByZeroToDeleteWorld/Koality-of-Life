@@ -39,3 +39,10 @@ Quality-of-life WoW addon for the Chromie private server.
 - Main TOC: !Koality-of-Life.toc
 - Uses libs: LibStub, LibDBIcon-1.0, CallbackHandler-1.0, LibDataBroker-1.1
 - Run `claude` from project root OR from WoW addon folder - both work
+
+## Version
+- Current: 1.0.0.0
+- Changes: 0
+- Last Updated: 2025-12-27
+- History:
+  - 1.0.0.0 (2025-12-27) - Initial release
