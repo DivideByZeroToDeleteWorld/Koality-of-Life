@@ -1,0 +1,30 @@
+# WoW SavedVariables (user data)
+*.lua.bak
+*.bak
+*~
+
+# Compiled Lua
+luac.out
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Personal workflow files
+.github/
+.claude/
+.opencode/
+plans/
+docs/
+
+# Ignore these in src folder too
+src/!Koality-of-Life/.claude/
+src/!Koality-of-Life/.opencode/
+src/!Koality-of-Life/plans/
+src/!Koality-of-Life/docs/

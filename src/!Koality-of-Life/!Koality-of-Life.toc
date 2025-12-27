@@ -1,0 +1,111 @@
+## Interface: 30300
+## Title: |cFFFF0000K|cFFFF4400o|cFFFF8800a|cFFFFCC00l|cFFFFFF00i|cFFCCFF00t|cFF88FF00y|cFF44FF00-|cFF00FF00o|cFF00FF88f|cFF00FFFF-|cFF55AAFFL|cFF7799FFi|cFF8888FFf|cFFAA66FFe|r
+## Notes: Quality of life improvements for Synastria
+## Author: |cFF00FF00Z|r|cFFCC00FFero|r
+## Version: 0.1.2.50
+## SavedVariables: KoalityOfLifeDB
+## OptionalDeps: Ace3, LibSharedMedia-3.0
+
+# Compatibility Layer - MUST load first (provides C_Timer, IsInGroup, etc.)
+compat.lua
+
+# Libraries - Core
+libs\LibStub\LibStub.lua
+libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
+
+# Libraries - Ace3
+libs\AceAddon-3.0\AceAddon-3.0.lua
+libs\AceConsole-3.0\AceConsole-3.0.lua
+libs\AceDB-3.0\AceDB-3.0.lua
+libs\AceDBOptions-3.0\AceDBOptions-3.0.lua
+libs\AceEvent-3.0\AceEvent-3.0.lua
+libs\AceGUI-3.0\AceGUI-3.0.xml
+libs\AceConfig-3.0\AceConfig-3.0.xml
+
+# Libraries - SharedMedia
+libs\LibSharedMedia-3.0\LibSharedMedia-3.0.lua
+libs\AceGUI-3.0-SharedMediaWidgets\widget.xml
+
+# Libraries - Other
+libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
+libs\LibDBIcon-1.0\LibDBIcon-1.0\LibDBIcon-1.0.lua
+
+# Core - MUST load first (creates KOL, DB)
+core.lua
+
+# Colors - Unified color library (needs KOL and DB, provides global color functions)
+modules\colors.lua
+
+# Themes - Theme management system (needs colors.lua for color functions)
+modules\themes.lua
+
+# FAIAP - Syntax highlighting library (needs KOL to exist)
+libs\FAIAP.lua
+
+# Constants - Global character constants (loaded before main.lua for universal access)
+constants.lua
+
+# Functions - Global utility functions (loaded early for universal access)
+functions.lua
+
+# Main - Slash commands, events, etc. (depends on core.lua)
+main.lua
+
+# Modules (all can now safely use KOL, colors, etc.)
+modules\chat.lua
+modules\batch.lua
+modules\data.lua
+modules\notify.lua
+modules\tweaks.lua
+modules\fishing.lua
+modules\commandblocks.lua
+modules\binds.lua
+modules\binds-ui.lua
+
+# UI System
+ui.lua
+
+# UI Factory (must load after ui.lua for font settings)
+modules\ui-factory.lua
+
+# Breadcrumb Navigation (must load after ui.lua)
+modules\breadcrumb.lua
+
+# Batch UI (must load after ui.lua so config system is initialized)
+modules\batch-ui.lua
+
+# Debug UI (must load after ui.lua so config system is initialized)
+modules\debug-ui.lua
+
+# Theme Editor (must load after themes.lua and ui-factory.lua)
+modules\theme-editor.lua
+
+# Build Manager (must load after ui-factory.lua - data file first, then main module)
+modules\build-manager-data.lua
+modules\build-manager.lua
+
+# Character Viewer (must load after constants.lua)
+modules\char-viewer.lua
+
+# Splash Screen (depends on slash.lua for command registration)
+splash.lua
+
+# Additional Modules (load after UI for config access)
+modules\media.lua
+modules\macroupdater.lua
+modules\tracker.lua
+modules\tracker-data.lua
+modules\tracker-editor.lua
+modules\boss-recorder.lua
+
+# IMPORTANT: tracker-data.lua must load AFTER tracker.lua
+# but BEFORE tracker Initialize() is called (which happens on PLAYER_ENTERING_WORLD)
+
+# Tests Module (load last - depends on all other modules)
+modules\tests.lua
+
+# Mockup Module (visual demo only) - DISABLED
+# modules\binds-mockup.lua
+
+# Custom Features
+custom\whatever.lua
