@@ -2081,15 +2081,15 @@ KOL.Tracker:RegisterInstance("kara_10n", {
     color = "PURPLE",
     zones = {"Karazhan"},
     bosses = {
-        {name = "Attumen the Huntsman", id = 16151},
+        {name = "Attumen the Huntsman", id = 16152, yell = "Always knew... someday I would become... the hunted."},
         {name = "Moroes", id = 15687},
         {name = "Maiden of Virtue", id = 16457},
-        {name = "Opera Event", id = 99999},
+        {name = "Opera Event", id = {17521, 18168, 17533, 17534}, anyNPC = true},  -- BBW, Crone, Romulo, Julianne
         {name = "The Curator", id = 15691},
         {name = "Shade of Aran", id = 16524},
         {name = "Terestian Illhoof", id = 15688},
         {name = "Netherspite", id = 15689},
-        {name = "Chess Event", id = 99999},
+        {name = "Chess Event", id = {21684, 21752}, anyNPC = true},  -- King Llane, Warchief Blackhand
         {name = "Prince Malchezaar", id = 15690},
         {name = "Nightbane", id = 17225},
     }

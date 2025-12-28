@@ -874,35 +874,11 @@ function Tracker:OnCombatLogEvent(...)
                     end
 
                     if isMultiNPC then
-                        -- Track individual NPC death for multi-NPC bosses
-                        if not self.multiNPCKills[instanceId] then
-                            self.multiNPCKills[instanceId] = {}
-                        end
-                        if not self.multiNPCKills[instanceId][bossIndex] then
-                            self.multiNPCKills[instanceId][bossIndex] = {}
-                        end
-                        self.multiNPCKills[instanceId][bossIndex][npcId] = true
-                        KOL.db.profile.tracker.multiNPCKills = self.multiNPCKills
-
-                        KOL:DebugPrint("Marked NPC " .. npcId .. " as dead for " .. boss.name .. " (bossIndex=" .. bossIndex .. ")", 2)
-
-                        -- Check if ALL NPCs for this boss are now dead
-                        local allDead = true
-                        local deadCount = 0
-                        local totalCount = #bossId
-                        for _, id in ipairs(bossId) do
-                            if self.multiNPCKills[instanceId][bossIndex][id] then
-                                deadCount = deadCount + 1
-                            else
-                                allDead = false
-                            end
-                        end
-
-                        KOL:DebugPrint(boss.name .. " progress: " .. deadCount .. "/" .. totalCount .. " killed", 2)
-
-                        if allDead then
-                            -- All NPCs dead - mark boss as killed!
-                            KOL:DebugPrint("ALL NPCs dead! Marking " .. boss.name .. " as complete", 2)
+                        -- Check if this is an "any NPC" boss (Opera Event, Chess Event)
+                        -- vs "all must die" boss (Four Horsemen, Twin Val'kyr)
+                        if boss.anyNPC then
+                            -- Any NPC dying completes the encounter immediately
+                            KOL:DebugPrint("anyNPC boss: " .. boss.name .. " - NPC " .. npcId .. " died, marking complete", 2)
                             self:MarkBossKilled(instanceId, bossIndex)
                             local watchLevel = KOL.db.profile.watchDeathsLevel or 0
                             if watchLevel >= 1 then
@@ -914,10 +890,51 @@ function Tracker:OnCombatLogEvent(...)
                                 KOL.BossRecorder:OnBossDetected(destName, destGUID, npcId, "Boss")
                             end
                         else
-                            -- Partial progress
-                            local watchLevel = KOL.db.profile.watchDeathsLevel or 0
-                            if watchLevel >= 1 then
-                                KOL:PrintTag(destName .. " defeated (" .. boss.name .. " encounter - " .. deadCount .. "/" .. totalCount .. ")")
+                            -- Track individual NPC death for multi-NPC bosses (all must die)
+                            if not self.multiNPCKills[instanceId] then
+                                self.multiNPCKills[instanceId] = {}
+                            end
+                            if not self.multiNPCKills[instanceId][bossIndex] then
+                                self.multiNPCKills[instanceId][bossIndex] = {}
+                            end
+                            self.multiNPCKills[instanceId][bossIndex][npcId] = true
+                            KOL.db.profile.tracker.multiNPCKills = self.multiNPCKills
+
+                            KOL:DebugPrint("Marked NPC " .. npcId .. " as dead for " .. boss.name .. " (bossIndex=" .. bossIndex .. ")", 2)
+
+                            -- Check if ALL NPCs for this boss are now dead
+                            local allDead = true
+                            local deadCount = 0
+                            local totalCount = #bossId
+                            for _, id in ipairs(bossId) do
+                                if self.multiNPCKills[instanceId][bossIndex][id] then
+                                    deadCount = deadCount + 1
+                                else
+                                    allDead = false
+                                end
+                            end
+
+                            KOL:DebugPrint(boss.name .. " progress: " .. deadCount .. "/" .. totalCount .. " killed", 2)
+
+                            if allDead then
+                                -- All NPCs dead - mark boss as killed!
+                                KOL:DebugPrint("ALL NPCs dead! Marking " .. boss.name .. " as complete", 2)
+                                self:MarkBossKilled(instanceId, bossIndex)
+                                local watchLevel = KOL.db.profile.watchDeathsLevel or 0
+                                if watchLevel >= 1 then
+                                    KOL:Print("Boss defeated: " .. COLOR(data.color, boss.name))
+                                end
+
+                                -- Record boss kill for BossRecorder
+                                if KOL.BossRecorder and KOL.BossRecorder.OnBossDetected then
+                                    KOL.BossRecorder:OnBossDetected(destName, destGUID, npcId, "Boss")
+                                end
+                            else
+                                -- Partial progress
+                                local watchLevel = KOL.db.profile.watchDeathsLevel or 0
+                                if watchLevel >= 1 then
+                                    KOL:PrintTag(destName .. " defeated (" .. boss.name .. " encounter - " .. deadCount .. "/" .. totalCount .. ")")
+                                end
                             end
                         end
                     else
@@ -1011,43 +1028,60 @@ function Tracker:OnCombatLogEvent(...)
                             end
 
                             if isMultiNPC then
-                                -- Track individual NPC death for multi-NPC bosses
-                                if not self.multiNPCKills[instanceId] then
-                                    self.multiNPCKills[instanceId] = {}
-                                end
-                                if not self.multiNPCKills[instanceId][groupedBossId] then
-                                    self.multiNPCKills[instanceId][groupedBossId] = {}
-                                end
-                                self.multiNPCKills[instanceId][groupedBossId][npcId] = true
-                                KOL.db.profile.tracker.multiNPCKills = self.multiNPCKills
-
-                                KOL:DebugPrint("Marked NPC " .. npcId .. " as dead for " .. boss.name .. " (bossId=" .. groupedBossId .. ")", 2)
-
-                                -- Check if ALL NPCs for this boss are now dead
-                                local allDead = true
-                                local deadCount = 0
-                                local totalCount = #bossId
-                                for _, id in ipairs(bossId) do
-                                    if self.multiNPCKills[instanceId][groupedBossId][id] then
-                                        deadCount = deadCount + 1
-                                    else
-                                        allDead = false
-                                    end
-                                end
-
-                                KOL:DebugPrint(boss.name .. " progress: " .. deadCount .. "/" .. totalCount .. " killed", 2)
-
-                                if allDead then
-                                    -- All NPCs dead - mark boss as killed!
-                                    KOL:DebugPrint("ALL NPCs dead! Marking " .. boss.name .. " as complete", 2)
+                                -- Check if this is an "any NPC" boss (Opera Event, Chess Event)
+                                -- vs "all must die" boss (Four Horsemen, Twin Val'kyr)
+                                if boss.anyNPC then
+                                    -- Any NPC dying completes the encounter immediately
+                                    KOL:DebugPrint("anyNPC boss: " .. boss.name .. " - NPC " .. npcId .. " died, marking complete", 2)
                                     self:MarkBossKilled(instanceId, groupedBossId)
                                     local watchLevel = KOL.db.profile.watchDeathsLevel or 0
                                     if watchLevel >= 1 then
                                         KOL:Print("Boss defeated: " .. COLOR(data.color, boss.name))
                                     end
+
+                                    -- Record boss kill for BossRecorder
+                                    if KOL.BossRecorder and KOL.BossRecorder.OnBossDetected then
+                                        KOL.BossRecorder:OnBossDetected(destName, destGUID, npcId, "Boss")
+                                    end
                                 else
-                                    -- Partial progress
-                                    KOL:PrintTag(destName .. " defeated (" .. boss.name .. " encounter - " .. deadCount .. "/" .. totalCount .. ")")
+                                    -- Track individual NPC death for multi-NPC bosses (all must die)
+                                    if not self.multiNPCKills[instanceId] then
+                                        self.multiNPCKills[instanceId] = {}
+                                    end
+                                    if not self.multiNPCKills[instanceId][groupedBossId] then
+                                        self.multiNPCKills[instanceId][groupedBossId] = {}
+                                    end
+                                    self.multiNPCKills[instanceId][groupedBossId][npcId] = true
+                                    KOL.db.profile.tracker.multiNPCKills = self.multiNPCKills
+
+                                    KOL:DebugPrint("Marked NPC " .. npcId .. " as dead for " .. boss.name .. " (bossId=" .. groupedBossId .. ")", 2)
+
+                                    -- Check if ALL NPCs for this boss are now dead
+                                    local allDead = true
+                                    local deadCount = 0
+                                    local totalCount = #bossId
+                                    for _, id in ipairs(bossId) do
+                                        if self.multiNPCKills[instanceId][groupedBossId][id] then
+                                            deadCount = deadCount + 1
+                                        else
+                                            allDead = false
+                                        end
+                                    end
+
+                                    KOL:DebugPrint(boss.name .. " progress: " .. deadCount .. "/" .. totalCount .. " killed", 2)
+
+                                    if allDead then
+                                        -- All NPCs dead - mark boss as killed!
+                                        KOL:DebugPrint("ALL NPCs dead! Marking " .. boss.name .. " as complete", 2)
+                                        self:MarkBossKilled(instanceId, groupedBossId)
+                                        local watchLevel = KOL.db.profile.watchDeathsLevel or 0
+                                        if watchLevel >= 1 then
+                                            KOL:Print("Boss defeated: " .. COLOR(data.color, boss.name))
+                                        end
+                                    else
+                                        -- Partial progress
+                                        KOL:PrintTag(destName .. " defeated (" .. boss.name .. " encounter - " .. deadCount .. "/" .. totalCount .. ")")
+                                    end
                                 end
                             else
                                 -- Single NPC boss - check if it's multi-phase (like Black Knight)

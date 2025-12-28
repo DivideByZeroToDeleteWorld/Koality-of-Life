@@ -41,8 +41,9 @@ Quality-of-life WoW addon for the Chromie private server.
 - Run `claude` from project root OR from WoW addon folder - both work
 
 ## Version
-- Current: 1.0.0.0
-- Changes: 0
+- Current: 1.0.0.2
+- Changes: 2
 - Last Updated: 2025-12-27
 - History:
+  - 1.0.0.2 (2025-12-27) - Fix Karazhan event bosses (Attumen, Opera, Chess)
   - 1.0.0.0 (2025-12-27) - Initial release
