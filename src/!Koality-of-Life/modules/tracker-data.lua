@@ -533,17 +533,32 @@ KOL.Tracker:RegisterInstance("mc_40", {
     color = "ORANGE",
     zones = {"Molten Core"},
     challengeMaxLevel = 60,
-    bosses = {
-        {name = "Lucifron", id = 12118},
-        {name = "Magmadar", id = 11982},
-        {name = "Gehennas", id = 12259},
-        {name = "Garr", id = 12057},
-        {name = "Shazzrah", id = 12264},
-        {name = "Baron Geddon", id = 12056},
-        {name = "Sulfuron Harbinger", id = 12098},
-        {name = "Golemagg the Incinerator", id = 11988},
-        {name = "Majordomo Executus", id = 12018},
-        {name = "Ragnaros", id = 11502},
+    groups = {
+        {
+            name = "The Molten Span",
+            bosses = {
+                {name = "Lucifron", id = 12118},
+                {name = "Magmadar", id = 11982},
+                {name = "Gehennas", id = 12259},
+            }
+        },
+        {
+            name = "The Molten Bridge",
+            bosses = {
+                {name = "Garr", id = 12057},
+                {name = "Shazzrah", id = 12264},
+                {name = "Baron Geddon", id = 12056},
+            }
+        },
+        {
+            name = "Ragnaros' Lair",
+            bosses = {
+                {name = "Sulfuron Harbinger", id = 12098},
+                {name = "Golemagg the Incinerator", id = 11988},
+                {name = "Majordomo Executus", id = 12018},
+                {name = "Ragnaros", id = 11502},
+            }
+        },
     }
 })
 
@@ -556,15 +571,30 @@ KOL.Tracker:RegisterInstance("bwl_40", {
     color = "RED",
     zones = {"Blackwing Lair"},
     challengeMaxLevel = 60,
-    bosses = {
-        {name = "Razorgore the Untamed", id = 12435},
-        {name = "Vaelastrasz the Corrupt", id = 13020},
-        {name = "Broodlord Lashlayer", id = 12017},
-        {name = "Firemaw", id = 11983},
-        {name = "Ebonroc", id = 14601},
-        {name = "Flamegor", id = 11981},
-        {name = "Chromaggus", id = 14020},
-        {name = "Nefarian", id = 11583},
+    groups = {
+        {
+            name = "The Dragonmaw",
+            bosses = {
+                {name = "Razorgore the Untamed", id = 12435},
+                {name = "Vaelastrasz the Corrupt", id = 13020},
+                {name = "Broodlord Lashlayer", id = 12017},
+            }
+        },
+        {
+            name = "Halls of Strife",
+            bosses = {
+                {name = "Firemaw", id = 11983},
+                {name = "Ebonroc", id = 14601},
+                {name = "Flamegor", id = 11981},
+            }
+        },
+        {
+            name = "Nefarian's Lair",
+            bosses = {
+                {name = "Chromaggus", id = 14020},
+                {name = "Nefarian", id = 11583},
+            }
+        },
     }
 })
 
@@ -577,15 +607,30 @@ KOL.Tracker:RegisterInstance("zg_20", {
     color = "GREEN",
     zones = {"Zul'Gurub"},
     challengeMaxLevel = 60,
-    bosses = {
-        {name = "High Priestess Jeklik", id = 14517},
-        {name = "High Priest Venoxis", id = 14507},
-        {name = "High Priestess Mar'li", id = 14510},
-        {name = "Bloodlord Mandokir", id = 11382},
-        {name = "High Priest Thekal", id = 14509},
-        {name = "High Priestess Arlokk", id = 14515},
-        {name = "Jin'do the Hexxer", id = 11380},
-        {name = "Hakkar", id = 14834},
+    groups = {
+        {
+            name = "High Priests",
+            bosses = {
+                {name = "High Priestess Jeklik", id = 14517},
+                {name = "High Priest Venoxis", id = 14507},
+                {name = "High Priestess Mar'li", id = 14510},
+                {name = "High Priest Thekal", id = 14509},
+                {name = "High Priestess Arlokk", id = 14515},
+            }
+        },
+        {
+            name = "Zul'Gurub Lords",
+            bosses = {
+                {name = "Bloodlord Mandokir", id = 11382},
+                {name = "Jin'do the Hexxer", id = 11380},
+            }
+        },
+        {
+            name = "The Blood God",
+            bosses = {
+                {name = "Hakkar", id = 14834},
+            }
+        },
     }
 })
 
@@ -617,16 +662,31 @@ KOL.Tracker:RegisterInstance("aq40_40", {
     color = "PURPLE",
     zones = {"Temple of Ahn'Qiraj"},
     challengeMaxLevel = 60,
-    bosses = {
-        {name = "The Prophet Skeram", id = 15263},
-        {name = "Bug Trio", id = 15543},
-        {name = "Battleguard Sartura", id = 15516},
-        {name = "Fankriss the Unyielding", id = 15510},
-        {name = "Viscidus", id = 15299},
-        {name = "Princess Huhuran", id = 15509},
-        {name = "Twin Emperors", id = 15275},
-        {name = "Ouro", id = 15517},
-        {name = "C'Thun", id = 15727},
+    groups = {
+        {
+            name = "The Hive",
+            bosses = {
+                {name = "The Prophet Skeram", id = 15263},
+                {name = "Bug Trio", id = 15543},
+                {name = "Battleguard Sartura", id = 15516},
+                {name = "Fankriss the Unyielding", id = 15510},
+            }
+        },
+        {
+            name = "The Twin Sanctum",
+            bosses = {
+                {name = "Viscidus", id = 15299},
+                {name = "Princess Huhuran", id = 15509},
+                {name = "Twin Emperors", id = 15275},
+            }
+        },
+        {
+            name = "C'Thun's Chamber",
+            bosses = {
+                {name = "Ouro", id = 15517},
+                {name = "C'Thun", id = 15727},
+            }
+        },
     }
 })
 
@@ -2080,18 +2140,38 @@ KOL.Tracker:RegisterInstance("kara_10n", {
     difficulty = 1,
     color = "PURPLE",
     zones = {"Karazhan"},
-    bosses = {
-        {name = "Attumen the Huntsman", id = 16152, yell = "Always knew... someday I would become... the hunted."},
-        {name = "Moroes", id = 15687},
-        {name = "Maiden of Virtue", id = 16457},
-        {name = "Opera Event", id = {17521, 18168, 17533, 17534}, anyNPC = true},  -- BBW, Crone, Romulo, Julianne
-        {name = "The Curator", id = 15691},
-        {name = "Shade of Aran", id = 16524},
-        {name = "Terestian Illhoof", id = 15688},
-        {name = "Netherspite", id = 15689},
-        {name = "Chess Event", id = {21684, 21752}, anyNPC = true},  -- King Llane, Warchief Blackhand
-        {name = "Prince Malchezaar", id = 15690},
-        {name = "Nightbane", id = 17225},
+    groups = {
+        {
+            name = "Servant's Quarters",
+            bosses = {
+                {name = "Attumen the Huntsman", id = 16152, yell = "Always knew... someday I would become... the hunted."},
+                {name = "Moroes", id = 15687},
+                {name = "Maiden of Virtue", id = 16457},
+            }
+        },
+        {
+            name = "Opera Hall",
+            bosses = {
+                {name = "Opera Event", id = {17521, 18168, 17533, 17534}, anyNPC = true},  -- BBW, Crone, Romulo, Julianne
+            }
+        },
+        {
+            name = "The Menagerie",
+            bosses = {
+                {name = "The Curator", id = 15691},
+                {name = "Shade of Aran", id = 16524},
+                {name = "Terestian Illhoof", id = 15688},
+                {name = "Netherspite", id = 15689},
+            }
+        },
+        {
+            name = "Medivh's Tower",
+            bosses = {
+                {name = "Chess Event", id = {21684, 21752}, anyNPC = true},  -- King Llane, Warchief Blackhand
+                {name = "Prince Malchezaar", id = 15690},
+                {name = "Nightbane", id = 17225},
+            }
+        },
     }
 })
 
@@ -2130,13 +2210,28 @@ KOL.Tracker:RegisterInstance("ssc_25n", {
     difficulty = 2,
     color = "BLUE",
     zones = {"Serpentshrine Cavern"},
-    bosses = {
-        {name = "Hydross the Unstable", id = 21216},
-        {name = "The Lurker Below", id = 21217},
-        {name = "Leotheras the Blind", id = 21215},
-        {name = "Fathom-Lord Karathress", id = 21214},
-        {name = "Morogrim Tidewalker", id = 21213},
-        {name = "Lady Vashj", id = 21212},
+    groups = {
+        {
+            name = "The Serpent's Lair",
+            bosses = {
+                {name = "Hydross the Unstable", id = 21216},
+                {name = "The Lurker Below", id = 21217},
+            }
+        },
+        {
+            name = "Naga Stronghold",
+            bosses = {
+                {name = "Leotheras the Blind", id = 21215},
+                {name = "Fathom-Lord Karathress", id = 21214},
+                {name = "Morogrim Tidewalker", id = 21213},
+            }
+        },
+        {
+            name = "Lady Vashj's Lair",
+            bosses = {
+                {name = "Lady Vashj", id = 21212},
+            }
+        },
     }
 })
 
@@ -2148,11 +2243,21 @@ KOL.Tracker:RegisterInstance("tk_25n", {
     difficulty = 2,
     color = "PURPLE",
     zones = {"Tempest Keep"},
-    bosses = {
-        {name = "Al'ar", id = 19514},
-        {name = "Void Reaver", id = 19516},
-        {name = "High Astromancer Solarian", id = 18805},
-        {name = "Kael'thas Sunstrider", id = 19622},
+    groups = {
+        {
+            name = "The Eye",
+            bosses = {
+                {name = "Al'ar", id = 19514},
+                {name = "Void Reaver", id = 19516},
+                {name = "High Astromancer Solarian", id = 18805},
+            }
+        },
+        {
+            name = "Kael's Chamber",
+            bosses = {
+                {name = "Kael'thas Sunstrider", id = 19622},
+            }
+        },
     }
 })
 
@@ -2164,12 +2269,27 @@ KOL.Tracker:RegisterInstance("hyjal_25n", {
     difficulty = 2,
     color = "GREEN",
     zones = {"Hyjal Summit"},
-    bosses = {
-        {name = "Rage Winterchill", id = 17767},
-        {name = "Anetheron", id = 17808},
-        {name = "Kaz'rogal", id = 17888},
-        {name = "Azgalor", id = 17842},
-        {name = "Archimonde", id = 17968},
+    groups = {
+        {
+            name = "Alliance Base",
+            bosses = {
+                {name = "Rage Winterchill", id = 17767},
+                {name = "Anetheron", id = 17808},
+            }
+        },
+        {
+            name = "Horde Base",
+            bosses = {
+                {name = "Kaz'rogal", id = 17888},
+                {name = "Azgalor", id = 17842},
+            }
+        },
+        {
+            name = "World Tree",
+            bosses = {
+                {name = "Archimonde", id = 17968},
+            }
+        },
     }
 })
 
@@ -2181,16 +2301,36 @@ KOL.Tracker:RegisterInstance("bt_25n", {
     difficulty = 2,
     color = "RED",
     zones = {"Black Temple"},
-    bosses = {
-        {name = "High Warlord Naj'entus", id = 22887},
-        {name = "Supremus", id = 22898},
-        {name = "Shade of Akama", id = 22841},
-        {name = "Teron Gorefiend", id = 22871},
-        {name = "Gurtogg Bloodboil", id = 22948},
-        {name = "Reliquary of Souls", id = 22856},
-        {name = "Mother Shahraz", id = 22947},
-        {name = "The Illidari Council", id = 23426},
-        {name = "Illidan Stormrage", id = 22917},
+    groups = {
+        {
+            name = "Karabor Sewers",
+            bosses = {
+                {name = "High Warlord Naj'entus", id = 22887},
+                {name = "Supremus", id = 22898},
+            }
+        },
+        {
+            name = "Sanctuary of Shadows",
+            bosses = {
+                {name = "Shade of Akama", id = 22841},
+                {name = "Teron Gorefiend", id = 22871},
+                {name = "Gurtogg Bloodboil", id = 22948},
+            }
+        },
+        {
+            name = "Den of Mortal Delights",
+            bosses = {
+                {name = "Reliquary of Souls", id = 22856},
+                {name = "Mother Shahraz", id = 22947},
+            }
+        },
+        {
+            name = "Temple Summit",
+            bosses = {
+                {name = "The Illidari Council", id = 23426},
+                {name = "Illidan Stormrage", id = 22917},
+            }
+        },
     }
 })
 
@@ -2230,13 +2370,23 @@ KOL.Tracker:RegisterInstance("swp_25n", {
     difficulty = 2,
     color = "ORANGE",
     zones = {"Sunwell Plateau"},
-    bosses = {
-        {name = "Kalecgos", id = 24850},
-        {name = "Brutallus", id = 24882},
-        {name = "Felmyst", id = 25038},
-        {name = "The Eredar Twins", id = 25166},
-        {name = "M'uru", id = 25741},
-        {name = "Kil'jaeden", id = 25315},
+    groups = {
+        {
+            name = "Outer Sanctum",
+            bosses = {
+                {name = "Kalecgos", id = 24850},
+                {name = "Brutallus", id = 24882},
+                {name = "Felmyst", id = 25038},
+            }
+        },
+        {
+            name = "Inner Sanctum",
+            bosses = {
+                {name = "The Eredar Twins", id = 25166},
+                {name = "M'uru", id = 25741},
+                {name = "Kil'jaeden", id = 25315},
+            }
+        },
     }
 })
 
