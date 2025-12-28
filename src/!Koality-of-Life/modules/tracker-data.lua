@@ -2374,7 +2374,7 @@ KOL.Tracker:RegisterInstance("swp_25n", {
         {
             name = "Outer Sanctum",
             bosses = {
-                {name = "Kalecgos", id = 24850},
+                {name = "Kalecgos", id = 24892},  -- Sathrovarr the Corruptor (demon form dies)
                 {name = "Brutallus", id = 24882},
                 {name = "Felmyst", id = 25038},
             }
@@ -2383,7 +2383,7 @@ KOL.Tracker:RegisterInstance("swp_25n", {
             name = "Inner Sanctum",
             bosses = {
                 {name = "The Eredar Twins", id = 25166},
-                {name = "M'uru", id = 25741},
+                {name = "M'uru", id = 25840},  -- Entropius (phase 2 form dies)
                 {name = "Kil'jaeden", id = 25315},
             }
         },

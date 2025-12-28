@@ -41,10 +41,11 @@ Quality-of-life WoW addon for the Chromie private server.
 - Run `claude` from project root OR from WoW addon folder - both work
 
 ## Version
-- Current: 1.0.0.3
-- Changes: 3
-- Last Updated: 2025-12-27
+- Current: 1.0.0.4
+- Changes: 4
+- Last Updated: 2025-12-28
 - History:
+  - 1.0.0.4 (2025-12-28) - Fix Sunwell boss detection (Kalecgos->Sathrovarr, M'uru->Entropius)
   - 1.0.0.3 (2025-12-27) - Restructure raids with proper grouping (Karazhan, BT, MC, BWL, SSC, TK, Hyjal, Sunwell, ZG, AQ40)
   - 1.0.0.2 (2025-12-27) - Fix Karazhan event bosses (Attumen, Opera, Chess)
   - 1.0.0.0 (2025-12-27) - Initial release
