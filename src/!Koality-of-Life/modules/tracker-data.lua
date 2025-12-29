@@ -942,7 +942,8 @@ KOL.Tracker:RegisterInstance("uld_10", {
             bosses = {
                 {
                     name = "Assembly of Iron",
-                    id = 32867,
+                    id = {32867, 32927, 32857},  -- Steelbreaker, Runemaster Molgeim, Stormcaller Brundir
+                    multiKill = {"Steelbreaker", "Runemaster Molgeim", "Stormcaller Brundir"},
                     hardmode = {
                         yells = {
                             "Molgeim, Brundir, your defiance ends here",
@@ -1072,7 +1073,8 @@ KOL.Tracker:RegisterInstance("uld_25", {
             bosses = {
                 {
                     name = "Assembly of Iron",
-                    id = 32867,
+                    id = {32867, 32927, 32857},  -- Steelbreaker, Runemaster Molgeim, Stormcaller Brundir
+                    multiKill = {"Steelbreaker", "Runemaster Molgeim", "Stormcaller Brundir"},
                     hardmode = {
                         yells = {
                             "Molgeim, Brundir, your defiance ends here",
@@ -1192,6 +1194,11 @@ KOL.Tracker:RegisterInstance("toc_10", {
         {
             name = "Faction Champions",
             id = 34461,
+            yell = "GLORY TO THE ALLIANCE!",  -- Alliance victory
+            yells = {
+                "GLORY TO THE ALLIANCE!",  -- Alliance victory
+                "That was just a taste of what the future brings. FOR THE HORDE!",  -- Horde victory
+            },
             hardmode = {
                 yells = {
                     "A tragic day",
@@ -1253,6 +1260,11 @@ KOL.Tracker:RegisterInstance("toc_25", {
         {
             name = "Faction Champions",
             id = 34461,
+            yell = "GLORY TO THE ALLIANCE!",  -- Alliance victory
+            yells = {
+                "GLORY TO THE ALLIANCE!",  -- Alliance victory
+                "That was just a taste of what the future brings. FOR THE HORDE!",  -- Horde victory
+            },
             hardmode = {
                 yells = {
                     "A tragic day",
@@ -1340,7 +1352,13 @@ KOL.Tracker:RegisterInstance("icc_10", {
                 },
                 {
                     name = "Gunship Battle",
-                    id = 37540,
+                    id = {37540, 36939},  -- The Skybreaker (Horde target), High Overlord Saurfang (Alliance target)
+                    anyNPC = true,
+                    yell = "Don't say I didn't warn ya, scoundrels!",  -- Alliance victory (partial match)
+                    yells = {
+                        "Don't say I didn't warn ya, scoundrels!",  -- Alliance victory
+                        "The Alliance falter. Onward to the Lich King!",  -- Horde victory
+                    },
                     hardmode = {
                         yells = {
                             "Open fire!",
@@ -1494,7 +1512,13 @@ KOL.Tracker:RegisterInstance("icc_25", {
                 },
                 {
                     name = "Gunship Battle",
-                    id = 37540,
+                    id = {37540, 36939},  -- The Skybreaker (Horde target), High Overlord Saurfang (Alliance target)
+                    anyNPC = true,
+                    yell = "Don't say I didn't warn ya, scoundrels!",  -- Alliance victory (partial match)
+                    yells = {
+                        "Don't say I didn't warn ya, scoundrels!",  -- Alliance victory
+                        "The Alliance falter. Onward to the Lich King!",  -- Horde victory
+                    },
                     hardmode = {
                         yells = {
                             "Open fire!",
