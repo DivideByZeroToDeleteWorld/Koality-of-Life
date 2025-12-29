@@ -39,14 +39,29 @@ KOL.Tracker:RegisterInstance("wc_n", {
     color = "GREEN",
     zones = {"Wailing Caverns"},
     challengeMaxLevel = 19,
-    bosses = {
-        {name = "Lady Anacondra", id = 3671},
-        {name = "Lord Cobrahn", id = 3669},
-        {name = "Lord Pythas", id = 3670},
-        {name = "Lord Serpentis", id = 3673},
-        {name = "Skum", id = 3674},
-        {name = "Verdan the Everliving", id = 5775},
-        {name = "Mutanus the Devourer", id = 3654},
+    groups = {
+        {
+            name = "Lords of the Fang",
+            bosses = {
+                {name = "Lady Anacondra", id = 3671},
+                {name = "Lord Cobrahn", id = 3669},
+                {name = "Lord Pythas", id = 3670},
+                {name = "Lord Serpentis", id = 3673},
+            }
+        },
+        {
+            name = "The Winding Chasm",
+            bosses = {
+                {name = "Skum", id = 3674},
+                {name = "Verdan the Everliving", id = 5775},
+            }
+        },
+        {
+            name = "The Dreamer's Rock",
+            bosses = {
+                {name = "Mutanus the Devourer", id = 3654},
+            }
+        },
     }
 })
 
@@ -297,15 +312,30 @@ KOL.Tracker:RegisterInstance("mara_n", {
     color = "PURPLE",
     zones = {"Maraudon"},
     challengeMaxLevel = 47,
-    bosses = {
-        {name = "Noxxion", id = 13282},
-        {name = "Razorlash", id = 12258},
-        {name = "Lord Vyletongue", id = 12236},
-        {name = "Celebras the Cursed", id = 12225},
-        {name = "Landslide", id = 12203},
-        {name = "Tinkerer Gizlock", id = 13601},
-        {name = "Rotgrip", id = 13596},
-        {name = "Princess Theradras", id = 12201},
+    groups = {
+        {
+            name = "The Wicked Grotto (Orange)",
+            bosses = {
+                {name = "Noxxion", id = 13282},
+                {name = "Razorlash", id = 12258},
+            }
+        },
+        {
+            name = "Foulspore Cavern (Purple)",
+            bosses = {
+                {name = "Lord Vyletongue", id = 12236},
+                {name = "Celebras the Cursed", id = 12225},
+            }
+        },
+        {
+            name = "Earth Song Falls",
+            bosses = {
+                {name = "Landslide", id = 12203},
+                {name = "Tinkerer Gizlock", id = 13601},
+                {name = "Rotgrip", id = 13596},
+                {name = "Princess Theradras", id = 12201},
+            }
+        },
     }
 })
 
@@ -335,24 +365,59 @@ KOL.Tracker:RegisterInstance("brd_n", {
     color = "ORANGE",
     zones = {"Blackrock Depths"},
     challengeMaxLevel = 55,
-    bosses = {
-        {name = "High Interrogator Gerstahn", id = 9018},
-        {name = "Lord Roccor", id = 9025},
-        {name = "Houndmaster Grebmar", id = 9319},
-        {name = "Ring of Law", id = 9027},
-        {name = "Pyromancer Loregrain", id = 9024},
-        {name = "Lord Incendius", id = 9017},
-        {name = "Fineous Darkvire", id = 9056},
-        {name = "Bael'Gar", id = 9016},
-        {name = "General Angerforge", id = 9033},
-        {name = "Golem Lord Argelmach", id = 8983},
-        {name = "Hurley Blackbreath", id = 9537},
-        {name = "Phalanx", id = 9502},
-        {name = "Plugger Spazzring", id = 9499},
-        {name = "Ambassador Flamelash", id = 9156},
-        {name = "The Seven", id = 9041},
-        {name = "Magmus", id = 9938},
-        {name = "Emperor Dagran Thaurissan", id = 9019},
+    groups = {
+        {
+            name = "Detention Block",
+            bosses = {
+                {name = "High Interrogator Gerstahn", id = 9018},
+            }
+        },
+        {
+            name = "Shadowforge Prison",
+            bosses = {
+                {name = "Lord Roccor", id = 9025},
+                {name = "Houndmaster Grebmar", id = 9319},
+            }
+        },
+        {
+            name = "Ring of Law",
+            bosses = {
+                {name = "Ring of Law", id = 9027},
+            }
+        },
+        {
+            name = "Shadowforge City",
+            bosses = {
+                {name = "Pyromancer Loregrain", id = 9024},
+                {name = "Lord Incendius", id = 9017},
+                {name = "Fineous Darkvire", id = 9056},
+                {name = "Bael'Gar", id = 9016},
+            }
+        },
+        {
+            name = "The Manufactory",
+            bosses = {
+                {name = "General Angerforge", id = 9033},
+                {name = "Golem Lord Argelmach", id = 8983},
+            }
+        },
+        {
+            name = "Grim Guzzler",
+            bosses = {
+                {name = "Hurley Blackbreath", id = 9537},
+                {name = "Phalanx", id = 9502},
+                {name = "Plugger Spazzring", id = 9499},
+            }
+        },
+        {
+            name = "Imperial Seat",
+            bosses = {
+                {name = "Ambassador Flamelash", id = 9156},
+                {name = "The Seven", id = 9041},
+                {name = "Magmus", id = 9938},
+                {name = "Emperor Dagran Thaurissan", id = 9019},
+            }
+        },
     }
 })
 
@@ -365,16 +430,41 @@ KOL.Tracker:RegisterInstance("lbrs_n", {
     color = "RED",
     zones = {"Blackrock Spire"},
     challengeMaxLevel = 60,
-    bosses = {
-        {name = "Highlord Omokk", id = 9196},
-        {name = "Shadow Hunter Vosh'gajin", id = 9236},
-        {name = "War Master Voone", id = 9237},
-        {name = "Mother Smolderweb", id = 10596},
-        {name = "Urok Doomhowl", id = 10584},
-        {name = "Quartermaster Zigris", id = 9736},
-        {name = "Halycon", id = 10220},
-        {name = "Gizrul the Slavener", id = 10268},
-        {name = "Overlord Wyrmthalak", id = 9568},
+    groups = {
+        {
+            name = "Hordemar City",
+            bosses = {
+                {name = "Highlord Omokk", id = 9196},
+            }
+        },
+        {
+            name = "Troll Stronghold",
+            bosses = {
+                {name = "Shadow Hunter Vosh'gajin", id = 9236},
+                {name = "War Master Voone", id = 9237},
+            }
+        },
+        {
+            name = "Skitterweb Tunnels",
+            bosses = {
+                {name = "Mother Smolderweb", id = 10596},
+                {name = "Urok Doomhowl", id = 10584},
+                {name = "Quartermaster Zigris", id = 9736},
+            }
+        },
+        {
+            name = "Halycon's Lair",
+            bosses = {
+                {name = "Halycon", id = 10220},
+                {name = "Gizrul the Slavener", id = 10268},
+            }
+        },
+        {
+            name = "Wyrmthalak's Chamber",
+            bosses = {
+                {name = "Overlord Wyrmthalak", id = 9568},
+            }
+        },
     }
 })
 
@@ -387,15 +477,35 @@ KOL.Tracker:RegisterInstance("ubrs_n", {
     color = "ROSE",
     zones = {"Blackrock Spire"},
     challengeMaxLevel = 60,
-    bosses = {
-        {name = "Pyroguard Emberseer", id = 9816},
-        {name = "Solakar Flamewreath", id = 10264},
-        {name = "Jed Runewatcher", id = 10509},
-        {name = "Goraluk Anvilcrack", id = 10899},
-        {name = "Warchief Rend Blackhand", id = 10429},
-        {name = "Gyth", id = 10339},
-        {name = "The Beast", id = 10430},
-        {name = "General Drakkisath", id = 10363},
+    groups = {
+        {
+            name = "The Rookery",
+            bosses = {
+                {name = "Pyroguard Emberseer", id = 9816},
+                {name = "Solakar Flamewreath", id = 10264},
+            }
+        },
+        {
+            name = "Hall of Blackhand",
+            bosses = {
+                {name = "Jed Runewatcher", id = 10509},
+                {name = "Goraluk Anvilcrack", id = 10899},
+            }
+        },
+        {
+            name = "Rend's Arena",
+            bosses = {
+                {name = "Warchief Rend Blackhand", id = 10429},
+                {name = "Gyth", id = 10339},
+            }
+        },
+        {
+            name = "The Beast's Lair",
+            bosses = {
+                {name = "The Beast", id = 10430},
+                {name = "General Drakkisath", id = 10363},
+            }
+        },
     }
 })
 
@@ -462,22 +572,52 @@ KOL.Tracker:RegisterInstance("scholo_n", {
     color = "PURPLE",
     zones = {"Scholomance"},
     challengeMaxLevel = 60,
-    bosses = {
-        {name = "Blood Steward of Kirtonos", id = 14861},
-        {name = "Kirtonos the Herald", id = 10506},
-        {name = "Jandice Barov", id = 10503},
-        {name = "Rattlegore", id = 11622},
-        {name = "Death Knight Darkreaver", id = 14516},
-        {name = "Marduk Blackpool", id = 10433},
-        {name = "Vectus", id = 10432},
-        {name = "Ras Frostwhisper", id = 10508},
-        {name = "Instructor Malicia", id = 10505},
-        {name = "Doctor Theolen Krastinov", id = 11261},
-        {name = "Lorekeeper Polkelt", id = 10901},
-        {name = "The Ravenian", id = 10507},
-        {name = "Lord Alexei Barov", id = 10504},
-        {name = "Lady Illucia Barov", id = 10502},
-        {name = "Darkmaster Gandling", id = 1853},
+    groups = {
+        {
+            name = "The Reliquary",
+            bosses = {
+                {name = "Blood Steward of Kirtonos", id = 14861},
+                {name = "Kirtonos the Herald", id = 10506},
+            }
+        },
+        {
+            name = "The Viewing Room",
+            bosses = {
+                {name = "Jandice Barov", id = 10503},
+                {name = "Rattlegore", id = 11622},
+            }
+        },
+        {
+            name = "The Great Ossuary",
+            bosses = {
+                {name = "Death Knight Darkreaver", id = 14516},
+                {name = "Marduk Blackpool", id = 10433},
+                {name = "Vectus", id = 10432},
+            }
+        },
+        {
+            name = "Ras Frostwhisper's Study",
+            bosses = {
+                {name = "Ras Frostwhisper", id = 10508},
+            }
+        },
+        {
+            name = "Barov Family Vault",
+            bosses = {
+                {name = "Instructor Malicia", id = 10505},
+                {name = "Doctor Theolen Krastinov", id = 11261},
+                {name = "Lorekeeper Polkelt", id = 10901},
+                {name = "The Ravenian", id = 10507},
+                {name = "Lord Alexei Barov", id = 10504},
+                {name = "Lady Illucia Barov", id = 10502},
+            }
+        },
+        {
+            name = "Headmaster's Study",
+            bosses = {
+                {name = "Darkmaster Gandling", id = 1853},
+            }
+        },
     }
 })
 
@@ -490,13 +630,23 @@ KOL.Tracker:RegisterInstance("strat_live_n", {
     color = "YELLOW",
     zones = {"Stratholme"},
     challengeMaxLevel = 60,
-    bosses = {
-        {name = "The Unforgiven", id = 10516},
-        {name = "Timmy the Cruel", id = 10808},
-        {name = "Cannon Master Willey", id = 10997},
-        {name = "Archivist Galford", id = 10811},
-        {name = "Balnazzar", id = 10813},
-        {name = "Aurius", id = 10917},
+    groups = {
+        {
+            name = "King's Square",
+            bosses = {
+                {name = "The Unforgiven", id = 10516},
+                {name = "Timmy the Cruel", id = 10808},
+            }
+        },
+        {
+            name = "Scarlet Bastion",
+            bosses = {
+                {name = "Cannon Master Willey", id = 10997},
+                {name = "Archivist Galford", id = 10811},
+                {name = "Balnazzar", id = 10813},
+                {name = "Aurius", id = 10917},
+            }
+        },
     }
 })
 
@@ -508,15 +658,30 @@ KOL.Tracker:RegisterInstance("strat_dead_n", {
     color = "LIME",
     zones = {"Stratholme"},
     challengeMaxLevel = 60,
-    bosses = {
-        {name = "Hearthsinger Forresten", id = 10558},
-        {name = "Postmaster Malown", id = 11143},
-        {name = "Baroness Anastari", id = 10436},
-        {name = "Nerub'enkan", id = 10437},
-        {name = "Maleki the Pallid", id = 10438},
-        {name = "Magistrate Barthilas", id = 10435},
-        {name = "Ramstein the Gorger", id = 10439},
-        {name = "Baron Rivendare", id = 10440},
+    groups = {
+        {
+            name = "Festival Lane",
+            bosses = {
+                {name = "Hearthsinger Forresten", id = 10558},
+                {name = "Postmaster Malown", id = 11143},
+            }
+        },
+        {
+            name = "The Gauntlet",
+            bosses = {
+                {name = "Baroness Anastari", id = 10436},
+                {name = "Nerub'enkan", id = 10437},
+                {name = "Maleki the Pallid", id = 10438},
+            }
+        },
+        {
+            name = "Slaughter Square",
+            bosses = {
+                {name = "Magistrate Barthilas", id = 10435},
+                {name = "Ramstein the Gorger", id = 10439},
+                {name = "Baron Rivendare", id = 10440},
+            }
+        },
     }
 })
 
@@ -643,13 +808,28 @@ KOL.Tracker:RegisterInstance("aq20_20", {
     color = "YELLOW",
     zones = {"Ruins of Ahn'Qiraj"},
     challengeMaxLevel = 60,
-    bosses = {
-        {name = "Kurinnaxx", id = 15348},
-        {name = "General Rajaxx", id = 15341},
-        {name = "Moam", id = 15340},
-        {name = "Buru the Gorger", id = 15370},
-        {name = "Ayamiss the Hunter", id = 15369},
-        {name = "Ossirian the Unscarred", id = 15339},
+    groups = {
+        {
+            name = "Entrance Guardians",
+            bosses = {
+                {name = "Kurinnaxx", id = 15348},
+                {name = "General Rajaxx", id = 15341},
+            }
+        },
+        {
+            name = "The Reservoir",
+            bosses = {
+                {name = "Moam", id = 15340},
+                {name = "Buru the Gorger", id = 15370},
+                {name = "Ayamiss the Hunter", id = 15369},
+            }
+        },
+        {
+            name = "Ossirian's Sanctum",
+            bosses = {
+                {name = "Ossirian the Unscarred", id = 15339},
+            }
+        },
     }
 })
 
@@ -844,11 +1024,21 @@ KOL.Tracker:RegisterInstance("os_10", {
     difficulty = 1,
     color = "RED",
     zones = {"The Obsidian Sanctum"},
-    bosses = {
-        {name = "Shadron", id = 30451},
-        {name = "Tenebron", id = 30452},
-        {name = "Vesperon", id = 30449},
-        {name = "Sartharion", id = 28860},
+    groups = {
+        {
+            name = "Twilight Drakes",
+            bosses = {
+                {name = "Shadron", id = 30451},
+                {name = "Tenebron", id = 30452},
+                {name = "Vesperon", id = 30449},
+            }
+        },
+        {
+            name = "The Black Dragonflight",
+            bosses = {
+                {name = "Sartharion", id = 28860},
+            }
+        },
     }
 })
 
@@ -860,11 +1050,21 @@ KOL.Tracker:RegisterInstance("os_25", {
     difficulty = 2,
     color = "RED",
     zones = {"The Obsidian Sanctum"},
-    bosses = {
-        {name = "Shadron", id = 30451},
-        {name = "Tenebron", id = 30452},
-        {name = "Vesperon", id = 30449},
-        {name = "Sartharion", id = 28860},
+    groups = {
+        {
+            name = "Twilight Drakes",
+            bosses = {
+                {name = "Shadron", id = 30451},
+                {name = "Tenebron", id = 30452},
+                {name = "Vesperon", id = 30449},
+            }
+        },
+        {
+            name = "The Black Dragonflight",
+            bosses = {
+                {name = "Sartharion", id = 28860},
+            }
+        },
     }
 })
 
