@@ -908,6 +908,7 @@ KOL.Tracker:RegisterInstance("naxx_10", {
                 {name = "Gothik the Harvester", id = 16060},
                 {
                     name = "The Four Horsemen",
+                    type = "multikill",
                     id = {16063, 30549, 16064, 16065},  -- Sir Zeliek, Baron (Synastria), Thane, Lady
                     multiKill = {"Sir Zeliek", "Baron Rivendare", "Thane Korth'azz", "Lady Blaumeux"}
                 },
@@ -966,6 +967,7 @@ KOL.Tracker:RegisterInstance("naxx_25", {
                 {name = "Gothik the Harvester", id = 16060},
                 {
                     name = "The Four Horsemen",
+                    type = "multikill",
                     id = {16063, 30549, 16064, 16065},  -- Sir Zeliek, Baron (Synastria), Thane, Lady
                     multiKill = {"Sir Zeliek", "Baron Rivendare", "Thane Korth'azz", "Lady Blaumeux"}
                 },
@@ -1142,6 +1144,7 @@ KOL.Tracker:RegisterInstance("uld_10", {
             bosses = {
                 {
                     name = "Assembly of Iron",
+                    type = "multikill",
                     id = {32867, 32927, 32857},  -- Steelbreaker, Runemaster Molgeim, Stormcaller Brundir
                     multiKill = {"Steelbreaker", "Runemaster Molgeim", "Stormcaller Brundir"},
                     hardmode = {
@@ -1159,6 +1162,7 @@ KOL.Tracker:RegisterInstance("uld_10", {
             bosses = {
                 {
                     name = "Hodir",
+                    type = "yell",
                     id = 32845,
                     yell = "I... I am released from his grasp... at last.",
                     hardmode = {
@@ -1169,6 +1173,7 @@ KOL.Tracker:RegisterInstance("uld_10", {
                 },
                 {
                     name = "Thorim",
+                    type = "yell",
                     id = 32865,
                     yell = "Stay your arms! I yield!",
                     hardmode = {
@@ -1179,6 +1184,7 @@ KOL.Tracker:RegisterInstance("uld_10", {
                 },
                 {
                     name = "Freya",
+                    type = "yell",
                     id = 32906,
                     yell = "His hold on me dissipates. I can see clearly once more. Thank you, heroes.",
                     hardmode = {
@@ -1189,6 +1195,7 @@ KOL.Tracker:RegisterInstance("uld_10", {
                 },
                 {
                     name = "Mimiron",
+                    type = "yell",
                     id = 33350,
                     yell = "It would appear that I've made a slight miscalculation. I allowed my mind to be corrupted by the fiend in the prison, overriding my primary directive. All systems seem to be functional now. Clear.",
                     hardmode = {
@@ -1225,7 +1232,7 @@ KOL.Tracker:RegisterInstance("uld_10", {
         {
             name = "Celestial Planetarium",
             bosses = {
-                {name = "Algalon the Observer", id = 32871, yell = "I have seen worlds bathed in the Makers' flames, their denizens fading without as much as a whimper. Entire planetary systems born and razed in the time that it takes your mortal hearts to beat once. Yet all throughout, my own heart devoid of emotion... of empathy. I. Have. Felt. Nothing. A million-million lives wasted. Had they all held within them your tenacity? Had they all loved life as you do?"},
+                {name = "Algalon the Observer", type = "yell", id = 32871, yell = "I have seen worlds bathed in the Makers' flames, their denizens fading without as much as a whimper. Entire planetary systems born and razed in the time that it takes your mortal hearts to beat once. Yet all throughout, my own heart devoid of emotion... of empathy. I. Have. Felt. Nothing. A million-million lives wasted. Had they all held within them your tenacity? Had they all loved life as you do?"},
             }
         },
     }
@@ -1273,6 +1280,7 @@ KOL.Tracker:RegisterInstance("uld_25", {
             bosses = {
                 {
                     name = "Assembly of Iron",
+                    type = "multikill",
                     id = {32867, 32927, 32857},  -- Steelbreaker, Runemaster Molgeim, Stormcaller Brundir
                     multiKill = {"Steelbreaker", "Runemaster Molgeim", "Stormcaller Brundir"},
                     hardmode = {
@@ -1290,6 +1298,7 @@ KOL.Tracker:RegisterInstance("uld_25", {
             bosses = {
                 {
                     name = "Hodir",
+                    type = "yell",
                     id = 32845,
                     yell = "I... I am released from his grasp... at last.",
                     hardmode = {
@@ -1300,6 +1309,7 @@ KOL.Tracker:RegisterInstance("uld_25", {
                 },
                 {
                     name = "Thorim",
+                    type = "yell",
                     id = 32865,
                     yell = "Stay your arms! I yield!",
                     hardmode = {
@@ -1310,6 +1320,7 @@ KOL.Tracker:RegisterInstance("uld_25", {
                 },
                 {
                     name = "Freya",
+                    type = "yell",
                     id = 32906,
                     yell = "His hold on me dissipates. I can see clearly once more. Thank you, heroes.",
                     hardmode = {
@@ -1320,6 +1331,7 @@ KOL.Tracker:RegisterInstance("uld_25", {
                 },
                 {
                     name = "Mimiron",
+                    type = "yell",
                     id = 33350,
                     yell = "It would appear that I've made a slight miscalculation. I allowed my mind to be corrupted by the fiend in the prison, overriding my primary directive. All systems seem to be functional now. Clear.",
                     hardmode = {
@@ -1356,7 +1368,7 @@ KOL.Tracker:RegisterInstance("uld_25", {
         {
             name = "Celestial Planetarium",
             bosses = {
-                {name = "Algalon the Observer", id = 32871, yell = "I have seen worlds bathed in the Makers' flames, their denizens fading without as much as a whimper. Entire planetary systems born and razed in the time that it takes your mortal hearts to beat once. Yet all throughout, my own heart devoid of emotion... of empathy. I. Have. Felt. Nothing. A million-million lives wasted. Had they all held within them your tenacity? Had they all loved life as you do?"},
+                {name = "Algalon the Observer", type = "yell", id = 32871, yell = "I have seen worlds bathed in the Makers' flames, their denizens fading without as much as a whimper. Entire planetary systems born and razed in the time that it takes your mortal hearts to beat once. Yet all throughout, my own heart devoid of emotion... of empathy. I. Have. Felt. Nothing. A million-million lives wasted. Had they all held within them your tenacity? Had they all loved life as you do?"},
             }
         },
     }
@@ -1393,6 +1405,7 @@ KOL.Tracker:RegisterInstance("toc_10", {
         },
         {
             name = "Faction Champions",
+            type = "yell",
             id = 34461,
             yell = "GLORY TO THE ALLIANCE!",  -- Alliance victory
             yells = {
@@ -1459,6 +1472,7 @@ KOL.Tracker:RegisterInstance("toc_25", {
         },
         {
             name = "Faction Champions",
+            type = "yell",
             id = 34461,
             yell = "GLORY TO THE ALLIANCE!",  -- Alliance victory
             yells = {
@@ -1552,6 +1566,7 @@ KOL.Tracker:RegisterInstance("icc_10", {
                 },
                 {
                     name = "Gunship Battle",
+                    type = "yell",
                     id = {37540, 36939},  -- The Skybreaker (Horde target), High Overlord Saurfang (Alliance target)
                     anyNPC = true,
                     yell = "Don't say I didn't warn ya, scoundrels!",  -- Alliance victory (partial match)
@@ -1712,6 +1727,7 @@ KOL.Tracker:RegisterInstance("icc_25", {
                 },
                 {
                     name = "Gunship Battle",
+                    type = "yell",
                     id = {37540, 36939},  -- The Skybreaker (Horde target), High Overlord Saurfang (Alliance target)
                     anyNPC = true,
                     yell = "Don't say I didn't warn ya, scoundrels!",  -- Alliance victory (partial match)
@@ -2368,7 +2384,7 @@ KOL.Tracker:RegisterInstance("kara_10n", {
         {
             name = "Servant's Quarters",
             bosses = {
-                {name = "Attumen the Huntsman", id = 16152, yell = "Always knew... someday I would become... the hunted."},
+                {name = "Attumen the Huntsman", type = "yell", id = 16152, yell = "Always knew... someday I would become... the hunted."},
                 {name = "Moroes", id = 15687},
                 {name = "Maiden of Virtue", id = 16457},
             }
@@ -3199,7 +3215,7 @@ KOL.Tracker:RegisterInstance("toc5_n", {
     bosses = {
         {name = "Grand Champions", id = 35328, type = "yell", yell = "Well fought! Your next challenge comes from the Crusade's own ranks."},
         {name = "Argent Champion", id = {34928, 35119}, type = "yell", yell = {"Excellent work!", "I yield! I submit. Excellent work."}},
-        {name = "The Black Knight", id = 35451, multiKill = 3},
+        {name = "The Black Knight", type = "multikill", id = 35451, multiKill = 3},
     }
 })
 
@@ -3237,6 +3253,7 @@ KOL.Tracker:RegisterInstance("toc5_h", {
         },
         {
             name = "The Black Knight",
+            type = "multikill",
             id = 35451,
             multiKill = 3,
             hardmode = {

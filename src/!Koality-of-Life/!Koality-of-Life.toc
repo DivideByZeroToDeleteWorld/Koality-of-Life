@@ -2,7 +2,7 @@
 ## Title: |cFFFF0000K|cFFFF4400o|cFFFF8800a|cFFFFCC00l|cFFFFFF00i|cFFCCFF00t|cFF88FF00y|cFF44FF00-|cFF00FF00o|cFF00FF88f|cFF00FFFF-|cFF55AAFFL|cFF7799FFi|cFF8888FFf|cFFAA66FFe|r
 ## Notes: Quality of life improvements for Synastria
 ## Author: |cFF00FF00Z|r|cFFCC00FFero|r
-## Version: 1.0.0.6
+## Version: 1.0.0.7
 ## SavedVariables: KoalityOfLifeDB
 ## OptionalDeps: Ace3, LibSharedMedia-3.0
 

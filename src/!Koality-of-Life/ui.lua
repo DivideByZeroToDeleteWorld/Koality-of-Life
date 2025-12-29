@@ -2741,12 +2741,77 @@ function KOL:PopulateTrackerConfigUI()
             }
         }
 
-        -- Add Edit and Delete buttons for custom panels
+        -- Add entries list and action buttons for custom panels
         if data.type == "custom" then
+            -- Entry type icons
+            local typeIcons = {
+                kill = "|cFF00FF00*|r",
+                loot = "|cFFFFD700$|r",
+                yell = "|cFF00BFFF!|r",
+                multikill = "|cFFFF6600#|r",
+            }
+
+            -- Entries list display
+            args[instanceId].args.entriesList = {
+                type = "description",
+                name = function()
+                    local lines = {"|cFF88CCFFEntries:|r"}
+                    local entries = data.entries or {}
+
+                    -- Also check old formats
+                    if #entries == 0 and data.groups and #data.groups > 0 then
+                        for _, group in ipairs(data.groups) do
+                            if group.bosses then
+                                for _, boss in ipairs(group.bosses) do
+                                    local entryType = KOL.Tracker:GetDetectionType(boss)
+                                    local icon = typeIcons[entryType] or "?"
+                                    table.insert(lines, "  " .. icon .. " " .. (boss.name or "Unknown"))
+                                end
+                            end
+                        end
+                    elseif #entries == 0 and data.objectives and #data.objectives > 0 then
+                        for _, obj in ipairs(data.objectives) do
+                            table.insert(lines, "  |cFF00FF00*|r " .. (obj.name or "Unknown"))
+                        end
+                    else
+                        for _, entry in ipairs(entries) do
+                            local entryType = entry.type or "kill"
+                            local icon = typeIcons[entryType] or "?"
+                            local info = ""
+                            if entryType == "kill" then
+                                info = entry.id and (" |cFF666666(ID: " .. entry.id .. ")|r") or ""
+                            elseif entryType == "loot" then
+                                local itemId = entry.itemId or (entry.itemIds and entry.itemIds[1])
+                                info = itemId and (" |cFF666666(Item: " .. itemId .. ")|r") or ""
+                            elseif entryType == "yell" then
+                                local yell = entry.yell
+                                if type(yell) == "table" then yell = yell[1] end
+                                if yell and #yell > 20 then yell = string.sub(yell, 1, 17) .. "..." end
+                                info = yell and (" |cFF666666(\"" .. yell .. "\")|r") or ""
+                            elseif entryType == "multikill" then
+                                local ids = entry.ids or entry.id
+                                if type(ids) == "table" then
+                                    info = " |cFF666666(" .. #ids .. " NPCs)|r"
+                                end
+                            end
+                            table.insert(lines, "  " .. icon .. " " .. (entry.name or "Unknown") .. info)
+                        end
+                    end
+
+                    if #lines == 1 then
+                        table.insert(lines, "  |cFFAAAAAAAANo entries yet|r")
+                    end
+
+                    return table.concat(lines, "\n") .. "\n"
+                end,
+                fontSize = "small",
+                order = 8,
+            }
+
             args[instanceId].args.spacer3 = {
                 type = "description",
                 name = " ",
-                order = 8,
+                order = 8.5,
             }
 
             args[instanceId].args.editPanel = {

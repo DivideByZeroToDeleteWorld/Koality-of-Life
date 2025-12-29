@@ -291,6 +291,97 @@ function Tracker:GetBossId(boss)
 end
 
 -- ============================================================================
+-- Entry Compatibility Layer (supports both old and new schema)
+-- ============================================================================
+
+-- Get entries from a group (supports both 'entries' and 'bosses' field names)
+function Tracker:GetEntries(group)
+    if not group then return {} end
+    return group.entries or group.bosses or {}
+end
+
+-- Get detection type for an entry (infers from old format if type not specified)
+function Tracker:GetDetectionType(entry)
+    if not entry then return "kill" end
+
+    -- Explicit type field (new format)
+    if entry.type and entry.type ~= "custom" then
+        return entry.type
+    end
+
+    -- Infer from old format fields
+    if entry.yells or entry.yell then
+        return "yell"
+    elseif entry.multiKill or (type(entry.id) == "table" and #entry.id > 1 and not entry.anyNPC) then
+        return "multikill"
+    elseif entry.itemId or entry.itemIds then
+        return "loot"
+    else
+        return "kill"  -- Default
+    end
+end
+
+-- Get multikill IDs (supports both 'ids' and 'id' array formats)
+function Tracker:GetMultikillIds(entry)
+    if not entry then return {} end
+    return entry.ids or entry.id or {}
+end
+
+-- Get yell patterns (supports both 'yells' array and single 'yell' field)
+function Tracker:GetYellPatterns(entry)
+    if not entry then return {} end
+    if entry.yells then
+        return entry.yells
+    elseif entry.yell then
+        return {entry.yell}
+    end
+    return {}
+end
+
+-- Get item IDs for loot detection (supports both 'itemId' and 'itemIds')
+function Tracker:GetLootItemIds(entry)
+    if not entry then return {} end
+    if entry.itemIds then
+        return entry.itemIds
+    elseif entry.itemId then
+        return {entry.itemId}
+    end
+    return {}
+end
+
+-- Get the primary ID for an entry (for kill detection)
+function Tracker:GetEntryId(entry)
+    if not entry then return nil end
+
+    -- For single ID entries
+    if type(entry.id) == "number" then
+        return entry.id
+    end
+
+    -- For multi-ID entries, return first ID (for display purposes)
+    if type(entry.id) == "table" and #entry.id > 0 then
+        return entry.id[1]
+    end
+
+    return nil
+end
+
+-- Check if an entry has a specific NPC ID (works with single or array)
+function Tracker:EntryHasNpcId(entry, npcId)
+    if not entry or not npcId then return false end
+
+    if type(entry.id) == "number" then
+        return entry.id == npcId
+    elseif type(entry.id) == "table" then
+        for _, id in ipairs(entry.id) do
+            if id == npcId then return true end
+        end
+    end
+
+    return false
+end
+
+-- ============================================================================
 -- Hardmode Functions
 -- ============================================================================
 
@@ -1494,6 +1585,72 @@ function Tracker:OnRaidBossEmote(text, npcName, ...)
     end
 end
 
+-- Handle CHAT_MSG_LOOT for item drop detection (custom panels)
+function Tracker:OnLoot(message, ...)
+    if not message then return end
+
+    -- Extract item link from loot message
+    -- Format: "You receive loot: [Item Name]" or "PlayerName receives loot: [Item Name]"
+    local itemLink = message:match("|c%x+|Hitem:(%d+).-|h%[.-%]|h|r")
+    if not itemLink then
+        -- Try alternate format - just get the item ID
+        itemLink = message:match("|Hitem:(%d+)")
+    end
+
+    if not itemLink then return end
+
+    local lootedItemId = tonumber(itemLink)
+    if not lootedItemId then return end
+
+    KOL:DebugPrint("Tracker: Loot detected - Item ID: " .. lootedItemId, 3)
+
+    -- Check all instances for loot-based entries
+    for instanceId, data in pairs(self.instances) do
+        -- Check flat entries/bosses
+        local entries = self:GetEntries(data)
+        if entries and #entries > 0 then
+            for entryIndex, entry in ipairs(entries) do
+                local detectionType = self:GetDetectionType(entry)
+                if detectionType == "loot" then
+                    local itemIds = self:GetLootItemIds(entry)
+                    for _, targetItemId in ipairs(itemIds) do
+                        if targetItemId == lootedItemId then
+                            KOL:DebugPrint("LOOT MATCH: " .. entry.name .. " - Item ID: " .. lootedItemId, 2)
+                            self:MarkBossKilled(instanceId, entryIndex)
+                            KOL:Print("Loot obtained: " .. COLOR(data.color, entry.name))
+                            return
+                        end
+                    end
+                end
+            end
+        end
+
+        -- Check grouped entries
+        if data.groups and #data.groups > 0 then
+            for groupIndex, group in ipairs(data.groups) do
+                local groupEntries = self:GetEntries(group)
+                if groupEntries then
+                    for entryIndex, entry in ipairs(groupEntries) do
+                        local detectionType = self:GetDetectionType(entry)
+                        if detectionType == "loot" then
+                            local itemIds = self:GetLootItemIds(entry)
+                            for _, targetItemId in ipairs(itemIds) do
+                                if targetItemId == lootedItemId then
+                                    local bossId = "g" .. groupIndex .. "-b" .. entryIndex
+                                    KOL:DebugPrint("LOOT MATCH (grouped): " .. entry.name .. " - Item ID: " .. lootedItemId, 2)
+                                    self:MarkBossKilled(instanceId, bossId)
+                                    KOL:Print("Loot obtained: " .. COLOR(data.color, entry.name))
+                                    return
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
 -- Get progress string for multi-NPC encounters (for debugging)
 function Tracker:GetMultiNPCProgress(instanceId, bossId, boss)
     if not self.multiNPCKills[instanceId] or not self.multiNPCKills[instanceId][bossId] then
@@ -1908,6 +2065,12 @@ function Tracker:RegisterEvents()
         Tracker:OnRaidBossEmote(...)
     end, "Tracker")
     KOL:DebugPrint("Tracker: CHAT_MSG_RAID_BOSS_EMOTE registered", 3)
+
+    -- Loot events for item drop detection (custom panels)
+    KOL:RegisterEventCallback("CHAT_MSG_LOOT", function(...)
+        Tracker:OnLoot(...)
+    end, "Tracker")
+    KOL:DebugPrint("Tracker: CHAT_MSG_LOOT registered", 3)
 
     -- Dungeon Challenge chat messages (listen to multiple event types)
     KOL:RegisterEventCallback("CHAT_MSG_SYSTEM", function(message)
