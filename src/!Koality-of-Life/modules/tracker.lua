@@ -142,6 +142,13 @@ function Tracker:Initialize()
         KOL.db.profile.tracker.collapsedGroups = {}
     end
 
+    -- Initialize entry progress tracking (for count-based objectives)
+    -- Structure: entryProgress[instanceId][entryId] = currentCount
+    if not KOL.db.profile.tracker.entryProgress then
+        KOL.db.profile.tracker.entryProgress = {}
+    end
+    self.entryProgress = KOL.db.profile.tracker.entryProgress
+
     -- Initialize dungeon challenge data
     self:InitializeDungeonChallengeData()
 
@@ -705,6 +712,92 @@ function Tracker:IsBossKilled(instanceId, bossId)
     return self.bossKills[instanceId] and self.bossKills[instanceId][bossId] or false
 end
 
+-- Unmark a boss as killed (reset to not killed)
+-- @param instanceId: Instance identifier
+-- @param bossId: Boss identifier (name or index)
+function Tracker:UnmarkBossKilled(instanceId, bossId)
+    if self.bossKills[instanceId] then
+        self.bossKills[instanceId][bossId] = nil
+        KOL.db.profile.tracker.bossKills = self.bossKills
+        KOL:DebugPrint("SAVED TO DB: Boss unmarked " .. instanceId .. " / " .. tostring(bossId), 2)
+    end
+
+    -- Update watch frame if active
+    if self.activeFrames[instanceId] then
+        self:UpdateWatchFrame(instanceId)
+    end
+end
+
+-- ============================================================================
+-- Entry Progress Tracking (for count-based objectives)
+-- ============================================================================
+
+-- Get entry progress (current count)
+-- @param instanceId: Instance identifier
+-- @param entryId: Entry identifier (e.g., "kill-12345" or "loot-67890")
+-- @return current progress count (default 0)
+function Tracker:GetEntryProgress(instanceId, entryId)
+    if not self.entryProgress[instanceId] then
+        return 0
+    end
+    return self.entryProgress[instanceId][entryId] or 0
+end
+
+-- Set entry progress (current count)
+-- @param instanceId: Instance identifier
+-- @param entryId: Entry identifier
+-- @param count: New progress count
+function Tracker:SetEntryProgress(instanceId, entryId, count)
+    if not self.entryProgress[instanceId] then
+        self.entryProgress[instanceId] = {}
+    end
+    self.entryProgress[instanceId][entryId] = count
+    KOL.db.profile.tracker.entryProgress = self.entryProgress
+end
+
+-- Increment entry progress by 1
+-- @param instanceId: Instance identifier
+-- @param entryId: Entry identifier
+-- @param requiredCount: The target count (if reached, marks as complete)
+-- @return new progress count, and whether it reached the required count
+function Tracker:IncrementEntryProgress(instanceId, entryId, requiredCount)
+    local current = self:GetEntryProgress(instanceId, entryId)
+    local newCount = current + 1
+    self:SetEntryProgress(instanceId, entryId, newCount)
+
+    requiredCount = requiredCount or 1
+    local complete = newCount >= requiredCount
+
+    -- If complete, also mark the boss as killed (so checkmark shows)
+    if complete then
+        self:MarkBossKilled(instanceId, entryId)
+    end
+
+    -- Update watch frame
+    if self.activeFrames[instanceId] then
+        self:UpdateWatchFrame(instanceId)
+    end
+
+    return newCount, complete
+end
+
+-- Reset entry progress
+-- @param instanceId: Instance identifier
+-- @param entryId: Entry identifier (if nil, resets all for instance)
+function Tracker:ResetEntryProgress(instanceId, entryId)
+    if not self.entryProgress[instanceId] then
+        return
+    end
+
+    if entryId then
+        self.entryProgress[instanceId][entryId] = nil
+    else
+        self.entryProgress[instanceId] = {}
+    end
+
+    KOL.db.profile.tracker.entryProgress = self.entryProgress
+end
+
 -- Check if all objectives in an instance are complete
 function Tracker:IsInstanceComplete(instanceId)
     local instanceData = self.instances[instanceId]
@@ -759,6 +852,12 @@ function Tracker:ResetInstance(instanceId)
         KOL.db.profile.tracker.collapsedGroups[instanceId] = {}
     end
 
+    -- Clear entry progress for this instance
+    if self.entryProgress then
+        self.entryProgress[instanceId] = {}
+        KOL.db.profile.tracker.entryProgress = self.entryProgress
+    end
+
     KOL.db.profile.tracker.bossKills = self.bossKills
     KOL.db.profile.tracker.multiNPCKills = self.multiNPCKills
     KOL.db.profile.tracker.multiPhaseKills = self.multiPhaseKills
@@ -784,6 +883,10 @@ function Tracker:ResetAll()
     if KOL.db.profile.tracker.collapsedGroups then
         KOL.db.profile.tracker.collapsedGroups = {}
     end
+
+    -- Clear all entry progress
+    self.entryProgress = {}
+    KOL.db.profile.tracker.entryProgress = self.entryProgress
 
     KOL.db.profile.tracker.bossKills = self.bossKills
     KOL.db.profile.tracker.multiNPCKills = self.multiNPCKills
@@ -934,6 +1037,50 @@ function Tracker:OnCombatLogEvent(...)
         -- ONLY process kills for the currently active instance to avoid cross-difficulty contamination
         -- (e.g., naxx_10 and naxx_25 have the same NPC IDs but should track separately)
         if instanceId == self.currentInstanceId then
+            -- Check custom tracker entries (new format with count support)
+            if data.entries and #data.entries > 0 then
+                for _, entry in ipairs(data.entries) do
+                    if entry.type == "kill" and entry.id then
+                        if entry.id == npcId then
+                            local entryId = "kill-" .. entry.id
+                            local requiredCount = entry.count or 1
+                            local currentProgress = self:GetEntryProgress(instanceId, entryId)
+
+                            -- Only increment if not already complete
+                            if currentProgress < requiredCount then
+                                local newCount, complete = self:IncrementEntryProgress(instanceId, entryId, requiredCount)
+                                if complete then
+                                    KOL:Print("Kill complete: " .. COLOR(data.color, entry.name) .. " [" .. newCount .. "/" .. requiredCount .. "]")
+                                else
+                                    KOL:Print("Kill progress: " .. COLOR(data.color, entry.name) .. " [" .. newCount .. "/" .. requiredCount .. "]")
+                                end
+                            end
+                            return
+                        end
+                    elseif entry.type == "multikill" and entry.ids then
+                        -- Check if the killed NPC is part of a multikill entry
+                        for _, id in ipairs(entry.ids) do
+                            if id == npcId then
+                                local entryId = "multi-" .. table.concat(entry.ids, "-")
+                                local requiredCount = entry.count or 1
+                                local currentProgress = self:GetEntryProgress(instanceId, entryId)
+
+                                -- Only increment if not already complete
+                                if currentProgress < requiredCount then
+                                    local newCount, complete = self:IncrementEntryProgress(instanceId, entryId, requiredCount)
+                                    if complete then
+                                        KOL:Print("Multikill complete: " .. COLOR(data.color, entry.name) .. " [" .. newCount .. "/" .. requiredCount .. "]")
+                                    else
+                                        KOL:Print("Multikill progress: " .. COLOR(data.color, entry.name) .. " [" .. newCount .. "/" .. requiredCount .. "]")
+                                    end
+                                end
+                                return
+                            end
+                        end
+                    end
+                end
+            end
+
             -- Check flat bosses list
             if data.bosses and #data.bosses > 0 then
                 for bossIndex, boss in ipairs(data.bosses) do
@@ -1389,6 +1536,31 @@ function Tracker:OnMonsterYell(text, npcName, ...)
     for instanceId, data in pairs(self.instances) do
         -- Only check yells for the currently active instance (same logic as NPC ID tracking)
         if instanceId == self.currentInstanceId then
+            -- Check custom tracker entries (new format with count support)
+            if data.entries and #data.entries > 0 then
+                for _, entry in ipairs(data.entries) do
+                    if entry.type == "yell" and entry.yell then
+                        local yellMatch = text:find(entry.yell, 1, true)
+                        if yellMatch then
+                            local entryId = "yell-" .. entry.yell
+                            local requiredCount = entry.count or 1
+                            local currentProgress = self:GetEntryProgress(instanceId, entryId)
+
+                            -- Only increment if not already complete
+                            if currentProgress < requiredCount then
+                                local newCount, complete = self:IncrementEntryProgress(instanceId, entryId, requiredCount)
+                                if complete then
+                                    KOL:Print("Yell complete: " .. COLOR(data.color, entry.name) .. " [" .. newCount .. "/" .. requiredCount .. "]")
+                                else
+                                    KOL:Print("Yell progress: " .. COLOR(data.color, entry.name) .. " [" .. newCount .. "/" .. requiredCount .. "]")
+                                end
+                            end
+                            return
+                        end
+                    end
+                end
+            end
+
             -- Check flat bosses
             if data.bosses and #data.bosses > 0 then
                 for bossIndex, boss in ipairs(data.bosses) do
@@ -1606,9 +1778,33 @@ function Tracker:OnLoot(message, ...)
 
     -- Check all instances for loot-based entries
     for instanceId, data in pairs(self.instances) do
-        -- Check flat entries/bosses
+        -- Check custom tracker entries (new format with count support)
+        if data.entries and #data.entries > 0 then
+            for _, entry in ipairs(data.entries) do
+                if entry.type == "loot" and entry.itemId then
+                    if entry.itemId == lootedItemId then
+                        local entryId = "loot-" .. entry.itemId
+                        local requiredCount = entry.count or 1
+                        local currentProgress = self:GetEntryProgress(instanceId, entryId)
+
+                        -- Only increment if not already complete
+                        if currentProgress < requiredCount then
+                            local newCount, complete = self:IncrementEntryProgress(instanceId, entryId, requiredCount)
+                            if complete then
+                                KOL:Print("Loot complete: " .. COLOR(data.color, entry.name) .. " [" .. newCount .. "/" .. requiredCount .. "]")
+                            else
+                                KOL:Print("Loot progress: " .. COLOR(data.color, entry.name) .. " [" .. newCount .. "/" .. requiredCount .. "]")
+                            end
+                        end
+                        return
+                    end
+                end
+            end
+        end
+
+        -- Check flat entries/bosses (legacy format)
         local entries = self:GetEntries(data)
-        if entries and #entries > 0 then
+        if entries and #entries > 0 and not data.entries then
             for entryIndex, entry in ipairs(entries) do
                 local detectionType = self:GetDetectionType(entry)
                 if detectionType == "loot" then
@@ -1625,8 +1821,8 @@ function Tracker:OnLoot(message, ...)
             end
         end
 
-        -- Check grouped entries
-        if data.groups and #data.groups > 0 then
+        -- Check grouped entries (old raid/dungeon format)
+        if data.groups and #data.groups > 0 and not data.entries then
             for groupIndex, group in ipairs(data.groups) do
                 local groupEntries = self:GetEntries(group)
                 if groupEntries then
@@ -1844,9 +2040,15 @@ function Tracker:UpdateZoneTracking()
     self.currentInstanceId = instanceId
 
     -- Destroy all active frames that don't match current zone
+    -- SKIP custom trackers - they are manually controlled and should persist
     for activeId, frame in pairs(self.activeFrames) do
         if activeId ~= instanceId then
-            self:DestroyWatchFrame(activeId)
+            -- Only auto-destroy dungeon/raid frames, not custom trackers
+            local activeData = self.instances[activeId]
+            local isCustom = activeData and (activeData.type ~= "dungeon" and activeData.type ~= "raid")
+            if not isCustom then
+                self:DestroyWatchFrame(activeId)
+            end
         end
     end
 
@@ -1881,6 +2083,48 @@ function Tracker:UpdateZoneTracking()
         end
     else
         KOL:DebugPrint("Tracker: No instance found for zone: " .. tostring(zoneName), 2)
+    end
+
+    -- Handle custom trackers with autoShow enabled
+    for id, data in pairs(self.instances) do
+        if data.type == "custom" and data.autoShow then
+            local shouldShow = false
+
+            -- If zones list is empty, show everywhere
+            if not data.zones or #data.zones == 0 then
+                shouldShow = true
+                KOL:DebugPrint("Tracker: Custom '" .. id .. "' autoShow=true, zones empty → show everywhere", 3)
+            else
+                -- Check if current zone matches any in the list
+                for _, zone in ipairs(data.zones) do
+                    if zone == zoneName or zone == subZoneName then
+                        shouldShow = true
+                        KOL:DebugPrint("Tracker: Custom '" .. id .. "' zone matched: " .. zone, 3)
+                        break
+                    end
+                end
+            end
+
+            if shouldShow then
+                -- Show the custom tracker
+                if not self.activeFrames[id] then
+                    local success, err = pcall(function()
+                        self:ShowWatchFrame(id)
+                    end)
+                    if not success then
+                        KOL:DebugPrint("Tracker: Custom autoShow error: " .. tostring(err), 1)
+                    else
+                        KOL:DebugPrint("Tracker: Custom '" .. id .. "' auto-shown", 2)
+                    end
+                end
+            else
+                -- Hide the custom tracker (if currently shown)
+                if self.activeFrames[id] then
+                    self:DestroyWatchFrame(id)
+                    KOL:DebugPrint("Tracker: Custom '" .. id .. "' auto-hidden (zone mismatch)", 2)
+                end
+            end
+        end
     end
 end
 
@@ -2370,7 +2614,14 @@ function Tracker:CreateWatchFrame(instanceId)
     -- Content scroll frame (custom implementation)
     local scrollFrame = CreateFrame("ScrollFrame", nil, frame)
     -- Only add scrollbar padding if scrollbar will be visible
-    local showScrollBarConfig = KOL.db.profile.tracker.showScrollBar
+    -- Use custom tracker setting for custom trackers, otherwise use global setting
+    local showScrollBarConfig
+    local isCustomTracker = data.type ~= "dungeon" and data.type ~= "raid"
+    if isCustomTracker and KOL.db.profile.tracker.customShowScrollBar ~= nil then
+        showScrollBarConfig = KOL.db.profile.tracker.customShowScrollBar
+    else
+        showScrollBarConfig = KOL.db.profile.tracker.showScrollBar
+    end
     if showScrollBarConfig == nil then
         showScrollBarConfig = false  -- Default to hidden
     end
@@ -2495,7 +2746,12 @@ function Tracker:CreateWatchFrame(instanceId)
     else
         scrollBar:SetBackdropColor(0.1, 0.1, 0.1, 0.9)
     end
-    scrollBar:SetBackdropBorderColor(0.2, 0.2, 0.2, 1)
+    local scrollBarBorderColor = GetInstanceSetting(instanceId, "scrollBarBorderColor")
+    if scrollBarBorderColor then
+        scrollBar:SetBackdropBorderColor(scrollBarBorderColor[1], scrollBarBorderColor[2], scrollBarBorderColor[3], scrollBarBorderColor[4] or 1)
+    else
+        scrollBar:SetBackdropBorderColor(0.2, 0.2, 0.2, 1)
+    end
 
     -- Scroll bar thumb (with per-instance color)
     local thumb = scrollBar:CreateTexture(nil, "OVERLAY")
@@ -2563,7 +2819,15 @@ function Tracker:CreateWatchFrame(instanceId)
             yRange or 0, scrollFrameHeight or 0, contentHeight or 0), 2)
 
         -- Check if scrollbar visibility is enabled in config
-        local showScrollBarConfig = KOL.db.profile.tracker.showScrollBar
+        -- Use custom tracker setting for custom trackers, otherwise use global setting
+        local showScrollBarConfig
+        local instanceData = Tracker.instances[instanceId]
+        local isCustom = instanceData and (instanceData.type ~= "dungeon" and instanceData.type ~= "raid")
+        if isCustom and KOL.db.profile.tracker.customShowScrollBar ~= nil then
+            showScrollBarConfig = KOL.db.profile.tracker.customShowScrollBar
+        else
+            showScrollBarConfig = KOL.db.profile.tracker.showScrollBar
+        end
         if showScrollBarConfig == nil then
             showScrollBarConfig = false  -- Default to hidden
         end
@@ -2727,7 +2991,14 @@ function Tracker:UpdateWatchFrame(instanceId)
     -- Update content width
     local scrollBarWidth = GetInstanceSetting(instanceId, "scrollBarWidth") or config.scrollBarWidth or 16
     -- Only add scrollbar padding if scrollbar is visible
-    local showScrollBarConfig = KOL.db.profile.tracker.showScrollBar
+    -- Use custom tracker setting for custom trackers, otherwise use global setting
+    local showScrollBarConfig
+    local isCustomTracker = data.type ~= "dungeon" and data.type ~= "raid"
+    if isCustomTracker and KOL.db.profile.tracker.customShowScrollBar ~= nil then
+        showScrollBarConfig = KOL.db.profile.tracker.customShowScrollBar
+    else
+        showScrollBarConfig = KOL.db.profile.tracker.showScrollBar
+    end
     if showScrollBarConfig == nil then
         showScrollBarConfig = false  -- Default to hidden
     end
@@ -2838,7 +3109,7 @@ function Tracker:UpdateWatchFrame(instanceId)
                 local timerSeparator = content:CreateFontString(nil, "OVERLAY")
                 timerSeparator:SetFont(CHAR_LIGATURESFONT, scaledObjectiveFontSize, CHAR_LIGATURESOUTLINE)
                 timerSeparator:SetPoint("LEFT", timerText, "RIGHT", 0, 0)
-                timerSeparator:SetText("|cFFAAAAAA" .. CHAR("ARROWS LEFTRIGHT") .. "|r")
+                timerSeparator:SetText("|cFFAAAAAA" .. CHAR("LEFTRIGHT") .. "|r")
 
                 -- BEST: portion (user font)
                 local bestText = content:CreateFontString(nil, "OVERLAY")
@@ -2946,11 +3217,11 @@ function Tracker:UpdateWatchFrame(instanceId)
                 local speedText
                 if currentSpeedIncrease > 0 then
                     speedDisplayColor = nuclearGreen
-                    speedArrowGlyph = CHAR("ARROWS UP")
+                    speedArrowGlyph = CHAR("UP")
                     speedText = currentSpeedIncrease .. "%"
                 elseif currentSpeedIncrease < 0 then
                     speedDisplayColor = redColor
-                    speedArrowGlyph = CHAR("ARROWS DOWN")
+                    speedArrowGlyph = CHAR("DOWN")
                     speedText = currentSpeedIncrease .. "%"
                 else
                     speedDisplayColor = whiteColor
@@ -3048,18 +3319,28 @@ function Tracker:UpdateWatchFrame(instanceId)
             local textHeight = bossText:GetStringHeight()
             bossBtn:SetHeight(textHeight + 2)
 
-            -- Shift+Click to mark/unmark boss as complete
+            -- Store values for closures (avoid stale captured values)
+            local storedBossIndex = i
+            local storedBossName = boss.name
+            local storedInstanceId = instanceId
+
+            -- Shift+Click to mark/unmark boss as complete, Ctrl+Click to reset
             bossBtn:SetScript("OnClick", function(self)
-                if IsShiftKeyDown() then
-                    -- Toggle boss killed status
-                    if killed then
-                        Tracker:UnmarkBossKilled(instanceId, i)
-                        KOL:PrintTag("Unmarked: " .. boss.name)
+                if IsControlKeyDown() then
+                    -- Reset boss progress/status
+                    Tracker:UnmarkBossKilled(storedInstanceId, storedBossIndex)
+                    KOL:PrintTag("Reset: " .. storedBossName)
+                    Tracker:RefreshAllWatchFrames()
+                elseif IsShiftKeyDown() then
+                    -- Toggle boss killed status (check current state, not captured value)
+                    local isCurrentlyKilled = Tracker:IsBossKilled(storedInstanceId, storedBossIndex)
+                    if isCurrentlyKilled then
+                        Tracker:UnmarkBossKilled(storedInstanceId, storedBossIndex)
+                        KOL:PrintTag("Unmarked: " .. storedBossName)
                     else
-                        Tracker:MarkBossKilled(instanceId, i)
-                        KOL:PrintTag("Marked complete: " .. boss.name)
+                        Tracker:MarkBossKilled(storedInstanceId, storedBossIndex)
+                        KOL:PrintTag("Marked complete: " .. storedBossName)
                     end
-                    -- Refresh all watch frames
                     Tracker:RefreshAllWatchFrames()
                 end
             end)
@@ -3072,8 +3353,457 @@ function Tracker:UpdateWatchFrame(instanceId)
             contentHeight = contentHeight + textHeight + itemSpacing
         end
 
-    -- Render grouped bosses (with group headers)
-    elseif data.groups and #data.groups > 0 then
+    -- Render custom tracker entries (new unified format with groups)
+    elseif data.entries and #data.entries > 0 then
+        -- Speed display for custom trackers at TOP (if showSpeed is enabled)
+        if data.showSpeed then
+            -- Get current speed
+            local currentSpeedIncrease = self:GetPlayerMovementSpeed()  -- Percentage over base
+            local currentSpeedTotal = self:GetPlayerMovementSpeedTotal() or 100  -- Total percentage
+
+            -- Define colors
+            local nuclearGreen = KOL.Colors:GetNuclear("GREEN") or "00FF00"
+            local redColor = "FF4444"  -- Hardcoded hex (GetPastel returns table, not string)
+            local whiteColor = "FFFFFF"
+
+            -- Color and arrow glyph based on speed increase
+            local speedDisplayColor
+            local speedArrowGlyph
+            local speedText
+            if currentSpeedIncrease > 0 then
+                speedDisplayColor = nuclearGreen
+                speedArrowGlyph = CHAR("UP")
+                speedText = currentSpeedIncrease .. "%"
+            elseif currentSpeedIncrease < 0 then
+                speedDisplayColor = redColor
+                speedArrowGlyph = CHAR("DOWN")
+                speedText = currentSpeedIncrease .. "%"
+            else
+                speedDisplayColor = whiteColor
+                speedArrowGlyph = CHAR_LIGHTNING_HOLLOW
+                speedText = "BASE"
+            end
+
+            -- SPEED: portion (user font)
+            local speedDisplayText = content:CreateFontString(nil, "OVERLAY")
+            speedDisplayText:SetFont(objectiveFontPath, scaledObjectiveFontSize, objectiveFontOutline)
+            speedDisplayText:SetPoint("TOPLEFT", content, "TOPLEFT", 4, yOffset)
+            speedDisplayText:SetJustifyH("LEFT")
+            speedDisplayText:SetText("SPEED: |cFF" .. speedDisplayColor .. speedText .. "|r ")
+
+            -- Arrow/lightning indicator (ligatures font for guaranteed glyph rendering)
+            local speedArrowText = content:CreateFontString(nil, "OVERLAY")
+            speedArrowText:SetFont(CHAR_LIGATURESFONT, scaledObjectiveFontSize, CHAR_LIGATURESOUTLINE)
+            speedArrowText:SetPoint("LEFT", speedDisplayText, "RIGHT", 0, 0)
+            speedArrowText:SetText("|cFF" .. speedDisplayColor .. speedArrowGlyph .. "|r")
+
+            -- Create invisible frame for tooltip (spans both text elements)
+            local speedTooltipFrame = CreateFrame("Frame", nil, content)
+            speedTooltipFrame:SetPoint("TOPLEFT", speedDisplayText, "TOPLEFT", 0, 0)
+            speedTooltipFrame:SetPoint("BOTTOMRIGHT", speedArrowText, "BOTTOMRIGHT", 0, 0)
+            speedTooltipFrame:EnableMouse(true)
+            speedTooltipFrame:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:AddLine("Movement Speed", 1, 1, 1)
+                GameTooltip:AddDoubleLine("Total Speed:", currentSpeedTotal .. "%", 1, 1, 1, 0, 1, 0)
+                GameTooltip:AddDoubleLine("Over Base:", currentSpeedIncrease .. "%", 1, 1, 1, 0, 1, 0)
+                GameTooltip:Show()
+            end)
+            speedTooltipFrame:SetScript("OnLeave", function(self)
+                GameTooltip:Hide()
+            end)
+
+            table.insert(frame.bossTexts, speedDisplayText)
+            table.insert(frame.bossTexts, speedArrowText)
+            yOffset = yOffset - speedDisplayText:GetStringHeight() - 6
+            contentHeight = contentHeight + speedDisplayText:GetStringHeight() + 6
+        end
+
+        -- Organize entries by group (using data.groups order, not entry order)
+        local ungrouped = {}
+        local grouped = {}  -- {groupName = {entries}}
+
+        -- Build groupOrder from data.groups (this is the canonical order)
+        local groupOrder = {}
+        if data.groups then
+            for _, g in ipairs(data.groups) do
+                table.insert(groupOrder, g.name)
+                grouped[g.name] = {}  -- Pre-create empty arrays for all groups
+            end
+        end
+
+        -- Distribute entries into groups
+        for i, entry in ipairs(data.entries) do
+            local grp = entry.group or ""
+            if grp == "" then
+                table.insert(ungrouped, entry)
+            elseif grouped[grp] then
+                -- Group exists in data.groups
+                table.insert(grouped[grp], entry)
+            else
+                -- Entry references a group that doesn't exist - treat as ungrouped
+                table.insert(ungrouped, entry)
+            end
+        end
+
+        -- Helper function to render a single entry
+        local function RenderEntry(entry, indented)
+            local indent = indented and 8 or 4
+
+            -- Get count requirement and current progress
+            local requiredCount = entry.count or 1
+            local entryId = nil
+
+            if entry.type == "kill" and entry.id then
+                entryId = "kill-" .. entry.id
+            elseif entry.type == "loot" and entry.itemId then
+                entryId = "loot-" .. entry.itemId
+            elseif entry.type == "yell" and entry.yell then
+                entryId = "yell-" .. entry.yell
+            elseif entry.type == "multikill" and entry.ids then
+                entryId = "multi-" .. table.concat(entry.ids, "-")
+            end
+
+            -- Fallback: Generate entryId from entry name if not already set
+            -- This ensures ALL entries can be clicked to mark complete
+            if not entryId and entry.name then
+                entryId = "entry-" .. string.gsub(entry.name, "%s+", "-")
+            end
+
+            -- Get current progress for count-based entries
+            local currentProgress = 0
+            local completed = false
+
+            if entryId then
+                currentProgress = self:GetEntryProgress(instanceId, entryId)
+                -- Complete if progress >= required OR if manually marked complete
+                completed = currentProgress >= requiredCount or self:IsBossKilled(instanceId, entryId)
+            elseif entry.condition and type(entry.condition) == "function" then
+                local success, result = pcall(entry.condition)
+                completed = success and result
+            end
+
+            local colorHex = completed and killedColorHex or unkilledColorHex
+            local checkMark = completed and CHAR_OBJECTIVE_COMPLETE or CHAR_OBJECTIVE_BOX
+
+            -- Create clickable button for the entry
+            local entryBtn = CreateFrame("Button", nil, content)
+            entryBtn:SetPoint("TOPLEFT", content, "TOPLEFT", indent, yOffset)
+            entryBtn:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, yOffset)
+            entryBtn:EnableMouse(true)
+            entryBtn:RegisterForClicks("AnyUp")
+
+            -- Icon (using ligatures font for proper Unicode rendering)
+            local entryIcon = entryBtn:CreateFontString(nil, "OVERLAY")
+            entryIcon:SetFont(CHAR_LIGATURESFONT, scaledObjectiveFontSize, CHAR_LIGATURESOUTLINE)
+            entryIcon:SetPoint("LEFT", entryBtn, "LEFT", 0, 0)
+            entryIcon:SetText("|cFF" .. colorHex .. checkMark .. "|r")
+
+            -- Text - ONLY show name, no note
+            -- Add prefix if showPrefix is enabled
+            local prefix = ""
+            if data.showPrefix then
+                local entryType = entry.type or "kill"
+                if entryType == "kill" then
+                    prefix = "|cFF00FF00*|r"
+                elseif entryType == "loot" then
+                    prefix = "|cFFFFD700$|r"
+                elseif entryType == "yell" then
+                    prefix = "|cFF00BFFF!|r"
+                elseif entryType == "multikill" then
+                    prefix = "|cFFFF6600#|r"
+                end
+            end
+
+            -- Add progress [X/Y] for ALL entries (always show count)
+            local displayText = (prefix ~= "" and prefix .. " " or "") .. (entry.name or "Unnamed Entry")
+
+            -- Calculate progress percentage for gradient
+            local progressPct = currentProgress / requiredCount
+            if progressPct > 1 then progressPct = 1 end
+
+            -- Gradient from red (0%) -> yellow (50%) -> green (100%)
+            local r, g, b
+            if completed then
+                -- Completed: bright green
+                r, g, b = 0.4, 1.0, 0.4
+            elseif progressPct <= 0.5 then
+                -- Red to Yellow (0% to 50%)
+                local t = progressPct * 2  -- 0 to 1
+                r = 1.0
+                g = t
+                b = 0.2
+            else
+                -- Yellow to Green (50% to 100%)
+                local t = (progressPct - 0.5) * 2  -- 0 to 1
+                r = 1.0 - t * 0.6
+                g = 1.0
+                b = 0.2 + t * 0.2
+            end
+
+            -- Convert to hex
+            local progressHex = string.format("%02X%02X%02X", r * 255, g * 255, b * 255)
+
+            -- Format: name [current/required] with gradient on numbers only
+            -- Brackets and slash in subtle gray, numbers in gradient
+            local bracketColor = "888888"
+            displayText = displayText .. " |cFF" .. bracketColor .. "[|r|cFF" .. progressHex .. currentProgress .. "|r|cFF" .. bracketColor .. "/|r|cFF" .. progressHex .. requiredCount .. "|r|cFF" .. bracketColor .. "]|r"
+
+            local entryText = entryBtn:CreateFontString(nil, "OVERLAY")
+            entryText:SetFont(objectiveFontPath, scaledObjectiveFontSize, fontOutline)
+            entryText:SetPoint("LEFT", entryIcon, "RIGHT", 2, 0)
+            entryText:SetPoint("RIGHT", entryBtn, "RIGHT", -4, 0)
+            entryText:SetJustifyH("LEFT")
+            entryText:SetWordWrap(true)
+            entryText:SetText("|cFF" .. colorHex .. displayText .. "|r")
+
+            -- Calculate button height based on text
+            local textHeight = entryText:GetStringHeight()
+            entryBtn:SetHeight(textHeight + 2)
+
+            -- Store values for closures
+            local storedEntryId = entryId
+            local storedCompleted = completed
+            local storedRequiredCount = requiredCount
+            local storedCurrentProgress = currentProgress
+            local storedInstanceId = instanceId
+
+            -- Store entry's group for auto-collapse
+            local storedEntryGroup = entry.group
+
+            -- Shift+Click to mark/unmark as complete, Ctrl+Click to reset progress
+            entryBtn:SetScript("OnClick", function(self)
+                if storedEntryId then
+                    if IsControlKeyDown() then
+                        -- Reset progress to 0
+                        Tracker:ResetEntryProgress(storedInstanceId, storedEntryId)
+                        Tracker:UnmarkBossKilled(storedInstanceId, storedEntryId)
+                        KOL:PrintTag("Reset progress: " .. (entry.name or "Entry"))
+                        Tracker:RefreshAllWatchFrames()
+                    elseif IsShiftKeyDown() then
+                        if storedCompleted then
+                            Tracker:UnmarkBossKilled(storedInstanceId, storedEntryId)
+                            -- Also reset progress when unmarking
+                            Tracker:ResetEntryProgress(storedInstanceId, storedEntryId)
+                            KOL:PrintTag("Unmarked: " .. (entry.name or "Entry"))
+                        else
+                            -- Mark complete and set progress to required count
+                            Tracker:SetEntryProgress(storedInstanceId, storedEntryId, storedRequiredCount)
+                            Tracker:MarkBossKilled(storedInstanceId, storedEntryId)
+                            KOL:PrintTag("Marked complete: " .. (entry.name or "Entry"))
+
+                            -- Auto-collapse group if all entries complete and auto-collapse is enabled
+                            local autoCollapseEnabled = KOL.db.profile.tracker.customAutoCollapse
+                            if autoCollapseEnabled == nil then autoCollapseEnabled = true end  -- Default enabled
+
+                            if storedEntryGroup and storedEntryGroup ~= "" and autoCollapseEnabled then
+                                -- Check if all entries in this group are now complete
+                                local allComplete = true
+                                local groupIndex = nil
+
+                                -- Find group index for collapse state
+                                if data.groups then
+                                    for gi, g in ipairs(data.groups) do
+                                        if g.name == storedEntryGroup then
+                                            groupIndex = gi
+                                            break
+                                        end
+                                    end
+                                end
+
+                                -- Check all entries in this group
+                                if data.entries then
+                                    for _, e in ipairs(data.entries) do
+                                        if e.group == storedEntryGroup then
+                                            local eId = nil
+                                            if e.type == "kill" and e.id then
+                                                eId = "kill-" .. e.id
+                                            elseif e.type == "loot" and e.itemId then
+                                                eId = "loot-" .. e.itemId
+                                            elseif e.type == "yell" and e.yell then
+                                                eId = "yell-" .. e.yell
+                                            elseif e.type == "multikill" and e.ids then
+                                                eId = "multi-" .. table.concat(e.ids, "-")
+                                            elseif e.name then
+                                                eId = "entry-" .. string.gsub(e.name, "%s+", "-")
+                                            end
+
+                                            if eId then
+                                                local eCount = e.count or 1
+                                                local eProgress = Tracker:GetEntryProgress(storedInstanceId, eId)
+                                                local eComplete = eProgress >= eCount or Tracker:IsBossKilled(storedInstanceId, eId)
+                                                if not eComplete then
+                                                    allComplete = false
+                                                    break
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+
+                                -- Auto-collapse if all entries in group are complete
+                                if allComplete and groupIndex then
+                                    if not KOL.db.profile.tracker.collapsedGroups then
+                                        KOL.db.profile.tracker.collapsedGroups = {}
+                                    end
+                                    if not KOL.db.profile.tracker.collapsedGroups[storedInstanceId] then
+                                        KOL.db.profile.tracker.collapsedGroups[storedInstanceId] = {}
+                                    end
+                                    KOL.db.profile.tracker.collapsedGroups[storedInstanceId][groupIndex] = true
+                                    KOL:DebugPrint("Tracker: Auto-collapsed completed group '" .. storedEntryGroup .. "' in " .. storedInstanceId, 2)
+                                end
+                            end
+                        end
+                        Tracker:RefreshAllWatchFrames()
+                    end
+                end
+            end)
+
+            -- Hover tooltip - show note and progress here
+            entryBtn:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:AddLine(entry.name or "Entry", 1, 1, 1)
+                if entry.note and entry.note ~= "" then
+                    GameTooltip:AddLine(entry.note, 0.7, 0.85, 0.7)
+                end
+                -- Show progress info
+                if storedRequiredCount > 1 then
+                    local progressText = "Progress: " .. storedCurrentProgress .. "/" .. storedRequiredCount
+                    if storedCompleted then
+                        progressText = progressText .. " (Complete!)"
+                    end
+                    GameTooltip:AddLine(progressText, 0.5, 0.8, 1)
+                end
+                if storedEntryId then
+                    GameTooltip:AddLine(" ")
+                    GameTooltip:AddLine("Shift+Click to toggle completion", 0.5, 0.5, 0.5)
+                    GameTooltip:AddLine("Ctrl+Click to reset progress", 0.5, 0.5, 0.5)
+                end
+                GameTooltip:Show()
+            end)
+            entryBtn:SetScript("OnLeave", function(self)
+                GameTooltip:Hide()
+            end)
+
+            table.insert(frame.bossTexts, entryBtn)
+
+            -- Update yOffset
+            local itemSpacing = 1
+            yOffset = yOffset - textHeight - itemSpacing
+            contentHeight = contentHeight + textHeight + itemSpacing
+        end
+
+        -- Render ungrouped entries first (if any)
+        if #ungrouped > 0 then
+            for _, entry in ipairs(ungrouped) do
+                RenderEntry(entry, false)
+            end
+            -- Small gap after ungrouped
+            if #groupOrder > 0 then
+                yOffset = yOffset - 4
+                contentHeight = contentHeight + 4
+            end
+        end
+
+        -- Render each group with header
+        for groupIdx, groupName in ipairs(groupOrder) do
+            local entries = grouped[groupName]
+
+            -- Check if all entries in group are completed
+            local allCompleted = true
+            for _, entry in ipairs(entries) do
+                local entryId = nil
+                if entry.type == "kill" and entry.id then
+                    entryId = "kill-" .. entry.id
+                elseif entry.type == "loot" and entry.itemId then
+                    entryId = "loot-" .. entry.itemId
+                elseif entry.type == "yell" and entry.yell then
+                    entryId = "yell-" .. entry.yell
+                elseif entry.type == "multikill" and entry.ids then
+                    entryId = "multi-" .. table.concat(entry.ids, "-")
+                end
+                if entryId and not self:IsBossKilled(instanceId, entryId) then
+                    allCompleted = false
+                    break
+                end
+            end
+
+            -- Use Easter Green for completed groups, instance color otherwise
+            local groupHeaderColor = allCompleted and KOL.Colors:GetPastel("EASTER_GREEN") or instanceColor
+            local groupHeaderColorHex = KOL.Colors:ToHex(groupHeaderColor)
+
+            -- Check collapsed state
+            local isCollapsed = self:IsGroupCollapsed(instanceId, groupIdx)
+            local collapseIcon = isCollapsed and CHAR_ARROW_RIGHTFILLED .. " " or CHAR_ARROW_DOWNFILLED .. " "
+
+            -- Group header (clickable button for collapse/expand)
+            local groupHeaderBtn = CreateFrame("Button", nil, content)
+            groupHeaderBtn:SetPoint("TOPLEFT", content, "TOPLEFT", 2, yOffset)
+            groupHeaderBtn:SetPoint("TOPRIGHT", content, "TOPRIGHT", -2, yOffset)
+            groupHeaderBtn:SetHeight(scaledGroupFontSize + 4)
+            groupHeaderBtn:EnableMouse(true)
+            groupHeaderBtn:RegisterForClicks("AnyUp")
+
+            -- Icon (using symbol font for proper Unicode rendering)
+            local iconFontPath, iconFontSize, iconFontOutline = CHAR_LIGATURESFONT, scaledGroupFontSize, CHAR_LIGATURESOUTLINE
+            local groupIcon = groupHeaderBtn:CreateFontString(nil, "OVERLAY")
+            groupIcon:SetFont(iconFontPath, iconFontSize, iconFontOutline)
+            groupIcon:SetPoint("LEFT", groupHeaderBtn, "LEFT", 0, 0)
+            groupIcon:SetText("|cFF" .. groupHeaderColorHex .. collapseIcon .. "|r")
+            groupHeaderBtn.icon = groupIcon
+
+            -- Text (using configured group font)
+            local groupHeader = groupHeaderBtn:CreateFontString(nil, "OVERLAY")
+            groupHeader:SetFont(groupFontPath, scaledGroupFontSize, groupFontOutline)
+            groupHeader:SetPoint("LEFT", groupIcon, "RIGHT", 0, 0)
+            groupHeader:SetJustifyH("LEFT")
+            groupHeader:SetText("|cFF" .. groupHeaderColorHex .. "[" .. groupName .. "]|r")
+            groupHeaderBtn.text = groupHeader
+            groupHeaderBtn.groupHeaderColorHex = groupHeaderColorHex
+            groupHeaderBtn.groupName = groupName
+
+            -- Single click to toggle collapse
+            groupHeaderBtn.groupIndex = groupIdx
+            groupHeaderBtn:SetScript("OnClick", function(self, button)
+                if button == "LeftButton" then
+                    Tracker:ToggleGroupCollapsed(instanceId, self.groupIndex)
+                end
+            end)
+
+            -- Mouseover highlight
+            groupHeaderBtn:SetScript("OnEnter", function(self)
+                local currentIcon = Tracker:IsGroupCollapsed(instanceId, groupIdx) and CHAR_ARROW_RIGHTFILLED .. " " or CHAR_ARROW_DOWNFILLED .. " "
+                self.icon:SetText("|cFF" .. self.groupHeaderColorHex .. currentIcon .. "|r")
+                self.text:SetText("|cFF" .. self.groupHeaderColorHex .. "[" .. self.groupName .. "]|r|cFFFFFFFF " .. CHAR_ARROW_LEFTFILLED .. "|r")
+            end)
+            groupHeaderBtn:SetScript("OnLeave", function(self)
+                local currentIcon = Tracker:IsGroupCollapsed(instanceId, groupIdx) and CHAR_ARROW_RIGHTFILLED .. " " or CHAR_ARROW_DOWNFILLED .. " "
+                self.icon:SetText("|cFF" .. self.groupHeaderColorHex .. currentIcon .. "|r")
+                self.text:SetText("|cFF" .. self.groupHeaderColorHex .. "[" .. self.groupName .. "]|r")
+            end)
+
+            table.insert(frame.bossTexts, groupHeaderBtn)
+
+            local headerHeight = groupHeader:GetStringHeight() + 4
+            yOffset = yOffset - headerHeight - 1
+            contentHeight = contentHeight + headerHeight + 1
+
+            -- Group entries (only render if not collapsed)
+            if not isCollapsed then
+                for _, entry in ipairs(entries) do
+                    RenderEntry(entry, true)  -- Indented
+                end
+            end
+
+            -- Add spacing after group (unless it's the last group)
+            if groupIdx < #groupOrder then
+                yOffset = yOffset - 4
+                contentHeight = contentHeight + 4
+            end
+        end
+
+    -- Render grouped bosses (OLD format with group.bosses - for raids/dungeons)
+    elseif data.groups and #data.groups > 0 and data.groups[1].bosses then
         for groupIndex, group in ipairs(data.groups) do
             -- Check if group is collapsed
             local isCollapsed = self:IsGroupCollapsed(instanceId, groupIndex)
@@ -3198,18 +3928,28 @@ function Tracker:UpdateWatchFrame(instanceId)
                     local textHeight = bossText:GetStringHeight()
                     bossBtn:SetHeight(textHeight + 2)
 
-                    -- Shift+Click to mark/unmark boss as complete
+                    -- Store values for closures (avoid stale captured values)
+                    local storedBossId = bossId
+                    local storedBossName = boss.name
+                    local storedInstanceId = instanceId
+
+                    -- Shift+Click to mark/unmark boss as complete, Ctrl+Click to reset
                     bossBtn:SetScript("OnClick", function(self)
-                        if IsShiftKeyDown() then
-                            -- Toggle boss killed status
-                            if killed then
-                                Tracker:UnmarkBossKilled(instanceId, bossId)
-                                KOL:PrintTag("Unmarked: " .. boss.name)
+                        if IsControlKeyDown() then
+                            -- Reset boss progress/status
+                            Tracker:UnmarkBossKilled(storedInstanceId, storedBossId)
+                            KOL:PrintTag("Reset: " .. storedBossName)
+                            Tracker:RefreshAllWatchFrames()
+                        elseif IsShiftKeyDown() then
+                            -- Toggle boss killed status (check current state, not captured value)
+                            local isCurrentlyKilled = Tracker:IsBossKilled(storedInstanceId, storedBossId)
+                            if isCurrentlyKilled then
+                                Tracker:UnmarkBossKilled(storedInstanceId, storedBossId)
+                                KOL:PrintTag("Unmarked: " .. storedBossName)
                             else
-                                Tracker:MarkBossKilled(instanceId, bossId)
-                                KOL:PrintTag("Marked complete: " .. boss.name)
+                                Tracker:MarkBossKilled(storedInstanceId, storedBossId)
+                                KOL:PrintTag("Marked complete: " .. storedBossName)
                             end
-                            -- Refresh all watch frames
                             Tracker:RefreshAllWatchFrames()
                         end
                     end)
@@ -3268,12 +4008,13 @@ function Tracker:UpdateWatchFrame(instanceId)
             yOffset = yOffset - textHeight - itemSpacing
             contentHeight = contentHeight + textHeight + itemSpacing
         end
+
     else
         -- No bosses or objectives
         local noDataText = content:CreateFontString(nil, "OVERLAY")
         noDataText:SetFont(objectiveFontPath, scaledObjectiveFontSize, fontOutline)
         noDataText:SetPoint("TOPLEFT", content, "TOPLEFT", 4, yOffset)
-        noDataText:SetText("|cFFAAAAAAAANo objectives defined|r")
+        noDataText:SetText("|cFFAAAAAANo objectives defined|r")
         table.insert(frame.bossTexts, noDataText)
         contentHeight = 20
     end
@@ -3292,7 +4033,14 @@ function Tracker:UpdateWatchFrame(instanceId)
     -- If content is wider than available space, expand the frame
     if maxContentWidth > 0 then
         local scrollBarWidth = GetInstanceSetting(instanceId, "scrollBarWidth") or config.scrollBarWidth or 16
-        local showScrollBarConfig = KOL.db.profile.tracker.showScrollBar
+        -- Use custom tracker setting for custom trackers, otherwise use global setting
+        local showScrollBarConfig
+        local isCustomTracker = data.type ~= "dungeon" and data.type ~= "raid"
+        if isCustomTracker and KOL.db.profile.tracker.customShowScrollBar ~= nil then
+            showScrollBarConfig = KOL.db.profile.tracker.customShowScrollBar
+        else
+            showScrollBarConfig = KOL.db.profile.tracker.showScrollBar
+        end
         if showScrollBarConfig == nil then
             showScrollBarConfig = false
         end
@@ -3310,12 +4058,12 @@ function Tracker:UpdateWatchFrame(instanceId)
         end
     end
 
-    -- Update content size
-    content:SetHeight(math.max(contentHeight, 1))
+    -- Update content size (add 8px bottom buffer to prevent descender cutoff - g, j, y, p, q)
+    content:SetHeight(math.max(contentHeight + 8, 1))
 
     -- Dynamically resize frame to fit content (no max, auto-size only)
     local titleBarHeight = 28  -- Title bar + top border
-    local bottomBorderPadding = 4  -- Bottom padding to prevent scrollbar and text clipping
+    local bottomBorderPadding = 8  -- Bottom padding to prevent descender cutoff and scrollbar clipping
     local minFrameHeight = 60  -- Minimum frame height to prevent issues
     local actualFrameHeight = math.max(minFrameHeight, contentHeight + titleBarHeight + bottomBorderPadding)
 
@@ -3333,7 +4081,14 @@ function Tracker:UpdateWatchFrame(instanceId)
         local scrollRange = scrollFrame:GetVerticalScrollRange() or 0
 
         -- Get current visibility config
-        local showScrollBarConfig = KOL.db.profile.tracker.showScrollBar
+        -- Use custom tracker setting for custom trackers, otherwise use global setting
+        local showScrollBarConfig
+        local isCustomTracker = data.type ~= "dungeon" and data.type ~= "raid"
+        if isCustomTracker and KOL.db.profile.tracker.customShowScrollBar ~= nil then
+            showScrollBarConfig = KOL.db.profile.tracker.customShowScrollBar
+        else
+            showScrollBarConfig = KOL.db.profile.tracker.showScrollBar
+        end
         if showScrollBarConfig == nil then
             showScrollBarConfig = false  -- Default to hidden
         end
@@ -3422,6 +4177,22 @@ function Tracker:ShowWatchFrame(instanceId)
     KOL:DebugPrint("Tracker: Watch frame shown successfully: " .. instanceId .. " (IsShown: " .. tostring(frame:IsShown()) .. ")", 2)
 end
 
+-- Hide watch frame for an instance (without destroying it)
+function Tracker:HideWatchFrame(instanceId)
+    KOL:DebugPrint("Tracker: HideWatchFrame called for: " .. instanceId, 2)
+
+    local frame = self.activeFrames[instanceId]
+    if not frame then
+        KOL:DebugPrint("Tracker: No active frame to hide for: " .. instanceId, 2)
+        return
+    end
+
+    -- Just hide the frame (don't destroy it)
+    frame:Hide()
+
+    KOL:DebugPrint("Tracker: Watch frame hidden: " .. instanceId, 2)
+end
+
 -- Refresh all active watch frames (useful when config changes like fontScale)
 function Tracker:RefreshAllWatchFrames()
     KOL:DebugPrint("Tracker: Refreshing all active watch frames", 2)
@@ -3444,9 +4215,38 @@ function Tracker:ToggleMinimize(frame)
         -- Maximize
         frame:SetHeight(frame.maxHeight or 300)
         frame.scrollFrame:Show()
-        if frame.scrollBar then frame.scrollBar:Show() end
-        if frame.scrollUpBtn then frame.scrollUpBtn:Show() end
-        if frame.scrollDownBtn then frame.scrollDownBtn:Show() end
+
+        -- Only show scrollbar if config allows AND content requires it
+        -- Use custom tracker setting for custom trackers, otherwise use global setting
+        local showScrollBarConfig
+        local instanceData = frame.instanceId and self.instances[frame.instanceId]
+        local isCustomTracker = instanceData and (instanceData.type ~= "dungeon" and instanceData.type ~= "raid")
+        if isCustomTracker and KOL.db.profile.tracker.customShowScrollBar ~= nil then
+            showScrollBarConfig = KOL.db.profile.tracker.customShowScrollBar
+        else
+            showScrollBarConfig = KOL.db.profile.tracker.showScrollBar
+        end
+        if showScrollBarConfig == nil then showScrollBarConfig = false end  -- Default hidden
+
+        if showScrollBarConfig then
+            -- Check if scrollbar is actually needed (content exceeds visible area)
+            local scrollRange = frame.scrollFrame:GetVerticalScrollRange() or 0
+            if scrollRange > 2 and frame.scrollBar then
+                frame.scrollBar:Show()
+                if frame.scrollUpBtn then frame.scrollUpBtn:Show() end
+                if frame.scrollDownBtn then frame.scrollDownBtn:Show() end
+            else
+                if frame.scrollBar then frame.scrollBar:Hide() end
+                if frame.scrollUpBtn then frame.scrollUpBtn:Hide() end
+                if frame.scrollDownBtn then frame.scrollDownBtn:Hide() end
+            end
+        else
+            -- Scrollbar disabled in config, keep it hidden
+            if frame.scrollBar then frame.scrollBar:Hide() end
+            if frame.scrollUpBtn then frame.scrollUpBtn:Hide() end
+            if frame.scrollDownBtn then frame.scrollDownBtn:Hide() end
+        end
+
         if frame.minimizeBtn and frame.minimizeBtn.text then
             frame.minimizeBtn.text:SetText(CHAR_UI_MINIMIZE)
         end
@@ -3537,12 +4337,22 @@ function Tracker:CreateCustomPanel(name, zones, color, panelType, data)
         type = "custom",
         zones = zones or {},
         color = color or "PINK",
+        autoShow = data.autoShow or false,
+        showSpeed = data.showSpeed or false,
+        showPrefix = data.showPrefix or false,
         objectives = {},
         groups = {},
     }
 
-    -- Add objectives or groups based on panel type
-    if panelType == "objective" and data.objectives then
+    -- Add entries/objectives/groups based on data format
+    if data.entries then
+        -- New unified entries format - save BOTH entries AND groups
+        panelData.entries = data.entries
+        panelData.groups = data.groups or {}
+        panelData.autoShow = data.autoShow or false
+        panelData.showSpeed = data.showSpeed or false
+        panelData.showPrefix = data.showPrefix or false
+    elseif panelType == "objective" and data.objectives then
         panelData.objectives = data.objectives
     elseif panelType == "grouped" and data.groups then
         panelData.groups = data.groups
@@ -3557,7 +4367,7 @@ function Tracker:CreateCustomPanel(name, zones, color, panelType, data)
     end
     KOL.db.profile.tracker.customPanels[panelId] = panelData
 
-    KOL:PrintTag("Created custom panel: " .. GREEN(name))
+    KOL:PrintTag("Created custom tracker: " .. GREEN(name))
 
     -- Refresh config UI
     if KOL.PopulateTrackerConfigUI then
@@ -3582,13 +4392,43 @@ function Tracker:UpdateCustomPanel(panelId, name, zones, color, panelType, data)
     if zones then panelData.zones = zones end
     if color then panelData.color = color end
 
-    -- Update objectives or groups
-    if panelType == "objective" and data.objectives then
+    -- Update autoShow (explicit nil check since false is valid)
+    if data.autoShow ~= nil then
+        panelData.autoShow = data.autoShow
+    end
+
+    -- Update showSpeed (explicit nil check since false is valid)
+    if data.showSpeed ~= nil then
+        panelData.showSpeed = data.showSpeed
+    end
+
+    -- Update showPrefix (explicit nil check since false is valid)
+    if data.showPrefix ~= nil then
+        panelData.showPrefix = data.showPrefix
+    end
+
+    -- Update entries/objectives/groups based on data format
+    if data.entries then
+        -- New unified entries format - save BOTH entries AND groups
+        panelData.entries = data.entries
+        panelData.groups = data.groups or {}
+        panelData.objectives = {}
+        panelData.autoShow = data.autoShow or false
+        panelData.showSpeed = data.showSpeed or false
+        panelData.showPrefix = data.showPrefix or false
+        -- DEBUG: Log what we're saving
+        KOL:DebugPrint("UPDATE: Saving " .. #data.entries .. " entries, " .. (data.groups and #data.groups or 0) .. " groups", 1)
+        for i, entry in ipairs(data.entries) do
+            KOL:DebugPrint("UPDATE: Entry[" .. i .. "] name='" .. (entry.name or "?") .. "' group='" .. (entry.group or "") .. "' type=" .. (entry.type or "?"), 1)
+        end
+    elseif panelType == "objective" and data.objectives then
         panelData.objectives = data.objectives
         panelData.groups = {}
+        panelData.entries = nil
     elseif panelType == "grouped" and data.groups then
         panelData.groups = data.groups
         panelData.objectives = {}
+        panelData.entries = nil
     end
 
     -- Save to DB
@@ -3597,7 +4437,7 @@ function Tracker:UpdateCustomPanel(panelId, name, zones, color, panelType, data)
     end
     KOL.db.profile.tracker.customPanels[panelId] = panelData
 
-    KOL:PrintTag("Updated custom panel: " .. GREEN(panelData.name))
+    KOL:DebugPrint("UpdateCustomPanel: Updated " .. panelData.name, 1)
 
     -- Update active frame if it exists
     if self.activeFrames[panelId] then
@@ -3631,7 +4471,7 @@ function Tracker:DeleteCustomPanel(panelId)
         KOL.db.profile.tracker.customPanels[panelId] = nil
     end
 
-    KOL:PrintTag("Deleted custom panel: " .. RED(panelName))
+    KOL:PrintTag("Deleted custom tracker: " .. RED(panelName))
 
     -- Refresh config UI
     if KOL.PopulateTrackerConfigUI then
@@ -3650,7 +4490,7 @@ function Tracker:LoadCustomPanels()
 
     for panelId, panelData in pairs(KOL.db.profile.tracker.customPanels) do
         self:RegisterInstance(panelId, panelData)
-        KOL:DebugPrint("Tracker: Loaded custom panel: " .. panelId, 2)
+        KOL:DebugPrint("Tracker: Loaded custom tracker: " .. panelId, 2)
     end
 end
 
@@ -3872,6 +4712,13 @@ end
 function Tracker:IsDungeonChallengeEligible(instanceId)
     -- Check if dungeon challenge tracking is globally enabled
     if not KOL.db.profile.tracker.dungeonChallenge or not KOL.db.profile.tracker.dungeonChallenge.enabled then
+        return false
+    end
+
+    -- Custom trackers are NOT eligible for dungeon challenge features
+    -- (no speed buff, timer, best times - those are dungeon/raid specific)
+    local instanceData = self.instances[instanceId]
+    if instanceData and instanceData.type == "custom" then
         return false
     end
 
@@ -4313,7 +5160,7 @@ end
 
 -- Format seconds as MM:SS
 function Tracker:FormatTime(seconds)
-    if seconds == 0 then
+    if not seconds or seconds == 0 then
         return "--:--"
     end
     local minutes = math.floor(seconds / 60)
@@ -4381,5 +5228,33 @@ KOL:RegisterEventCallback("PLAYER_ENTERING_WORLD", function()
         KOL:PrintTag("All tracker boss kills reset")
     end, "Reset all tracker boss kills", "module")
 end, "Tracker")
+
+-- Register /ktm as a standalone WoW slash command (not via /kol)
+SLASH_KOLKTM1 = "/ktm"
+SlashCmdList["KOLKTM"] = function(msg)
+    -- Quick-edit selected custom tracker: opens editor + watch frame + config panel
+    local instanceId = KOL.db and KOL.db.profile and KOL.db.profile.tracker and
+                       KOL.db.profile.tracker.selectedCustomInstance or ""
+
+    if instanceId == "" then
+        KOL:PrintTag("|cFFFF6600No custom tracker selected!|r Use /kol config > Progress Tracker > Custom Trackers to select one.")
+        return
+    end
+
+    -- Show the watch frame
+    KOL.Tracker:ShowWatchFrame(instanceId)
+
+    -- Open the editor for this tracker
+    KOL:ShowTrackerManager(instanceId)
+
+    -- Also open the config panel to Progress Tracker > Custom Trackers
+    local AceConfigDialog = LibStub("AceConfigDialog-3.0", true)
+    if AceConfigDialog then
+        AceConfigDialog:Open("KoalityOfLife")
+        AceConfigDialog:SelectGroup("KoalityOfLife", "tracker", "custom")
+    end
+
+    KOL:PrintTag("|cFF88FF88Quick edit:|r " .. instanceId)
+end
 
 KOL:DebugPrint("Tracker module loaded", 1)

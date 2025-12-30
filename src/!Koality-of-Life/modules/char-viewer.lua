@@ -5,6 +5,7 @@
 -- ============================================================================
 
 local KOL = KoalityOfLife
+local UIFactory = KOL.UIFactory
 
 -- Reference to viewer frame
 local viewerFrame = nil
@@ -18,68 +19,30 @@ local function CreateViewerFrame()
         return viewerFrame
     end
 
-    -- Main frame
-    local frame = CreateFrame("Frame", "KOL_CharViewer", UIParent)
-    frame:SetWidth(600)
-    frame:SetHeight(400)
+    -- Main frame using UIFactory
+    local frame = UIFactory:CreateStyledFrame(UIParent, "KOL_CharViewer", 600, 400, {
+        movable = true,
+        closable = true,
+        strata = UIFactory.STRATA.MODAL,
+        bgColor = {r = 0.02, g = 0.02, b = 0.02, a = 0.98},
+    })
     frame:SetPoint("CENTER")
-    frame:SetFrameStrata("FULLSCREEN_DIALOG")
-    frame:SetFrameLevel(100)
 
-    -- Backdrop - dark theme
-    frame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        tileSize = 1,
-        edgeSize = 1,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    -- Title bar using UIFactory
+    local titleBar, title, titleCloseBtn = UIFactory:CreateTitleBar(frame, 20, "|cFFFF6699K|cFFFF88AAo|cFFFFAABBa|cFFFFCCCCl|cFFFFEEDDi|cFFFFFFEEt|cFFEEFFFFy|r |cFF88FFFFCharacter Viewer|r", {
+        showCloseButton = true,
     })
-    frame:SetBackdropColor(0.02, 0.02, 0.02, 0.98)
-    frame:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
 
-    frame:EnableMouse(true)
-    frame:SetMovable(true)
-    frame:RegisterForDrag("LeftButton")
-    frame:SetScript("OnDragStart", frame.StartMoving)
-    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-    frame:Hide()
-
-    -- Make it closable with ESC
-    tinsert(UISpecialFrames, "KOL_CharViewer")
-
-    -- Title bar
-    local titleBar = CreateFrame("Frame", nil, frame)
-    titleBar:SetPoint("TOPLEFT", 1, -1)
-    titleBar:SetPoint("TOPRIGHT", -1, -1)
-    titleBar:SetHeight(20)
-    titleBar:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false
-    })
-    titleBar:SetBackdropColor(0.1, 0.1, 0.1, 1)
-
-    -- Title text with rainbow effect
-    local titleText = titleBar:CreateFontString(nil, "OVERLAY")
-    titleText:SetPoint("LEFT", 8, 0)
-    titleText:SetFont(CHAR_LIGATURESFONT, 12, CHAR_LIGATURESOUTLINE)
-    titleText:SetText("|cFFFF6699K|cFFFF88AAo|cFFFFAABBa|cFFFFCCCCl|cFFFFEEDDi|cFFFFFFEEt|cFFEEFFFFy|r |cFF88FFFFCharacter Viewer|r")
-
-    -- Close button
-    local closeButton = CreateFrame("Button", nil, titleBar)
-    closeButton:SetSize(16, 16)
-    closeButton:SetPoint("RIGHT", -2, 0)
-    closeButton:SetNormalTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up")
-    closeButton:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight")
-    closeButton:SetPushedTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Down")
-    closeButton:SetScript("OnClick", function()
-        frame:Hide()
-    end)
+    -- Content area using UIFactory
+    local contentBG = UIFactory:CreateContentArea(frame, {top = 24, bottom = 8, left = 8, right = 8})
 
     -- Scroll frame
     local scrollFrame = CreateFrame("ScrollFrame", "KOL_CharViewerScroll", frame, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", 5, -25)
-    scrollFrame:SetPoint("BOTTOMRIGHT", -25, 5)
+    scrollFrame:SetPoint("TOPLEFT", contentBG, "TOPLEFT", 4, -4)
+    scrollFrame:SetPoint("BOTTOMRIGHT", contentBG, "BOTTOMRIGHT", -24, 4)
+
+    -- Skin the scrollbar
+    KOL:SkinUIPanelScrollFrame(scrollFrame)
 
     -- Scroll child frame to hold the font strings
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)

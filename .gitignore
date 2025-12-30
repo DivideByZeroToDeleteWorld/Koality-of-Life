@@ -21,10 +21,18 @@ Thumbs.db
 .claude/
 .opencode/
 plans/
-docs/
+
+# Claude/AI assistant files
+CLAUDE.md
+.luacheckrc
 
 # Ignore these in src folder too
 src/!Koality-of-Life/.claude/
 src/!Koality-of-Life/.opencode/
 src/!Koality-of-Life/plans/
 src/!Koality-of-Life/docs/
+src/!Koality-of-Life/CLAUDE.md
+src/!Koality-of-Life/.luacheckrc
+
+# Windows artifacts
+nul

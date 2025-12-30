@@ -30,6 +30,17 @@ local itemTrackerDefaults = {
     limitFont = "Friz Quadrata TT",
     limitFontSize = 14,
     limitFontOutline = "THICKOUTLINE",
+    -- Scrollbar skinning
+    scrollbarEnabled = true,
+    scrollbarHidden = false,
+    scrollbarWidth = 16,  -- Width of scrollbar track (default 16)
+    scrollbarTrackBg = {r = 0.05, g = 0.05, b = 0.05, a = 0.9},
+    scrollbarTrackBorder = {r = 0.51, g = 0.25, b = 0.8, a = 0},  -- #8341cc, alpha 0
+    scrollbarThumbBg = {r = 0.51, g = 0.25, b = 0.8, a = 1},      -- #8341cc
+    scrollbarThumbBorder = {r = 0.51, g = 0.25, b = 0.8, a = 1},  -- #8341cc
+    scrollbarButtonBg = {r = 0.15, g = 0.15, b = 0.15, a = 0.9},
+    scrollbarButtonBorder = {r = 0.51, g = 0.25, b = 0.8, a = 1}, -- #8341cc
+    scrollbarButtonArrow = {r = 0.51, g = 0.25, b = 0.8, a = 1},  -- #8341cc
 }
 
 -- Track which ItemHunt frames we've already applied fonts to
@@ -335,9 +346,11 @@ function Tweaks:StartItemHuntBatch()
         maxQueueSize = 5,
     })
 
-    -- Add scanning action
+    -- Add scanning action (includes fonts AND scrollbar)
     KOL:BatchAdd("itemHunt", "scanAll", function()
         Tweaks:ScanAndApplyItemHuntFonts()
+        -- Also ensure scrollbar is skinned (won't re-skin if already done)
+        Tweaks:ApplyItemTrackerScrollbar()
     end, 3)
 
     -- Start the batch
@@ -351,12 +364,144 @@ function Tweaks:ResetItemHuntTracking()
     itemHuntFontsApplied = {}
     self.itemHuntScannerActive = false
     self:StartItemHuntBatch()
+    -- Also try to skin the scrollbar
+    self:ApplyItemTrackerScrollbar()
 end
 
 -- Apply ItemTracker fonts (called when settings change)
 function Tweaks:ApplyItemTrackerFont()
     itemHuntFontsApplied = {}
     self:ScanAndApplyItemHuntFonts()
+end
+
+-- ============================================================================
+-- ItemTracker Scrollbar Skinning
+-- ============================================================================
+
+local itemHuntScrollbarSkinned = false
+
+-- Apply scrollbar skin to ItemHuntFrame
+function Tweaks:ApplyItemTrackerScrollbar()
+    local settings = KOL.db.profile.tweaks.itemTracker
+
+    -- Find the scrollbar
+    local scrollBar = _G["ItemHuntFrame-ScrollFrameScrollBar"]
+    if not scrollBar then
+        KOL:DebugPrint("Tweaks: ItemHuntFrame scrollbar not found", 3)
+        return
+    end
+
+    -- Handle hidden scrollbar option
+    if settings.scrollbarHidden then
+        scrollBar:Hide()
+        -- Also hide any skinned backdrops
+        if scrollBar.kolBackdrop then scrollBar.kolBackdrop:Hide() end
+        local scrollBarName = scrollBar:GetName() or ""
+        local upButton = scrollBar.ScrollUpButton or scrollBar.UpButton or _G[scrollBarName .. "ScrollUpButton"]
+        local downButton = scrollBar.ScrollDownButton or scrollBar.DownButton or _G[scrollBarName .. "ScrollDownButton"]
+        local thumb = scrollBar.ThumbTexture or scrollBar.thumbTexture or _G[scrollBarName .. "ThumbTexture"]
+        if upButton then upButton:Hide(); if upButton.kolBackdrop then upButton.kolBackdrop:Hide() end end
+        if downButton then downButton:Hide(); if downButton.kolBackdrop then downButton.kolBackdrop:Hide() end end
+        if thumb and thumb.kolBackdrop then thumb.kolBackdrop:Hide() end
+        KOL:DebugPrint("Tweaks: ItemHuntFrame scrollbar hidden", 3)
+        return
+    else
+        -- Make sure scrollbar is visible if not hidden
+        scrollBar:Show()
+        if scrollBar.kolBackdrop then scrollBar.kolBackdrop:Show() end
+        local scrollBarName = scrollBar:GetName() or ""
+        local upButton = scrollBar.ScrollUpButton or scrollBar.UpButton or _G[scrollBarName .. "ScrollUpButton"]
+        local downButton = scrollBar.ScrollDownButton or scrollBar.DownButton or _G[scrollBarName .. "ScrollDownButton"]
+        local thumb = scrollBar.ThumbTexture or scrollBar.thumbTexture or _G[scrollBarName .. "ThumbTexture"]
+        if upButton then upButton:Show(); if upButton.kolBackdrop then upButton.kolBackdrop:Show() end end
+        if downButton then downButton:Show(); if downButton.kolBackdrop then downButton.kolBackdrop:Show() end end
+        if thumb and thumb.kolBackdrop then thumb.kolBackdrop:Show() end
+    end
+
+    -- Only skin if enabled
+    if not settings.scrollbarEnabled then
+        KOL:DebugPrint("Tweaks: ItemTracker scrollbar skinning disabled", 3)
+        return
+    end
+
+    -- Skip if already skinned (unless force refresh)
+    if itemHuntScrollbarSkinned and scrollBar.kolSkinned then
+        return
+    end
+
+    -- Build colors table from settings
+    local colors = {
+        width = settings.scrollbarWidth or 16,
+        track = {
+            bg = {settings.scrollbarTrackBg.r, settings.scrollbarTrackBg.g, settings.scrollbarTrackBg.b, settings.scrollbarTrackBg.a},
+            border = {settings.scrollbarTrackBorder.r, settings.scrollbarTrackBorder.g, settings.scrollbarTrackBorder.b, settings.scrollbarTrackBorder.a},
+        },
+        thumb = {
+            bg = {settings.scrollbarThumbBg.r, settings.scrollbarThumbBg.g, settings.scrollbarThumbBg.b, settings.scrollbarThumbBg.a},
+            border = {settings.scrollbarThumbBorder.r, settings.scrollbarThumbBorder.g, settings.scrollbarThumbBorder.b, settings.scrollbarThumbBorder.a},
+        },
+        button = {
+            bg = {settings.scrollbarButtonBg.r, settings.scrollbarButtonBg.g, settings.scrollbarButtonBg.b, settings.scrollbarButtonBg.a},
+            border = {settings.scrollbarButtonBorder.r, settings.scrollbarButtonBorder.g, settings.scrollbarButtonBorder.b, settings.scrollbarButtonBorder.a},
+            arrow = {settings.scrollbarButtonArrow.r, settings.scrollbarButtonArrow.g, settings.scrollbarButtonArrow.b, settings.scrollbarButtonArrow.a},
+        },
+    }
+
+    -- Find parent scroll frame
+    local scrollFrame = _G["ItemHuntFrame-ScrollFrame"]
+    if scrollFrame then
+        -- Reset skinned flag to allow re-skinning
+        scrollBar.kolSkinned = nil
+        KOL:SkinScrollBar(scrollFrame, "ItemHuntFrame-ScrollFrameScrollBar", colors)
+        itemHuntScrollbarSkinned = true
+        KOL:DebugPrint("Tweaks: ItemHuntFrame scrollbar skinned", 2)
+    else
+        -- Try direct skinning without parent
+        scrollBar.kolSkinned = nil
+        -- Direct skin the scrollbar using global name
+        if KOL.SkinScrollBar then
+            -- Create a mock parent table for the function
+            local mockParent = {["ItemHuntFrame-ScrollFrameScrollBar"] = scrollBar}
+            KOL:SkinScrollBar(mockParent, "ItemHuntFrame-ScrollFrameScrollBar", colors)
+            itemHuntScrollbarSkinned = true
+            KOL:DebugPrint("Tweaks: ItemHuntFrame scrollbar skinned (direct)", 2)
+        end
+    end
+end
+
+-- Reset scrollbar skinning (called when colors change)
+function Tweaks:ResetItemTrackerScrollbar()
+    local scrollBar = _G["ItemHuntFrame-ScrollFrameScrollBar"]
+    if scrollBar then
+        scrollBar.kolSkinned = nil
+        if scrollBar.kolBackdrop then
+            scrollBar.kolBackdrop:Hide()
+            scrollBar.kolBackdrop = nil
+        end
+
+        -- Also reset buttons and thumb
+        local scrollBarName = scrollBar:GetName() or ""
+        local upButton = scrollBar.ScrollUpButton or scrollBar.UpButton or _G[scrollBarName .. "ScrollUpButton"]
+        local downButton = scrollBar.ScrollDownButton or scrollBar.DownButton or _G[scrollBarName .. "ScrollDownButton"]
+        local thumb = scrollBar.ThumbTexture or scrollBar.thumbTexture or _G[scrollBarName .. "ThumbTexture"]
+
+        if upButton then
+            upButton.kolSkinned = nil
+            if upButton.kolBackdrop then upButton.kolBackdrop:Hide(); upButton.kolBackdrop = nil end
+            if upButton.kolArrowText then upButton.kolArrowText:Hide(); upButton.kolArrowText = nil end
+        end
+        if downButton then
+            downButton.kolSkinned = nil
+            if downButton.kolBackdrop then downButton.kolBackdrop:Hide(); downButton.kolBackdrop = nil end
+            if downButton.kolArrowText then downButton.kolArrowText:Hide(); downButton.kolArrowText = nil end
+        end
+        if thumb and thumb.kolBackdrop then
+            thumb.kolBackdrop:Hide()
+            thumb.kolBackdrop = nil
+        end
+    end
+    itemHuntScrollbarSkinned = false
+    self:ApplyItemTrackerScrollbar()
 end
 
 -- ============================================================================
@@ -655,6 +800,186 @@ function Tweaks:SetupConfigUI()
                 end,
             },
         }
+    }
+
+    -- ========================================================================
+    -- Scrollbar Skinning Group
+    -- ========================================================================
+    itemtrackerTab.scrollbarHeader = {
+        type = "header",
+        name = "Scrollbar Skinning",
+        order = 50,
+    }
+
+    itemtrackerTab.scrollbarEnabled = {
+        type = "toggle",
+        name = "Enable Scrollbar Skinning",
+        desc = "Skin the ItemHuntFrame scrollbar to match KoL's dark theme",
+        get = function() return KOL.db.profile.tweaks.itemTracker.scrollbarEnabled end,
+        set = function(_, value)
+            KOL.db.profile.tweaks.itemTracker.scrollbarEnabled = value
+            if value then
+                Tweaks:ApplyItemTrackerScrollbar()
+                KOL:PrintTag("ItemTracker scrollbar skinning |cFF00FF00enabled|r")
+            else
+                KOL:PrintTag("ItemTracker scrollbar skinning |cFFFF0000disabled|r |cFFFFAAAA(requires /reload)|r")
+            end
+        end,
+        width = "full",
+        order = 51,
+    }
+
+    itemtrackerTab.scrollbarHidden = {
+        type = "toggle",
+        name = "Hide Scrollbar",
+        desc = "Completely hide the ItemHuntFrame scrollbar (you can still scroll with mouse wheel)",
+        get = function() return KOL.db.profile.tweaks.itemTracker.scrollbarHidden end,
+        set = function(_, value)
+            KOL.db.profile.tweaks.itemTracker.scrollbarHidden = value
+            Tweaks:ApplyItemTrackerScrollbar()
+            if value then
+                KOL:PrintTag("ItemTracker scrollbar |cFFFF8800hidden|r")
+            else
+                KOL:PrintTag("ItemTracker scrollbar |cFF00FF00visible|r")
+            end
+        end,
+        width = "full",
+        order = 51.5,
+    }
+
+    itemtrackerTab.scrollbarWidth = {
+        type = "range",
+        name = "Scrollbar Width",
+        desc = "Width of the scrollbar track and buttons (8-32 pixels)",
+        min = 8,
+        max = 32,
+        step = 1,
+        get = function() return KOL.db.profile.tweaks.itemTracker.scrollbarWidth or 16 end,
+        set = function(_, value)
+            KOL.db.profile.tweaks.itemTracker.scrollbarWidth = value
+            Tweaks:ResetItemTrackerScrollbar()
+        end,
+        hidden = function()
+            return not KOL.db.profile.tweaks.itemTracker.scrollbarEnabled or
+                   KOL.db.profile.tweaks.itemTracker.scrollbarHidden
+        end,
+        width = "full",
+        order = 51.7,
+    }
+
+    itemtrackerTab.scrollbarColors = {
+        type = "group",
+        name = "Scrollbar Colors",
+        inline = true,
+        order = 52,
+        hidden = function() return not KOL.db.profile.tweaks.itemTracker.scrollbarEnabled end,
+        args = {
+            trackBg = {
+                type = "color",
+                name = "Track Background",
+                hasAlpha = true,
+                order = 1,
+                width = 0.8,
+                get = function()
+                    local c = KOL.db.profile.tweaks.itemTracker.scrollbarTrackBg
+                    return c.r, c.g, c.b, c.a
+                end,
+                set = function(_, r, g, b, a)
+                    KOL.db.profile.tweaks.itemTracker.scrollbarTrackBg = {r=r, g=g, b=b, a=a}
+                    Tweaks:ResetItemTrackerScrollbar()
+                end,
+            },
+            trackBorder = {
+                type = "color",
+                name = "Track Border",
+                hasAlpha = true,
+                order = 2,
+                width = 0.8,
+                get = function()
+                    local c = KOL.db.profile.tweaks.itemTracker.scrollbarTrackBorder
+                    return c.r, c.g, c.b, c.a
+                end,
+                set = function(_, r, g, b, a)
+                    KOL.db.profile.tweaks.itemTracker.scrollbarTrackBorder = {r=r, g=g, b=b, a=a}
+                    Tweaks:ResetItemTrackerScrollbar()
+                end,
+            },
+            thumbBg = {
+                type = "color",
+                name = "Thumb Background",
+                hasAlpha = true,
+                order = 3,
+                width = 0.8,
+                get = function()
+                    local c = KOL.db.profile.tweaks.itemTracker.scrollbarThumbBg
+                    return c.r, c.g, c.b, c.a
+                end,
+                set = function(_, r, g, b, a)
+                    KOL.db.profile.tweaks.itemTracker.scrollbarThumbBg = {r=r, g=g, b=b, a=a}
+                    Tweaks:ResetItemTrackerScrollbar()
+                end,
+            },
+            thumbBorder = {
+                type = "color",
+                name = "Thumb Border",
+                hasAlpha = true,
+                order = 4,
+                width = 0.8,
+                get = function()
+                    local c = KOL.db.profile.tweaks.itemTracker.scrollbarThumbBorder
+                    return c.r, c.g, c.b, c.a
+                end,
+                set = function(_, r, g, b, a)
+                    KOL.db.profile.tweaks.itemTracker.scrollbarThumbBorder = {r=r, g=g, b=b, a=a}
+                    Tweaks:ResetItemTrackerScrollbar()
+                end,
+            },
+            buttonBg = {
+                type = "color",
+                name = "Button Background",
+                hasAlpha = true,
+                order = 5,
+                width = 0.8,
+                get = function()
+                    local c = KOL.db.profile.tweaks.itemTracker.scrollbarButtonBg
+                    return c.r, c.g, c.b, c.a
+                end,
+                set = function(_, r, g, b, a)
+                    KOL.db.profile.tweaks.itemTracker.scrollbarButtonBg = {r=r, g=g, b=b, a=a}
+                    Tweaks:ResetItemTrackerScrollbar()
+                end,
+            },
+            buttonBorder = {
+                type = "color",
+                name = "Button Border",
+                hasAlpha = true,
+                order = 6,
+                width = 0.8,
+                get = function()
+                    local c = KOL.db.profile.tweaks.itemTracker.scrollbarButtonBorder
+                    return c.r, c.g, c.b, c.a
+                end,
+                set = function(_, r, g, b, a)
+                    KOL.db.profile.tweaks.itemTracker.scrollbarButtonBorder = {r=r, g=g, b=b, a=a}
+                    Tweaks:ResetItemTrackerScrollbar()
+                end,
+            },
+            buttonArrow = {
+                type = "color",
+                name = "Button Arrow",
+                hasAlpha = true,
+                order = 7,
+                width = 0.8,
+                get = function()
+                    local c = KOL.db.profile.tweaks.itemTracker.scrollbarButtonArrow
+                    return c.r, c.g, c.b, c.a
+                end,
+                set = function(_, r, g, b, a)
+                    KOL.db.profile.tweaks.itemTracker.scrollbarButtonArrow = {r=r, g=g, b=b, a=a}
+                    Tweaks:ResetItemTrackerScrollbar()
+                end,
+            },
+        },
     }
 
     KOL:DebugPrint("Tweaks: Config UI setup complete", 3)

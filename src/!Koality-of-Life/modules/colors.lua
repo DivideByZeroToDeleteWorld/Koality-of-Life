@@ -155,6 +155,29 @@ function Colors:GetPastel(colorName)
     return self.PASTEL[colorName] or self.PASTEL.PINK  -- Default to pink if not found
 end
 
+-- Get a nuclear (vibrant) color by name
+-- @param colorName: Name of the color (e.g., "RED", "GREEN")
+-- @return: Hex color string
+function Colors:GetNuclear(colorName)
+    colorName = string.upper(colorName)
+
+    -- Check if user has customized this color
+    if KOL.db and KOL.db.profile and KOL.db.profile.colors then
+        if KOL.db.profile.colors.nuclear and KOL.db.profile.colors.nuclear[colorName] then
+            local c = KOL.db.profile.colors.nuclear[colorName]
+            return string.format("%02X%02X%02X", c.r * 255, c.g * 255, c.b * 255)
+        end
+    end
+
+    -- Get from NUCLEAR table
+    local c = self.NUCLEAR[colorName]
+    if c then
+        return string.format("%02X%02X%02X", c.r * 255, c.g * 255, c.b * 255)
+    end
+
+    return "FFFFFF"  -- Default to white if not found
+end
+
 -- Get a standard color by name (with user customization support)
 -- @param colorName: Name of the color (e.g., "RED", "GREEN")
 -- @return: Hex color string

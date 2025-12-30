@@ -30,6 +30,113 @@ end
 UIFactory.GetGeneralFont = GetGeneralFont
 
 -- ============================================================================
+-- Frame Registry & Strata Management
+-- ============================================================================
+-- Intelligent system to manage frame stacking order
+-- - Frames auto-raise when clicked/dragged
+-- - Dropdowns inherit parent strata + offset
+-- - All KOL frames stay above normal game UI
+-- ============================================================================
+
+-- Strata hierarchy (lowest to highest):
+-- MEDIUM = 1, HIGH = 2, DIALOG = 3, FULLSCREEN = 4, FULLSCREEN_DIALOG = 5, TOOLTIP = 6
+local STRATA_ORDER = {
+    ["BACKGROUND"] = 0,
+    ["LOW"] = 1,
+    ["MEDIUM"] = 2,
+    ["HIGH"] = 3,
+    ["DIALOG"] = 4,
+    ["FULLSCREEN"] = 5,
+    ["FULLSCREEN_DIALOG"] = 6,
+    ["TOOLTIP"] = 7,
+}
+
+-- Default stratas for different frame types
+UIFactory.STRATA = {
+    NORMAL = "HIGH",           -- Normal KOL windows (above game UI)
+    IMPORTANT = "DIALOG",      -- Config panels, important dialogs
+    MODAL = "FULLSCREEN_DIALOG", -- Modal dialogs that block interaction
+}
+
+-- Frame registry
+UIFactory.frameRegistry = {}
+UIFactory.nextFrameLevel = 10  -- Starting level, increments as frames are raised
+
+-- Get the next available frame level and increment
+function UIFactory:GetNextFrameLevel()
+    local level = self.nextFrameLevel
+    self.nextFrameLevel = self.nextFrameLevel + 1
+    return level
+end
+
+-- Register a frame in the registry
+function UIFactory:RegisterFrame(frame, strata)
+    if not frame then return end
+
+    strata = strata or self.STRATA.NORMAL
+    local level = self:GetNextFrameLevel()
+
+    frame:SetFrameStrata(strata)
+    frame:SetFrameLevel(level)
+
+    -- Store frame info
+    frame.kolStrata = strata
+    frame.kolLevel = level
+    frame.kolRegistered = true
+
+    -- Add to registry
+    table.insert(self.frameRegistry, frame)
+
+    return level
+end
+
+-- Raise a frame above all other KOL frames at the same strata
+function UIFactory:RaiseFrame(frame)
+    if not frame or not frame.kolRegistered then return end
+
+    local newLevel = self:GetNextFrameLevel()
+    frame:SetFrameLevel(newLevel)
+    frame.kolLevel = newLevel
+
+    -- Also ensure it's toplevel
+    if frame.SetToplevel then
+        frame:SetToplevel(true)
+    end
+end
+
+-- Get frame's strata info for child components (like dropdowns)
+function UIFactory:GetFrameStrataInfo(frame)
+    if frame and frame.kolRegistered then
+        return frame.kolStrata, frame.kolLevel
+    end
+    -- Fallback: try to get from frame directly
+    if frame then
+        return frame:GetFrameStrata(), frame:GetFrameLevel()
+    end
+    return self.STRATA.NORMAL, 100
+end
+
+-- Calculate dropdown strata/level based on parent frame
+-- Dropdowns are always at parent strata but MUCH higher level
+local DROPDOWN_LEVEL_OFFSET = 500
+function UIFactory:GetDropdownStrataInfo(parentFrame)
+    local strata, level = self:GetFrameStrataInfo(parentFrame)
+    return strata, level + DROPDOWN_LEVEL_OFFSET
+end
+
+-- Find the root KOL frame for a given child frame
+function UIFactory:FindRootFrame(frame)
+    local current = frame
+    while current do
+        if current.kolRegistered then
+            return current
+        end
+        current = current:GetParent()
+    end
+    return nil
+end
+
+-- ============================================================================
 -- Frame Creation
 -- ============================================================================
 
@@ -46,8 +153,10 @@ UIFactory.GetGeneralFont = GetGeneralFont
             - borderColor: {r, g, b, a} - Border color (default: mid gray)
             - movable: boolean - Make frame movable (default: false)
             - closable: boolean - Add to UISpecialFrames for ESC (default: false)
-            - strata: string - Frame strata (default: "FULLSCREEN_DIALOG" for always on top)
-            - level: number - Frame level (default: 100)
+            - strata: string - Frame strata (default: UIFactory.STRATA.NORMAL = "HIGH")
+                      Can use: "HIGH", "DIALOG", "FULLSCREEN_DIALOG", or UIFactory.STRATA constants
+            - level: number - Frame level (optional, auto-assigned if not provided)
+            - noRegister: boolean - Don't register in frame registry (for child frames)
 
     Returns: frame
 ]]
@@ -61,8 +170,27 @@ function UIFactory:CreateStyledFrame(parent, name, width, height, options)
     if width then frame:SetWidth(width) end
     if height then frame:SetHeight(height) end
 
-    frame:SetFrameStrata(options.strata or "FULLSCREEN_DIALOG")  -- Default to always on top
-    frame:SetFrameLevel(options.level or 100)
+    -- Determine strata - use provided or default to NORMAL
+    local strata = options.strata or self.STRATA.NORMAL
+
+    -- Register frame unless it's a child/internal frame
+    if not options.noRegister then
+        -- If explicit level provided, use it; otherwise auto-assign
+        if options.level then
+            frame:SetFrameStrata(strata)
+            frame:SetFrameLevel(options.level)
+            frame.kolStrata = strata
+            frame.kolLevel = options.level
+            frame.kolRegistered = true
+            table.insert(self.frameRegistry, frame)
+        else
+            self:RegisterFrame(frame, strata)
+        end
+    else
+        -- Child frame - just set strata/level directly
+        frame:SetFrameStrata(strata)
+        frame:SetFrameLevel(options.level or 1)
+    end
 
     -- Apply backdrop
     frame:SetBackdrop({
@@ -102,14 +230,26 @@ function UIFactory:CreateStyledFrame(parent, name, width, height, options)
         frame:EnableMouse(true)
         frame:SetMovable(true)
         frame:RegisterForDrag("LeftButton")
-        frame:SetScript("OnDragStart", frame.StartMoving)
+        frame:SetScript("OnDragStart", function(self)
+            -- Auto-raise when starting to drag
+            UIFactory:RaiseFrame(self)
+            self:StartMoving()
+        end)
         frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+
+        -- Auto-raise on any mouse click
+        frame:SetScript("OnMouseDown", function(self)
+            UIFactory:RaiseFrame(self)
+        end)
     end
 
     -- Make closable with ESC
     if options.closable and name then
         tinsert(UISpecialFrames, name)
     end
+
+    -- Set as toplevel so clicking raises it
+    frame:SetToplevel(true)
 
     frame:Hide()
     return frame
@@ -305,7 +445,7 @@ end
 
     Returns: button
 ]]
-function UIFactory:CreateStyledButton(parent, width, height, text, options)
+function UIFactory:OldCreateStyledButton(parent, width, height, text, options)
     options = options or {}
 
     local button = CreateFrame("Button", nil, parent)
@@ -409,26 +549,46 @@ function KOL:SkinScrollBar(scrollFrame, scrollBarName, colors)
         return
     end
 
-    -- Already skinned
-    if scrollBar.kolSkinned then return end
-
-    -- Default colors
+    -- Default colors and dimensions - pull from theme system
     colors = colors or {}
-    local trackBg = colors.track and colors.track.bg or {0.05, 0.05, 0.05, 0.9}
-    local trackBorder = colors.track and colors.track.border or {0.2, 0.2, 0.2, 1}
-    local thumbBg = colors.thumb and colors.thumb.bg or {0.3, 0.3, 0.3, 1}
-    local thumbBorder = colors.thumb and colors.thumb.border or {0, 0.6, 0.6, 1}
-    local buttonBg = colors.button and colors.button.bg or {0.15, 0.15, 0.15, 0.9}
-    local buttonBorder = colors.button and colors.button.border or {0, 0.6, 0.6, 1}
-    local buttonArrow = colors.button and colors.button.arrow or {0, 0.8, 0.8, 1}
 
-    -- Set consistent width
-    scrollBar:SetWidth(16)
+    -- Get theme colors for scrollbar (convert hex to RGBA)
+    local function GetThemeScrollbarColor(colorName, fallback)
+        if KOL.Themes and KOL.Themes.GetUIThemeColor then
+            local themeColor = KOL.Themes:GetUIThemeColor(colorName, nil)
+            if themeColor then
+                return {themeColor.r, themeColor.g, themeColor.b, themeColor.a or 1}
+            end
+        end
+        return fallback
+    end
 
-    -- Find scroll buttons and thumb
-    local upButton = scrollBar.ScrollUpButton or scrollBar.UpButton
-    local downButton = scrollBar.ScrollDownButton or scrollBar.DownButton
-    local thumb = scrollBar.ThumbTexture or scrollBar.thumbTexture
+    local trackBg = colors.track and colors.track.bg or GetThemeScrollbarColor("ScrollbarTrackBG", {0.05, 0.05, 0.05, 0.9})
+    local trackBorder = colors.track and colors.track.border or GetThemeScrollbarColor("ScrollbarTrackBorder", {0.2, 0.2, 0.2, 1})
+    local thumbBg = colors.thumb and colors.thumb.bg or GetThemeScrollbarColor("ScrollbarThumbBG", {0.3, 0.3, 0.3, 1})
+    local thumbBorder = colors.thumb and colors.thumb.border or GetThemeScrollbarColor("ScrollbarThumbBorder", {0.2, 0.2, 0.2, 1})
+    local buttonBg = colors.button and colors.button.bg or GetThemeScrollbarColor("ScrollbarButtonBG", {0.15, 0.15, 0.15, 0.9})
+    local buttonBorder = colors.button and colors.button.border or GetThemeScrollbarColor("ScrollbarButtonBorder", {0.2, 0.2, 0.2, 1})
+    local buttonArrow = colors.button and colors.button.arrow or GetThemeScrollbarColor("ScrollbarButtonArrow", {0.5, 0.5, 0.5, 1})
+    local scrollbarWidth = colors.width or 16
+
+    -- Always update width (allows live resizing)
+    scrollBar:SetWidth(scrollbarWidth)
+
+    -- Already skinned (unless it was reset - check if backdrop exists)
+    if scrollBar.kolSkinned and scrollBar.kolBackdrop then return end
+
+    -- Clear flag since we're re-skinning
+    scrollBar.kolSkinned = nil
+
+    -- Find scroll buttons and thumb (try multiple naming patterns for WoW 3.3.5a)
+    -- IMPORTANT: Use the scrollbar's actual name, not the property name passed in
+    local scrollBarRealName = scrollBar:GetName() or ""
+    local upButton = scrollBar.ScrollUpButton or scrollBar.UpButton or _G[scrollBarRealName .. "ScrollUpButton"]
+    local downButton = scrollBar.ScrollDownButton or scrollBar.DownButton or _G[scrollBarRealName .. "ScrollDownButton"]
+    local thumb = scrollBar.ThumbTexture or scrollBar.thumbTexture or _G[scrollBarRealName .. "ThumbTexture"]
+
+    KOL:DebugPrint("UI: SkinScrollBar - scrollBarRealName: " .. scrollBarRealName .. ", upButton: " .. tostring(upButton) .. ", downButton: " .. tostring(downButton) .. ", thumb: " .. tostring(thumb), 3)
 
     -- Clear default textures
     if scrollBar.Background then scrollBar.Background:SetTexture(nil) end
@@ -454,14 +614,17 @@ function KOL:SkinScrollBar(scrollFrame, scrollBarName, colors)
 
     -- Skin the thumb (draggable part)
     if thumb then
-        thumb:SetTexture(nil)
-        thumb:SetWidth(16)
-        thumb:SetHeight(24)
+        -- Try to hide original thumb texture (but don't fail if it errors)
+        pcall(function()
+            thumb:SetTexture(nil)
+        end)
 
         if not thumb.kolBackdrop then
             thumb.kolBackdrop = CreateFrame("Frame", nil, scrollBar)
-            thumb.kolBackdrop:SetPoint("TOPLEFT", thumb, "TOPLEFT", 0, 0)
-            thumb.kolBackdrop:SetPoint("BOTTOMRIGHT", thumb, "BOTTOMRIGHT", 0, 0)
+            thumb.kolBackdrop:SetWidth(scrollbarWidth - 2)  -- Slightly narrower than track
+            thumb.kolBackdrop:SetHeight(24)
+            thumb.kolBackdrop:SetPoint("CENTER", thumb, "CENTER", 0, 0)
+            thumb.kolBackdrop:SetFrameLevel(scrollBar:GetFrameLevel() + 5)
             thumb.kolBackdrop:SetBackdrop({
                 bgFile = "Interface\\Buttons\\WHITE8X8",
                 edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -471,20 +634,22 @@ function KOL:SkinScrollBar(scrollFrame, scrollBarName, colors)
             })
             thumb.kolBackdrop:SetBackdropColor(unpack(thumbBg))
             thumb.kolBackdrop:SetBackdropBorderColor(unpack(thumbBorder))
-            thumb.kolBackdrop:SetFrameLevel(scrollBar:GetFrameLevel() + 2)
+        else
+            -- Update existing thumb width if scrollbar width changed
+            thumb.kolBackdrop:SetWidth(scrollbarWidth - 2)
         end
     end
 
     -- Skin up button
     if upButton then
-        local buttonColors = {bg = buttonBg, border = buttonBorder, arrow = buttonArrow}
+        local buttonColors = {bg = buttonBg, border = buttonBorder, arrow = buttonArrow, width = scrollbarWidth}
         self:SkinScrollButton(upButton, "up", buttonColors)
         upButton:SetPoint("BOTTOM", scrollBar, "TOP", 0, 1)
     end
 
     -- Skin down button
     if downButton then
-        local buttonColors = {bg = buttonBg, border = buttonBorder, arrow = buttonArrow}
+        local buttonColors = {bg = buttonBg, border = buttonBorder, arrow = buttonArrow, width = scrollbarWidth}
         self:SkinScrollButton(downButton, "down", buttonColors)
         downButton:SetPoint("TOP", scrollBar, "BOTTOM", 0, -1)
     end
@@ -502,38 +667,47 @@ end
         colors - Optional table: {bg = {r,g,b,a}, border = {r,g,b,a}, arrow = {r,g,b,a}}
 ]]
 function KOL:SkinScrollButton(button, direction, colors)
-    if not button or button.kolSkinned then return end
+    if not button then return end
 
-    -- Default colors
+    -- Default colors and dimensions
     colors = colors or {}
     local bg = colors.bg or {0.15, 0.15, 0.15, 0.9}
-    local border = colors.border or {0, 0.6, 0.6, 1}
-    local arrow = colors.arrow or {0, 0.8, 0.8, 1}
+    local border = colors.border or {0.25, 0.25, 0.25, 1}
+    local arrow = colors.arrow or {0.6, 0.6, 0.6, 1}
+    local buttonSize = colors.width or 16
 
-    button:SetSize(16, 16)
+    -- Always update size (allows live resizing)
+    button:SetSize(buttonSize, buttonSize)
 
-    -- Clear default textures
-    if button.GetNormalTexture then
-        local normal = button:GetNormalTexture()
-        if normal then normal:SetTexture(nil) end
-    end
-    if button.GetPushedTexture then
-        local pushed = button:GetPushedTexture()
-        if pushed then pushed:SetTexture(nil) end
-    end
-    if button.GetDisabledTexture then
-        local disabled = button:GetDisabledTexture()
-        if disabled then disabled:SetTexture(nil) end
-    end
-    if button.GetHighlightTexture then
-        local highlight = button:GetHighlightTexture()
-        if highlight then highlight:SetTexture(nil) end
-    end
+    -- Already skinned (unless it was reset - check if backdrop exists)
+    if button.kolSkinned and button.kolBackdrop then return end
+    button.kolSkinned = nil
 
-    -- Create backdrop
+    -- Try to clear default textures (wrapped in pcall to avoid errors)
+    pcall(function()
+        if button.GetNormalTexture then
+            local normal = button:GetNormalTexture()
+            if normal then normal:SetTexture(nil) end
+        end
+        if button.GetPushedTexture then
+            local pushed = button:GetPushedTexture()
+            if pushed then pushed:SetTexture(nil) end
+        end
+        if button.GetDisabledTexture then
+            local disabled = button:GetDisabledTexture()
+            if disabled then disabled:SetTexture(nil) end
+        end
+        if button.GetHighlightTexture then
+            local highlight = button:GetHighlightTexture()
+            if highlight then highlight:SetTexture(nil) end
+        end
+    end)
+
+    -- Create backdrop (set high frame level to cover original textures)
     if not button.kolBackdrop then
         button.kolBackdrop = CreateFrame("Frame", nil, button)
         button.kolBackdrop:SetAllPoints(button)
+        button.kolBackdrop:SetFrameLevel(button:GetFrameLevel() + 3)
         button.kolBackdrop:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8X8",
             edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -545,19 +719,11 @@ function KOL:SkinScrollButton(button, direction, colors)
         button.kolBackdrop:SetBackdropBorderColor(unpack(border))
     end
 
-    -- Create arrow texture
-    if not button.kolArrow then
-        button.kolArrow = button:CreateTexture(nil, "OVERLAY")
-        button.kolArrow:SetSize(8, 8)
-        button.kolArrow:SetPoint("CENTER", 0, 0)
-        button.kolArrow:SetTexture("Interface\\Buttons\\WHITE8X8")
-        button.kolArrow:SetVertexColor(unpack(arrow))
-
-        -- Create arrow shape using a simple triangle approach
-        -- (In WoW 3.3.5a we can't use fancy textures, so we'll use text)
-        button.kolArrowText = button:CreateFontString(nil, "OVERLAY")
+    -- Create arrow text on the backdrop (ensures it's above everything)
+    if not button.kolArrowText then
+        button.kolArrowText = button.kolBackdrop:CreateFontString(nil, "OVERLAY")
         button.kolArrowText:SetFont(CHAR_LIGATURESFONT, 10, CHAR_LIGATURESOUTLINE)
-        button.kolArrowText:SetPoint("CENTER", 0, 0)
+        button.kolArrowText:SetPoint("CENTER", button.kolBackdrop, "CENTER", 0, 0)
         button.kolArrowText:SetTextColor(unpack(arrow))
 
         if direction == "up" then
@@ -569,8 +735,6 @@ function KOL:SkinScrollButton(button, direction, colors)
         elseif direction == "right" then
             button.kolArrowText:SetText(CHAR_ARROW_RIGHTFILLED)
         end
-
-        button.kolArrow:Hide()  -- Use text instead
     end
 
     -- Store colors for hover effects
@@ -578,20 +742,26 @@ function KOL:SkinScrollButton(button, direction, colors)
 
     -- Hover effect
     button:SetScript("OnEnter", function(self)
+        if not self.kolColors then return end
         local hoverBg = {self.kolColors.bg[1] + 0.05, self.kolColors.bg[2] + 0.05, self.kolColors.bg[3] + 0.05, 1}
         local hoverBorder = {self.kolColors.border[1], self.kolColors.border[2] + 0.2, self.kolColors.border[3] + 0.2, 1}
         local hoverArrow = {self.kolColors.arrow[1], self.kolColors.arrow[2] + 0.2, self.kolColors.arrow[3] + 0.2, 1}
 
-        self.kolBackdrop:SetBackdropColor(unpack(hoverBg))
-        self.kolBackdrop:SetBackdropBorderColor(unpack(hoverBorder))
+        if self.kolBackdrop then
+            self.kolBackdrop:SetBackdropColor(unpack(hoverBg))
+            self.kolBackdrop:SetBackdropBorderColor(unpack(hoverBorder))
+        end
         if self.kolArrowText then
             self.kolArrowText:SetTextColor(unpack(hoverArrow))
         end
     end)
 
     button:SetScript("OnLeave", function(self)
-        self.kolBackdrop:SetBackdropColor(unpack(self.kolColors.bg))
-        self.kolBackdrop:SetBackdropBorderColor(unpack(self.kolColors.border))
+        if not self.kolColors then return end
+        if self.kolBackdrop then
+            self.kolBackdrop:SetBackdropColor(unpack(self.kolColors.bg))
+            self.kolBackdrop:SetBackdropBorderColor(unpack(self.kolColors.border))
+        end
         if self.kolArrowText then
             self.kolArrowText:SetTextColor(unpack(self.kolColors.arrow))
         end
@@ -610,9 +780,22 @@ end
 function KOL:SkinUIPanelScrollFrame(scrollFrame, colors)
     if not scrollFrame then return end
 
+    -- Try multiple ways to find the scrollbar (WoW 3.3.5a compatibility)
     local scrollBar = scrollFrame.ScrollBar or scrollFrame.scrollBar
+    local frameName = scrollFrame:GetName()
+
+    -- In 3.3.5a, UIPanelScrollFrameTemplate creates scrollbar in global namespace
+    if not scrollBar and frameName then
+        scrollBar = _G[frameName .. "ScrollBar"]
+    end
+
     if scrollBar then
-        self:SkinScrollBar(scrollFrame, "ScrollBar", colors)
+        -- Pass the actual scrollbar name for proper lookup in SkinScrollBar
+        local scrollBarName = scrollBar:GetName() or "ScrollBar"
+        self:SkinScrollBar(scrollFrame, scrollBarName, colors)
+        self:DebugPrint("UI: Skinned scrollbar for " .. (frameName or "unknown"), 2)
+    else
+        self:DebugPrint("UI: Could not find scrollbar for " .. (frameName or "unknown"), 1)
     end
 end
 
@@ -740,29 +923,53 @@ end
 function UIFactory:CreateScrollableContent(parent, options)
     options = options or {}
     local inset = options.inset or {top = 8, bottom = 8, left = 8, right = 8}
-    
-    -- Create scroll frame
-    local scrollFrame = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
+
+    -- Create scroll frame (needs unique name for UIPanelScrollFrameTemplate in 3.3.5a)
+    local scrollFrameName = "KOL_ScrollFrame_" .. tostring(math.random(100000, 999999))
+    local scrollFrame = CreateFrame("ScrollFrame", scrollFrameName, parent, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", inset.left, -inset.top)
     scrollFrame:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -inset.right, inset.bottom)
-    
+
     -- Create content child
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
     scrollChild:SetWidth(scrollFrame:GetWidth() - 10)
     scrollChild:SetHeight(1)
     scrollFrame:SetScrollChild(scrollChild)
-    
-    -- Skin scrollbar to be invisible
+
+    -- Skin scrollbar using theme colors
     if options.showScrollbar ~= false then
-        local scrollbarColors = options.scrollbarColor or {
-            track = {bg = {0.05, 0.05, 0.05, 0.9}, border = {0.2, 0.2, 0.2, 1}},
-            thumb = {bg = {0.3, 0.3, 0.3, 1}, border = {0, 0.6, 0.6, 1}},
-            button = {bg = {0.15, 0.15, 0.15, 0.9}, border = {0, 0.6, 0.6, 1}, arrow = {0, 0.8, 0.8, 1}}
-        }
-        
+        local scrollbarColors
+
+        if options.scrollbarColor then
+            -- Use provided colors
+            scrollbarColors = options.scrollbarColor
+        elseif KOL.Themes and KOL.Themes.GetUIThemeColor then
+            -- Pull from Theme system (gray fallbacks matching Nuclear Zero theme)
+            local trackBG = KOL.Themes:GetUIThemeColor("ScrollbarTrackBG", {r = 0.05, g = 0.05, b = 0.05, a = 0.9})
+            local trackBorder = KOL.Themes:GetUIThemeColor("ScrollbarTrackBorder", {r = 0.2, g = 0.2, b = 0.2, a = 1})
+            local thumbBG = KOL.Themes:GetUIThemeColor("ScrollbarThumbBG", {r = 0.3, g = 0.3, b = 0.3, a = 1})
+            local thumbBorder = KOL.Themes:GetUIThemeColor("ScrollbarThumbBorder", {r = 0.4, g = 0.4, b = 0.4, a = 1})
+            local buttonBG = KOL.Themes:GetUIThemeColor("ScrollbarButtonBG", {r = 0.15, g = 0.15, b = 0.15, a = 0.9})
+            local buttonBorder = KOL.Themes:GetUIThemeColor("ScrollbarButtonBorder", {r = 0.25, g = 0.25, b = 0.25, a = 1})
+            local buttonArrow = KOL.Themes:GetUIThemeColor("ScrollbarButtonArrow", {r = 0.6, g = 0.6, b = 0.6, a = 1})
+
+            scrollbarColors = {
+                track = {bg = {trackBG.r, trackBG.g, trackBG.b, trackBG.a or 0.9}, border = {trackBorder.r, trackBorder.g, trackBorder.b, trackBorder.a or 1}},
+                thumb = {bg = {thumbBG.r, thumbBG.g, thumbBG.b, thumbBG.a or 1}, border = {thumbBorder.r, thumbBorder.g, thumbBorder.b, thumbBorder.a or 1}},
+                button = {bg = {buttonBG.r, buttonBG.g, buttonBG.b, buttonBG.a or 0.9}, border = {buttonBorder.r, buttonBorder.g, buttonBorder.b, buttonBorder.a or 1}, arrow = {buttonArrow.r, buttonArrow.g, buttonArrow.b, buttonArrow.a or 1}}
+            }
+        else
+            -- Fallback to hardcoded defaults (gray, matching Nuclear Zero theme)
+            scrollbarColors = {
+                track = {bg = {0.05, 0.05, 0.05, 0.9}, border = {0.2, 0.2, 0.2, 1}},
+                thumb = {bg = {0.3, 0.3, 0.3, 1}, border = {0.4, 0.4, 0.4, 1}},
+                button = {bg = {0.15, 0.15, 0.15, 0.9}, border = {0.25, 0.25, 0.25, 1}, arrow = {0.6, 0.6, 0.6, 1}}
+            }
+        end
+
         KOL:SkinUIPanelScrollFrame(scrollFrame, scrollbarColors)
     end
-    
+
     return scrollChild, scrollFrame
 end
 
@@ -963,7 +1170,7 @@ end
 
     Returns: button
 ]]
-function UIFactory:CreateTextButton(parent, text, options)
+function UIFactory:OldCreateTextButton(parent, text, options)
     options = options or {}
 
     local textColor = options.textColor or {r = 0.7, g = 0.7, b = 0.7, a = 1}
@@ -1013,6 +1220,414 @@ function UIFactory:CreateTextButton(parent, text, options)
 
     -- Initial size
     button:UpdateSize()
+
+    return button
+end
+
+-- ============================================================================
+-- Rainbow Animation System
+-- ============================================================================
+
+-- Rainbow colors (matches the tag rainbow)
+local rainbowColors = {
+    {r = 1.00, g = 0.00, b = 0.00}, -- FF0000 Red
+    {r = 1.00, g = 0.27, b = 0.00}, -- FF4400
+    {r = 1.00, g = 0.53, b = 0.00}, -- FF8800 Orange
+    {r = 1.00, g = 0.80, b = 0.00}, -- FFCC00
+    {r = 1.00, g = 1.00, b = 0.00}, -- FFFF00 Yellow
+    {r = 0.80, g = 1.00, b = 0.00}, -- CCFF00
+    {r = 0.53, g = 1.00, b = 0.00}, -- 88FF00 Green
+    {r = 0.27, g = 1.00, b = 0.00}, -- 44FF00
+    {r = 0.00, g = 1.00, b = 0.00}, -- 00FF00
+    {r = 0.00, g = 1.00, b = 0.53}, -- 00FF88
+    {r = 0.00, g = 1.00, b = 1.00}, -- 00FFFF Cyan
+    {r = 0.33, g = 0.67, b = 1.00}, -- 55AAFF
+    {r = 0.47, g = 0.60, b = 1.00}, -- 7799FF Blue
+    {r = 0.53, g = 0.53, b = 1.00}, -- 8888FF
+    {r = 0.67, g = 0.40, b = 1.00}, -- AA66FF Purple
+}
+
+-- Global rainbow index (shared across all rainbow animations for sync)
+local globalRainbowIndex = 1
+
+--[[
+    Get the rainbow colors table
+    Returns: table of {r, g, b} colors
+]]
+function UIFactory:GetRainbowColors()
+    return rainbowColors
+end
+
+--[[
+    Get the current rainbow color (for synced animations)
+    Returns: {r, g, b} color table
+]]
+function UIFactory:GetCurrentRainbowColor()
+    return rainbowColors[globalRainbowIndex]
+end
+
+--[[
+    Start rainbow animation on a frame's text
+    The animation cycles through rainbow colors on the provided fontstring
+
+    Parameters:
+        frame - The frame to attach the OnUpdate script to
+        fontstring - The fontstring to animate
+        options - Table with optional settings:
+            - speed: number - Color change interval in seconds (default: 0.08)
+            - borderFrame: frame - Optional frame whose border to also animate
+
+    Returns: nothing (modifies frame in place)
+]]
+function UIFactory:StartRainbowAnimation(frame, fontstring, options)
+    options = options or {}
+    local speed = options.speed or 0.08
+
+    frame.rainbowTimer = 0
+    frame.rainbowActive = true
+    frame.rainbowFontstring = fontstring
+    frame.rainbowBorderFrame = options.borderFrame
+
+    frame:SetScript("OnUpdate", function(self, elapsed)
+        if not self.rainbowActive then
+            self:SetScript("OnUpdate", nil)
+            return
+        end
+
+        self.rainbowTimer = self.rainbowTimer + elapsed
+        if self.rainbowTimer >= speed then
+            self.rainbowTimer = 0
+            globalRainbowIndex = globalRainbowIndex + 1
+            if globalRainbowIndex > #rainbowColors then
+                globalRainbowIndex = 1
+            end
+
+            local color = rainbowColors[globalRainbowIndex]
+            if self.rainbowFontstring then
+                self.rainbowFontstring:SetTextColor(color.r, color.g, color.b, 1)
+            end
+            if self.rainbowBorderFrame then
+                self.rainbowBorderFrame:SetBackdropBorderColor(color.r, color.g, color.b, 1)
+            end
+        end
+    end)
+end
+
+--[[
+    Stop rainbow animation on a frame
+
+    Parameters:
+        frame - The frame with the rainbow animation
+        restoreColor - Optional {r, g, b, a} color to restore text to
+        restoreBorderColor - Optional {r, g, b, a} color to restore border to
+]]
+function UIFactory:StopRainbowAnimation(frame, restoreColor, restoreBorderColor)
+    frame.rainbowActive = false
+    frame:SetScript("OnUpdate", nil)
+
+    if restoreColor and frame.rainbowFontstring then
+        frame.rainbowFontstring:SetTextColor(restoreColor.r, restoreColor.g, restoreColor.b, restoreColor.a or 1)
+    end
+    if restoreBorderColor and frame.rainbowBorderFrame then
+        frame.rainbowBorderFrame:SetBackdropBorderColor(restoreBorderColor.r, restoreBorderColor.g, restoreBorderColor.b, restoreBorderColor.a or 1)
+    end
+end
+
+-- ============================================================================
+-- Animated Text Button (Text-only with rainbow hover)
+-- ============================================================================
+
+--[[
+    Creates a text-only button with rainbow color animation on hover
+
+    Parameters:
+        parent - Parent frame
+        text - Button text
+        options - Table with optional settings:
+            - textColor: {r, g, b, a} - Normal text color (default: muted gray)
+            - fontSize: number - Font size (default: 12)
+            - onClick: function - Click handler
+            - fontObject: string - Font object name (optional)
+            - rainbowSpeed: number - Rainbow animation speed (default: 0.08)
+
+    Returns: button
+]]
+function UIFactory:OldCreateAnimatedTextButton(parent, text, options)
+    options = options or {}
+
+    local textColor = options.textColor or {r = 0.7, g = 0.7, b = 0.7, a = 1}
+    local fontSize = options.fontSize or 12
+    local rainbowSpeed = options.rainbowSpeed or 0.08
+
+    local button = CreateFrame("Button", nil, parent)
+    button:EnableMouse(true)
+
+    -- Text
+    local fontPath, fontOutline = GetGeneralFont()
+    local buttonText = button:CreateFontString(nil, "OVERLAY")
+    buttonText:SetFont(fontPath, fontSize, fontOutline)
+    buttonText:SetPoint("CENTER")
+    buttonText:SetText(text)
+    buttonText:SetTextColor(textColor.r, textColor.g, textColor.b, textColor.a or 1)
+    button.text = buttonText
+
+    -- Size button to fit text
+    buttonText:SetPoint("TOPLEFT", button, "TOPLEFT", 0, 0)
+    buttonText:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 0)
+
+    -- Store colors for restore
+    button.textColor = textColor
+
+    -- Hover effects with rainbow animation
+    button:SetScript("OnEnter", function(self)
+        UIFactory:StartRainbowAnimation(self, self.text, {speed = rainbowSpeed})
+    end)
+
+    button:SetScript("OnLeave", function(self)
+        UIFactory:StopRainbowAnimation(self, self.textColor)
+    end)
+
+    -- Click handler
+    if options.onClick then
+        button:SetScript("OnClick", options.onClick)
+    end
+
+    -- Helper to update size based on text
+    function button:UpdateSize()
+        local textWidth = self.text:GetStringWidth()
+        local textHeight = self.text:GetStringHeight()
+        self:SetSize(textWidth + 4, textHeight + 2)
+    end
+
+    -- Initial size
+    button:UpdateSize()
+
+    return button
+end
+
+-- ============================================================================
+-- Animated Border Button (Border animations on hover)
+-- ============================================================================
+
+--[[
+    Creates a styled button with animated border effects on hover
+
+    Parameters:
+        parent - Parent frame
+        width - Button width
+        height - Button height
+        text - Button text
+        options - Table with optional settings:
+            - borderAnimation: "fade" | "rainbow" - Animation type for border
+            - textAnimation: "rainbow" - Optional, animates text in rainbow colors on hover
+            - textColor: {r, g, b, a} - Text color (default state)
+            - hoverTextColor: {r, g, b, a} - Text color on hover (ignored if textAnimation="rainbow")
+            - pressedTextColor: {r, g, b, a} - Text color when mouse pressed
+            - bgColor: {r, g, b, a} - Background color
+            - hoverBgColor: {r, g, b, a} - Background color on hover
+            - borderColor: {r, g, b, a} - Border color (start color for fade)
+            - hoverBorderColor: {r, g, b, a} - Target border color for fade
+            - fontSize: number - Font size
+            - textPressEffect: boolean - Text shifts on click (defaults to true)
+            - rainbowSpeed: number - Speed of rainbow animation (default 0.06)
+            - fadeSpeed: number - Speed of fade animation (default 3.0)
+            - onClick: function - Click handler
+
+    Returns: button
+]]
+function UIFactory:OldCreateAnimatedBorderButton(parent, width, height, text, options)
+    options = options or {}
+
+    local borderAnimation = options.borderAnimation or "fade"
+    local textAnimation = options.textAnimation  -- Optional: "rainbow" for rainbow text on hover
+    local textColor = options.textColor or {r = 0.8, g = 0.8, b = 0.8, a = 1}
+    local hoverTextColor = options.hoverTextColor or {r = 1, g = 1, b = 1, a = 1}
+    local bgColor = options.bgColor or {r = 0.08, g = 0.08, b = 0.08, a = 1}
+    local hoverBgColor = options.hoverBgColor or {r = 0.12, g = 0.12, b = 0.12, a = 1}
+    local borderColor = options.borderColor or {r = 0.3, g = 0.3, b = 0.3, a = 1}
+    local hoverBorderColor = options.hoverBorderColor or {r = 0, g = 0.8, b = 0.8, a = 1}
+    local fontSize = options.fontSize or 11
+    local rainbowSpeed = options.rainbowSpeed or 0.06
+    local fadeSpeed = options.fadeSpeed or 3.0
+    local textPressEffect = options.textPressEffect
+
+    local button = CreateFrame("Button", nil, parent)
+    button:SetSize(width, height)
+    button:EnableMouse(true)
+
+    button:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        tile = false,
+        tileSize = 1,
+        edgeSize = 1,
+        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    })
+    button:SetBackdropColor(bgColor.r, bgColor.g, bgColor.b, bgColor.a or 1)
+    button:SetBackdropBorderColor(borderColor.r, borderColor.g, borderColor.b, borderColor.a or 1)
+
+    -- Text
+    local fontPath, fontOutline = GetGeneralFont()
+    local buttonText = button:CreateFontString(nil, "OVERLAY")
+    buttonText:SetFont(fontPath, fontSize, fontOutline)
+    buttonText:SetPoint("CENTER", 0, 0)
+    buttonText:SetText(text)
+    buttonText:SetTextColor(textColor.r, textColor.g, textColor.b, textColor.a or 1)
+    button.text = buttonText
+
+    -- Store state
+    button.bgColor = bgColor
+    button.hoverBgColor = hoverBgColor
+    button.borderColor = borderColor
+    button.hoverBorderColor = hoverBorderColor
+    button.textColor = textColor
+    button.hoverTextColor = hoverTextColor
+    button.pressedTextColor = options.pressedTextColor  -- Optional: text color when mouse is pressed
+    button.borderAnimation = borderAnimation
+    button.textAnimation = textAnimation  -- Optional: "rainbow" for rainbow text animation
+    button.isHovered = false
+    button.animProgress = 0  -- 0 = normal, 1 = fully hovered
+    button.textPressEffect = textPressEffect
+    button.textPressed = false
+    button.textRainbowIndex = 1  -- Separate index for text rainbow (can be offset from border)
+
+    -- Rainbow colors for border (same as text rainbow)
+    local rainbowColors = {
+        {r = 1.00, g = 0.00, b = 0.00},
+        {r = 1.00, g = 0.53, b = 0.00},
+        {r = 1.00, g = 1.00, b = 0.00},
+        {r = 0.00, g = 1.00, b = 0.00},
+        {r = 0.00, g = 1.00, b = 1.00},
+        {r = 0.47, g = 0.60, b = 1.00},
+        {r = 0.67, g = 0.40, b = 1.00},
+    }
+    button.rainbowColors = rainbowColors
+    button.rainbowIndex = 1
+    button.rainbowTimer = 0
+    button.rainbowSpeed = rainbowSpeed
+    button.fadeSpeed = fadeSpeed
+
+    -- OnUpdate for animations
+    button:SetScript("OnUpdate", function(self, elapsed)
+        if not self.isHovered then
+            -- Animate back to normal state
+            if self.animProgress > 0 then
+                self.animProgress = math.max(0, self.animProgress - elapsed * self.fadeSpeed)
+                -- Interpolate border color back to normal
+                local p = self.animProgress
+                local r = self.borderColor.r + (self.hoverBorderColor.r - self.borderColor.r) * p
+                local g = self.borderColor.g + (self.hoverBorderColor.g - self.borderColor.g) * p
+                local b = self.borderColor.b + (self.hoverBorderColor.b - self.borderColor.b) * p
+                self:SetBackdropBorderColor(r, g, b, 1)
+                -- Interpolate background
+                local bgR = self.bgColor.r + (self.hoverBgColor.r - self.bgColor.r) * p
+                local bgG = self.bgColor.g + (self.hoverBgColor.g - self.bgColor.g) * p
+                local bgB = self.bgColor.b + (self.hoverBgColor.b - self.bgColor.b) * p
+                self:SetBackdropColor(bgR, bgG, bgB, self.bgColor.a or 1)
+            end
+            return
+        end
+
+        if self.borderAnimation == "rainbow" then
+            -- Rainbow border animation
+            self.rainbowTimer = self.rainbowTimer + elapsed
+            if self.rainbowTimer >= self.rainbowSpeed then
+                self.rainbowTimer = 0
+                self.rainbowIndex = self.rainbowIndex + 1
+                if self.rainbowIndex > #self.rainbowColors then
+                    self.rainbowIndex = 1
+                end
+                local color = self.rainbowColors[self.rainbowIndex]
+                self:SetBackdropBorderColor(color.r, color.g, color.b, 1)
+
+                -- Also animate text if textAnimation is rainbow (offset by 3 for contrast)
+                if self.textAnimation == "rainbow" then
+                    local textIdx = ((self.rainbowIndex + 2) % #self.rainbowColors) + 1
+                    local textColor = self.rainbowColors[textIdx]
+                    self.text:SetTextColor(textColor.r, textColor.g, textColor.b, 1)
+                end
+            end
+        elseif self.borderAnimation == "fade" then
+            -- Smooth fade to hover color
+            if self.animProgress < 1 then
+                self.animProgress = math.min(1, self.animProgress + elapsed * self.fadeSpeed)
+                local p = self.animProgress
+                local r = self.borderColor.r + (self.hoverBorderColor.r - self.borderColor.r) * p
+                local g = self.borderColor.g + (self.hoverBorderColor.g - self.borderColor.g) * p
+                local b = self.borderColor.b + (self.hoverBorderColor.b - self.borderColor.b) * p
+                self:SetBackdropBorderColor(r, g, b, 1)
+                -- Interpolate background too
+                local bgR = self.bgColor.r + (self.hoverBgColor.r - self.bgColor.r) * p
+                local bgG = self.bgColor.g + (self.hoverBgColor.g - self.bgColor.g) * p
+                local bgB = self.bgColor.b + (self.hoverBgColor.b - self.bgColor.b) * p
+                self:SetBackdropColor(bgR, bgG, bgB, self.bgColor.a or 1)
+            end
+
+            -- Text rainbow animation (works with fade border too)
+            if self.textAnimation == "rainbow" then
+                self.rainbowTimer = self.rainbowTimer + elapsed
+                if self.rainbowTimer >= self.rainbowSpeed then
+                    self.rainbowTimer = 0
+                    self.textRainbowIndex = self.textRainbowIndex + 1
+                    if self.textRainbowIndex > #self.rainbowColors then
+                        self.textRainbowIndex = 1
+                    end
+                    local textColor = self.rainbowColors[self.textRainbowIndex]
+                    self.text:SetTextColor(textColor.r, textColor.g, textColor.b, 1)
+                end
+            end
+        end
+    end)
+
+    -- Hover effects
+    button:SetScript("OnEnter", function(self)
+        self.isHovered = true
+        -- Only set hover text color if not using rainbow text animation
+        if self.textAnimation ~= "rainbow" then
+            self.text:SetTextColor(self.hoverTextColor.r, self.hoverTextColor.g, self.hoverTextColor.b, self.hoverTextColor.a or 1)
+        end
+        -- For rainbow, set background immediately
+        if self.borderAnimation == "rainbow" then
+            self:SetBackdropColor(self.hoverBgColor.r, self.hoverBgColor.g, self.hoverBgColor.b, self.hoverBgColor.a or 1)
+        end
+    end)
+
+    button:SetScript("OnLeave", function(self)
+        self.isHovered = false
+        self.text:SetTextColor(self.textColor.r, self.textColor.g, self.textColor.b, self.textColor.a or 1)
+        -- Reset text position if it was pressed
+        if self.textPressed then
+            self.text:SetPoint("CENTER", 0, 0)
+            self.textPressed = false
+        end
+    end)
+
+    -- Text press effect (MouseDown/MouseUp) - defaults to TRUE for animatedbutton
+    local usePressEffect = textPressEffect ~= false
+    if usePressEffect then
+        button:SetScript("OnMouseDown", function(self)
+            self.text:SetPoint("CENTER", 1, -1)
+            self.textPressed = true
+            -- Apply pressed text color if specified
+            if self.pressedTextColor then
+                self.text:SetTextColor(self.pressedTextColor.r, self.pressedTextColor.g, self.pressedTextColor.b, self.pressedTextColor.a or 1)
+            end
+        end)
+
+        button:SetScript("OnMouseUp", function(self)
+            self.text:SetPoint("CENTER", 0, 0)
+            self.textPressed = false
+            -- Restore to hover color (we're still hovering after mouse up)
+            if self.pressedTextColor then
+                self.text:SetTextColor(self.hoverTextColor.r, self.hoverTextColor.g, self.hoverTextColor.b, self.hoverTextColor.a or 1)
+            end
+        end)
+    end
+
+    -- Click handler
+    if options.onClick then
+        button:SetScript("OnClick", options.onClick)
+    end
 
     return button
 end
@@ -1472,9 +2087,13 @@ function UIFactory:CreateDropdown(parent, width, options)
     })
     list:SetBackdropColor(0.1, 0.1, 0.1, 0.98)
     list:SetBackdropBorderColor(borderColor.r, borderColor.g, borderColor.b, borderColor.a or 1)
-    -- Always use TOOLTIP strata so dropdown list appears above everything
-    list:SetFrameStrata("TOOLTIP")
-    list:SetFrameLevel(200)
+
+    -- Inherit strata from parent frame + offset for proper layering
+    local rootFrame = self:FindRootFrame(parent)
+    local dropStrata, dropLevel = self:GetDropdownStrataInfo(rootFrame or parent)
+    list:SetFrameStrata(dropStrata)
+    list:SetFrameLevel(dropLevel)
+
     list:Hide()
     dropdown.list = list
 
@@ -1489,6 +2108,9 @@ function UIFactory:CreateDropdown(parent, width, options)
         local itemHeight = 22
         local yOffset = -2
 
+        -- Get list's frame level so we can put buttons above it
+        local listLevel = list:GetFrameLevel()
+
         for i, item in ipairs(dropdown.items) do
             local value, label, color
             if type(item) == "table" then
@@ -1501,6 +2123,7 @@ function UIFactory:CreateDropdown(parent, width, options)
             end
 
             local itemBtn = CreateFrame("Button", nil, list)
+            itemBtn:SetFrameLevel(listLevel + 1)  -- Ensure buttons are above list backdrop
             itemBtn:SetSize(width - 4, itemHeight)
             itemBtn:SetPoint("TOPLEFT", 2, yOffset)
 
@@ -1743,6 +2366,240 @@ function UIFactory:CreateCheckbox(parent, label, options)
 end
 
 -- ============================================================================
+-- Action Approval Frame (Confirmation Dialog)
+-- ============================================================================
+
+--[[
+    Creates a reusable confirmation dialog for dangerous/destructive actions
+
+    Visual Layout:
+        ┌────────────────────────────────────┐
+        │                              [X]   │
+        │     Are you sure you want to       │
+        │     Reset All Settings             │  <- actionColor (cyan)
+        │     for Tracker: Test Panel        │  <- contextColor (purple)
+        │                                    │
+        │  [✓] I understand this cannot...   │
+        │                                    │
+        │         [CONFIRM]  [CANCEL]        │
+        └────────────────────────────────────┘
+
+    Parameters:
+        parent - Parent frame (usually UIParent)
+        frameId - Unique frame name (e.g., "KOL_ResetApproval")
+        options - Table with settings:
+            -- Text content
+            - line1: string - Question text (default: "Are you sure you want to")
+            - actionName: string - The action being confirmed (required)
+            - contextLine: string - Optional context (e.g., "for Tracker: Test Panel")
+            - checkboxText: string - Checkbox label (default: "I understand this action cannot be undone")
+
+            -- Button text
+            - confirmText: string - Confirm button text (default: "CONFIRM")
+            - cancelText: string - Cancel button text (default: "CANCEL")
+
+            -- Colors
+            - actionColor: {r,g,b,a} - Color for action name (default: cyan)
+            - contextColor: {r,g,b,a} - Color for context line (default: purple)
+            - confirmColor: {r,g,b,a} - Confirm button color (default: red for danger)
+
+            -- Behavior
+            - requireCheckbox: boolean - Must check to enable confirm (default: true)
+
+            -- Callbacks
+            - onConfirm: function() - Called when confirmed
+            - onCancel: function() - Called when cancelled (optional)
+
+    Returns: frame with methods:
+        - frame:Show() - Show the dialog
+        - frame:Hide() - Hide the dialog
+        - frame:SetActionName(text) - Update action name
+        - frame:SetContextLine(text) - Update context line
+        - frame:SetOnConfirm(func) - Update confirm callback
+        - frame:Reset() - Reset checkbox and disable confirm button
+
+    Usage:
+        local approval = UIFactory:CreateActionApprovalFrame(UIParent, "KOL_ResetApproval", {
+            actionName = "Reset All Settings",
+            contextLine = "for Tracker: Test Panel",
+            onConfirm = function()
+                -- Do the reset
+                KOL:PrintTag("Settings reset!")
+            end,
+        })
+        approval:Show()
+]]
+function UIFactory:CreateActionApprovalFrame(parent, frameId, options)
+    options = options or {}
+
+    -- Defaults
+    local line1 = options.line1 or "Are you sure you want to"
+    local actionName = options.actionName or "perform this action"
+    local contextLine = options.contextLine  -- nil is ok
+    local checkboxText = options.checkboxText or "I understand this action cannot be undone"
+    local confirmText = options.confirmText or "CONFIRM"
+    local cancelText = options.cancelText or "CANCEL"
+    local actionColor = options.actionColor or {r = 0, g = 0.8, b = 0.8, a = 1}
+    local contextColor = options.contextColor or {r = 0.7, g = 0.5, b = 0.9, a = 1}
+    local confirmColor = options.confirmColor or {r = 0.8, g = 0.3, b = 0.3, a = 1}
+    local requireCheckbox = options.requireCheckbox ~= false  -- default true
+    local onConfirm = options.onConfirm
+    local onCancel = options.onCancel
+
+    -- Calculate height based on whether we have a context line
+    local baseHeight = contextLine and 115 or 100
+
+    -- Create the frame
+    local frame = self:CreateStyledFrame(parent, frameId, 340, baseHeight, {
+        closable = true,
+        movable = true,
+        strata = "TOOLTIP",
+        level = 200,
+    })
+    frame:SetPoint("CENTER")
+    frame:Hide()
+
+    local fontPath, fontOutline = GetGeneralFont()
+    local yOffset = -12
+
+    -- Line 1: Question text
+    local line1Text = frame:CreateFontString(nil, "OVERLAY")
+    line1Text:SetFont(fontPath, 11, fontOutline)
+    line1Text:SetPoint("TOP", frame, "TOP", 0, yOffset)
+    line1Text:SetText(line1)
+    line1Text:SetTextColor(0.9, 0.9, 0.9, 1)
+    frame.line1Text = line1Text
+
+    yOffset = yOffset - 18
+
+    -- Line 2: Action name (colored)
+    local actionText = frame:CreateFontString(nil, "OVERLAY")
+    actionText:SetFont(fontPath, 12, fontOutline)
+    actionText:SetPoint("TOP", frame, "TOP", 0, yOffset)
+    actionText:SetText(actionName)
+    actionText:SetTextColor(actionColor.r, actionColor.g, actionColor.b, actionColor.a or 1)
+    frame.actionText = actionText
+
+    yOffset = yOffset - 18
+
+    -- Line 3: Context line (optional, colored differently)
+    local contextText = nil
+    if contextLine then
+        contextText = frame:CreateFontString(nil, "OVERLAY")
+        contextText:SetFont(fontPath, 10, fontOutline)
+        contextText:SetPoint("TOP", frame, "TOP", 0, yOffset)
+        contextText:SetText(contextLine)
+        contextText:SetTextColor(contextColor.r, contextColor.g, contextColor.b, contextColor.a or 1)
+        frame.contextText = contextText
+        yOffset = yOffset - 16
+    end
+
+    yOffset = yOffset - 8
+
+    -- Checkbox
+    local checkbox = self:CreateCheckbox(frame, checkboxText, {
+        checked = false,
+        fontSize = 10,
+        onChange = function(checked)
+            if requireCheckbox then
+                if checked then
+                    frame.confirmBtn:Enable()
+                    frame.confirmBtn:SetAlpha(1)
+                else
+                    frame.confirmBtn:Disable()
+                    frame.confirmBtn:SetAlpha(0.5)
+                end
+            end
+        end,
+    })
+    checkbox:SetPoint("TOP", frame, "TOP", 0, yOffset)
+    frame.checkbox = checkbox
+
+    -- Buttons at bottom
+    local cancelBtn = self:OldCreateTextButton(frame, cancelText, {
+        textColor = {r = 0.7, g = 0.7, b = 0.7, a = 1},
+        hoverColor = {r = 0.9, g = 0.9, b = 0.9, a = 1},
+        fontSize = 11,
+        onClick = function()
+            frame:Hide()
+            if onCancel then
+                onCancel()
+            end
+        end,
+    })
+    cancelBtn:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -20, 10)
+    frame.cancelBtn = cancelBtn
+
+    local confirmBtn = self:OldCreateTextButton(frame, confirmText, {
+        textColor = confirmColor,
+        hoverColor = {r = math.min(1, confirmColor.r + 0.2), g = math.min(1, confirmColor.g + 0.2), b = math.min(1, confirmColor.b + 0.2), a = 1},
+        fontSize = 11,
+        onClick = function()
+            frame:Hide()
+            if frame.onConfirmCallback then
+                frame.onConfirmCallback()
+            end
+        end,
+    })
+    confirmBtn:SetPoint("RIGHT", cancelBtn, "LEFT", -25, 0)
+    frame.confirmBtn = confirmBtn
+    frame.onConfirmCallback = onConfirm
+
+    -- Start with confirm disabled if checkbox required
+    if requireCheckbox then
+        confirmBtn:Disable()
+        confirmBtn:SetAlpha(0.5)
+    end
+
+    -- Store settings
+    frame.actionColor = actionColor
+    frame.contextColor = contextColor
+    frame.requireCheckbox = requireCheckbox
+
+    -- Helper methods
+
+    -- Update action name text
+    function frame:SetActionName(text)
+        self.actionText:SetText(text)
+    end
+
+    -- Update context line (can set to nil to hide concept)
+    function frame:SetContextLine(text)
+        if self.contextText then
+            if text then
+                self.contextText:SetText(text)
+                self.contextText:Show()
+            else
+                self.contextText:Hide()
+            end
+        end
+    end
+
+    -- Update confirm callback
+    function frame:SetOnConfirm(func)
+        self.onConfirmCallback = func
+    end
+
+    -- Reset state (uncheck checkbox, disable confirm)
+    function frame:Reset()
+        self.checkbox:SetChecked(false)
+        if self.requireCheckbox then
+            self.confirmBtn:Disable()
+            self.confirmBtn:SetAlpha(0.5)
+        end
+    end
+
+    -- Override Show to always reset first
+    local originalShow = frame.Show
+    frame.Show = function(self)
+        self:Reset()
+        originalShow(self)
+    end
+
+    return frame
+end
+
+-- ============================================================================
 -- Scrollable Dropdown (for long lists)
 -- ============================================================================
 
@@ -1840,8 +2697,13 @@ function UIFactory:CreateScrollableDropdown(parent, width, options)
     })
     list:SetBackdropColor(0.06, 0.06, 0.06, 0.98)
     list:SetBackdropBorderColor(borderColor.r, borderColor.g, borderColor.b, borderColor.a or 1)
-    list:SetFrameStrata("TOOLTIP")
-    list:SetFrameLevel(200)
+
+    -- Inherit strata from parent frame + offset for proper layering
+    local rootFrame = self:FindRootFrame(parent)
+    local dropStrata, dropLevel = self:GetDropdownStrataInfo(rootFrame or parent)
+    list:SetFrameStrata(dropStrata)
+    list:SetFrameLevel(dropLevel)
+
     list:Hide()
     dropdown.list = list
 
@@ -1955,6 +2817,9 @@ function UIFactory:CreateScrollableDropdown(parent, width, options)
         end
         dropdown.itemButtons = {}
 
+        -- Get list's frame level so we can put buttons above it
+        local listLevel = list:GetFrameLevel()
+
         -- Create item buttons
         for i, item in ipairs(items) do
             local value, label, color
@@ -1968,6 +2833,7 @@ function UIFactory:CreateScrollableDropdown(parent, width, options)
             end
 
             local itemBtn = CreateFrame("Button", nil, scrollChild)
+            itemBtn:SetFrameLevel(listLevel + 1)  -- Ensure buttons are above list backdrop
             itemBtn:SetSize(width - (needsScroll and 16 or 8), itemHeight)
             itemBtn:SetPoint("TOPLEFT", 2, -((i - 1) * itemHeight))
 
@@ -2249,9 +3115,13 @@ function UIFactory:CreateFontChoiceDropdown(parent, name, label, width, callback
     })
     list:SetBackdropColor(0.06, 0.06, 0.06, 0.98)
     list:SetBackdropBorderColor(borderColor.r, borderColor.g, borderColor.b, borderColor.a or 1)
-    -- Always use TOOLTIP strata so dropdown list appears above everything
-    list:SetFrameStrata("TOOLTIP")
-    list:SetFrameLevel(200)
+
+    -- Inherit strata from parent frame + offset for proper layering
+    local rootFrame = self:FindRootFrame(parent)
+    local dropStrata, dropLevel = self:GetDropdownStrataInfo(rootFrame or parent)
+    list:SetFrameStrata(dropStrata)
+    list:SetFrameLevel(dropLevel)
+
     list:Hide()
     dropdown.list = list
 
@@ -2345,9 +3215,13 @@ function UIFactory:CreateFontChoiceDropdown(parent, name, label, width, callback
         end
         dropdown.itemButtons = {}
 
+        -- Get list's frame level so we can put buttons above it
+        local listLevel = list:GetFrameLevel()
+
         -- Create item buttons
         for i, fontName in ipairs(fonts) do
             local itemBtn = CreateFrame("Button", nil, scrollChild)
+            itemBtn:SetFrameLevel(listLevel + 1)  -- Ensure buttons are above list backdrop
             itemBtn:SetSize(width - (needsScroll and 16 or 8), itemHeight)
             itemBtn:SetPoint("TOPLEFT", 2, -((i - 1) * itemHeight))
 
@@ -2595,6 +3469,1271 @@ function UIFactory:CreateFontChoiceDropdown(parent, name, label, width, callback
     end
 
     return container
+end
+
+-- ============================================================================
+-- Styled Popup Dropdown (Clean, Reusable, Scrollable)
+-- ============================================================================
+
+-- Shared popup menu frame (only one can be open at a time)
+local styledPopupMenu = nil
+local styledPopupOwner = nil
+
+local function HideStyledPopup()
+    if styledPopupMenu then
+        styledPopupMenu:SetScript("OnUpdate", nil)
+        styledPopupMenu:Hide()
+        if styledPopupOwner and styledPopupOwner.arrow then
+            styledPopupOwner.arrow:SetText(CHAR_ARROW_DOWNFILLED)
+        end
+        styledPopupOwner = nil
+    end
+end
+
+--[[
+    Creates a styled dropdown with popup menu
+
+    Features:
+        - Clean, themed styling
+        - Auto-scrollable when items exceed maxVisible
+        - Proper toggle behavior (no race conditions)
+        - Supports icons and colors per item
+        - Mouse wheel scrolling
+        - Closes when clicking elsewhere
+        - Only one popup open at a time
+
+    Parameters:
+        parent - Parent frame
+        width - Dropdown width (default: 150)
+        options - Table with:
+            - items: array of items, each can be:
+                - string: "Label"
+                - table: {value = "val", label = "Label", icon = "*", color = "|cFFFFFF00"}
+            - selectedValue: initial selected value
+            - onSelect: function(value, label) callback
+            - placeholder: text when nothing selected (default: "Select...")
+            - fontSize: number (default: 10)
+            - maxVisible: max items before scrolling (default: 8)
+            - itemHeight: height per item (default: 20)
+
+    Returns: dropdown button with methods:
+        - :GetValue() - returns selected value
+        - :SetValue(value) - sets selected value
+        - :SetItems(items) - updates item list
+        - :Close() - closes popup if open
+]]
+function UIFactory:CreateStyledDropdown(parent, width, options)
+    options = options or {}
+    width = width or 150
+    local height = 22
+    local fontSize = options.fontSize or 10
+    local maxVisible = options.maxVisible or 8
+    local itemHeight = options.itemHeight or 20
+
+    local fontPath, fontOutline = GetGeneralFont()
+
+    -- Get theme colors
+    local bgColor, borderColor, hoverBorderColor
+    if KOL.Themes and KOL.Themes.GetUIThemeColor then
+        bgColor = KOL.Themes:GetUIThemeColor("ContentAreaBG", {r = 0.08, g = 0.08, b = 0.08, a = 1})
+        borderColor = KOL.Themes:GetUIThemeColor("ContentAreaBorder", {r = 0.3, g = 0.3, b = 0.3, a = 1})
+        hoverBorderColor = KOL.Themes:GetUIThemeColor("ButtonHoverBorder", {r = 0, g = 0.6, b = 0.6, a = 1})
+    else
+        bgColor = {r = 0.08, g = 0.08, b = 0.08, a = 1}
+        borderColor = {r = 0.3, g = 0.3, b = 0.3, a = 1}
+        hoverBorderColor = {r = 0, g = 0.6, b = 0.6, a = 1}
+    end
+
+    -- Create main dropdown button
+    local dropdown = CreateFrame("Button", nil, parent)
+    dropdown:SetSize(width, height)
+    dropdown:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        tile = false, tileSize = 1, edgeSize = 1,
+        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    })
+    dropdown:SetBackdropColor(bgColor.r, bgColor.g, bgColor.b, bgColor.a or 1)
+    dropdown:SetBackdropBorderColor(borderColor.r, borderColor.g, borderColor.b, borderColor.a or 1)
+
+    -- Selected text display
+    local selectedText = dropdown:CreateFontString(nil, "OVERLAY")
+    selectedText:SetFont(fontPath, fontSize, fontOutline)
+    selectedText:SetPoint("LEFT", 6, 0)
+    selectedText:SetPoint("RIGHT", -18, 0)
+    selectedText:SetJustifyH("LEFT")
+    selectedText:SetText(options.placeholder or "Select...")
+    selectedText:SetTextColor(0.9, 0.9, 0.9, 1)
+    dropdown.text = selectedText
+    dropdown.selectedText = selectedText  -- Alias for compatibility
+
+    -- Arrow indicator
+    local arrow = dropdown:CreateFontString(nil, "OVERLAY")
+    arrow:SetFont(CHAR_LIGATURESFONT, fontSize, CHAR_LIGATURESOUTLINE)
+    arrow:SetPoint("RIGHT", -5, 0)
+    arrow:SetText(CHAR_ARROW_DOWNFILLED)
+    arrow:SetTextColor(0.5, 0.5, 0.5, 1)
+    dropdown.arrow = arrow
+
+    -- State
+    dropdown.selectedValue = options.selectedValue
+    dropdown.items = options.items or {}
+    dropdown.onSelect = options.onSelect
+    dropdown.bgColor = bgColor
+    dropdown.borderColor = borderColor
+    dropdown.hoverBorderColor = hoverBorderColor
+
+    -- Hover effect on dropdown button
+    dropdown:SetScript("OnEnter", function(self)
+        self:SetBackdropBorderColor(self.hoverBorderColor.r, self.hoverBorderColor.g, self.hoverBorderColor.b, 1)
+        self.arrow:SetTextColor(0.8, 0.8, 0.8, 1)
+    end)
+    dropdown:SetScript("OnLeave", function(self)
+        self:SetBackdropBorderColor(self.borderColor.r, self.borderColor.g, self.borderColor.b, 1)
+        self.arrow:SetTextColor(0.5, 0.5, 0.5, 1)
+    end)
+
+    -- Show popup menu function
+    local function ShowPopup()
+        -- Toggle: if already open for this dropdown, close it
+        if styledPopupMenu and styledPopupMenu:IsShown() and styledPopupOwner == dropdown then
+            HideStyledPopup()
+            return
+        end
+
+        -- Close any other open popup
+        HideStyledPopup()
+
+        -- Create popup frame if needed
+        if not styledPopupMenu then
+            styledPopupMenu = CreateFrame("Frame", "KOL_StyledPopupMenu", UIParent)
+            -- Strata will be set dynamically when popup is shown based on owner frame
+            styledPopupMenu:SetFrameStrata("HIGH")
+            styledPopupMenu:SetFrameLevel(100)
+            styledPopupMenu:Hide()
+            styledPopupMenu.buttons = {}
+
+            -- Create a SEPARATE backdrop frame at a lower level
+            -- This ensures button children render ABOVE the backdrop
+            local backdropFrame = CreateFrame("Frame", nil, styledPopupMenu)
+            backdropFrame:SetAllPoints()
+            backdropFrame:SetFrameLevel(1)  -- Low level, buttons will be higher
+            backdropFrame:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8X8",
+                edgeFile = "Interface\\Buttons\\WHITE8X8",
+                tile = false, tileSize = 1, edgeSize = 1,
+                insets = { left = 0, right = 0, top = 0, bottom = 0 }
+            })
+            backdropFrame:SetBackdropColor(0.05, 0.05, 0.05, 0.98)
+            backdropFrame:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+            styledPopupMenu.backdropFrame = backdropFrame
+        end
+
+        styledPopupOwner = dropdown
+        arrow:SetText(CHAR_ARROW_UPFILLED)
+
+        -- Dynamically set strata based on the dropdown's parent frame
+        local rootFrame = UIFactory:FindRootFrame(dropdown)
+        local dropStrata, dropLevel = UIFactory:GetDropdownStrataInfo(rootFrame or dropdown:GetParent())
+        styledPopupMenu:SetFrameStrata(dropStrata)
+        styledPopupMenu:SetFrameLevel(dropLevel)
+
+        -- Update backdrop frame level relative to popup (must be done AFTER popup level is set)
+        if styledPopupMenu.backdropFrame then
+            styledPopupMenu.backdropFrame:SetFrameLevel(dropLevel)  -- Same as popup base
+        end
+
+        -- Clear existing buttons
+        for _, btn in ipairs(styledPopupMenu.buttons) do
+            btn:Hide()
+            btn:SetParent(nil)
+        end
+        styledPopupMenu.buttons = {}
+
+        local items = dropdown.items
+        local numItems = #items
+        local visibleItems = math.min(numItems, maxVisible)
+        local needsScroll = numItems > maxVisible
+        local menuWidth = width
+        local menuHeight = visibleItems * itemHeight + 4
+
+        styledPopupMenu:SetSize(menuWidth, menuHeight)
+        styledPopupMenu:ClearAllPoints()
+        styledPopupMenu:SetPoint("TOPLEFT", dropdown, "BOTTOMLEFT", 0, -2)
+
+        -- Create scroll frame if needed
+        local scrollFrame = styledPopupMenu.scrollFrame
+        local scrollChild = styledPopupMenu.scrollChild
+
+        if not scrollFrame then
+            scrollFrame = CreateFrame("ScrollFrame", nil, styledPopupMenu)
+            scrollFrame:SetPoint("TOPLEFT", 2, -2)
+            scrollFrame:SetPoint("BOTTOMRIGHT", -2, 2)
+            styledPopupMenu.scrollFrame = scrollFrame
+
+            scrollChild = CreateFrame("Frame", nil, scrollFrame)
+            scrollFrame:SetScrollChild(scrollChild)
+            styledPopupMenu.scrollChild = scrollChild
+
+            -- Mouse wheel scrolling
+            scrollFrame:EnableMouseWheel(true)
+            scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+                local current = self:GetVerticalScroll()
+                local maxScroll = math.max(0, (numItems * itemHeight) - (visibleItems * itemHeight))
+                local newScroll = math.max(0, math.min(maxScroll, current - (delta * itemHeight)))
+                self:SetVerticalScroll(newScroll)
+            end)
+        end
+
+        -- Update scroll hierarchy levels relative to popup level (MUST be done each time popup opens)
+        scrollFrame:SetFrameLevel(dropLevel + 5)
+        scrollChild:SetFrameLevel(dropLevel + 10)
+
+        scrollChild:SetSize(menuWidth - 4, numItems * itemHeight)
+        scrollFrame:SetVerticalScroll(0)
+
+        -- Create item buttons
+        for i, item in ipairs(items) do
+            local value, label, icon, color
+            if type(item) == "table" then
+                value = item.value or item[1] or i
+                label = item.label or item[2] or tostring(value)
+                icon = item.icon
+                color = item.color or ""
+            else
+                value = item
+                label = tostring(item)
+                icon = nil
+                color = ""
+            end
+
+            local btn = CreateFrame("Button", nil, scrollChild)
+            btn:SetFrameLevel(dropLevel + 15)  -- Above scrollChild, which is above backdrop
+            btn:SetSize(menuWidth - 4, itemHeight)
+            btn:SetPoint("TOPLEFT", 0, -((i - 1) * itemHeight))
+
+            -- Icon (if provided)
+            local labelOffset = 6
+            if icon then
+                local iconText = btn:CreateFontString(nil, "OVERLAY")
+                iconText:SetFont(fontPath, fontSize, fontOutline)
+                iconText:SetPoint("LEFT", 6, 0)
+                iconText:SetWidth(14)
+                iconText:SetJustifyH("CENTER")
+                iconText:SetText(icon)
+                labelOffset = 22
+            end
+
+            -- Label
+            local labelText = btn:CreateFontString(nil, "OVERLAY")
+            labelText:SetFont(fontPath, fontSize, fontOutline)
+            labelText:SetPoint("LEFT", labelOffset, 0)
+            labelText:SetPoint("RIGHT", -6, 0)
+            labelText:SetJustifyH("LEFT")
+            labelText:SetText(color .. label .. (color ~= "" and "|r" or ""))
+            labelText:SetTextColor(0.9, 0.9, 0.9, 1)
+            btn.labelText = labelText
+
+            -- Checkmark for selected item
+            if value == dropdown.selectedValue then
+                local check = btn:CreateFontString(nil, "OVERLAY")
+                check:SetFont(CHAR_LIGATURESFONT, fontSize - 2, CHAR_LIGATURESOUTLINE)
+                check:SetPoint("RIGHT", -4, 0)
+                check:SetText(CHAR_OBJECTIVE_COMPLETE)
+                check:SetTextColor(0.3, 0.9, 0.3, 1)
+            end
+
+            -- Hover effect
+            btn:SetScript("OnEnter", function(self)
+                self:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8X8"})
+                self:SetBackdropColor(0.2, 0.2, 0.2, 1)
+            end)
+            btn:SetScript("OnLeave", function(self)
+                self:SetBackdrop(nil)
+            end)
+
+            -- Click to select
+            btn:SetScript("OnClick", function()
+                dropdown.selectedValue = value
+                dropdown.text:SetText(color .. (icon and (icon .. " ") or "") .. label .. (color ~= "" and "|r" or ""))
+                HideStyledPopup()
+                if dropdown.onSelect then
+                    dropdown.onSelect(value, label)
+                end
+            end)
+
+            table.insert(styledPopupMenu.buttons, btn)
+        end
+
+        styledPopupMenu:Show()
+
+        -- Close on click elsewhere (with delay to prevent immediate close)
+        local clickDelay = 0.15
+        styledPopupMenu:SetScript("OnUpdate", function(self, elapsed)
+            clickDelay = clickDelay - elapsed
+            if clickDelay > 0 then return end
+
+            if not MouseIsOver(self) and not MouseIsOver(dropdown) then
+                if IsMouseButtonDown("LeftButton") then
+                    HideStyledPopup()
+                end
+            end
+        end)
+    end
+
+    -- Click to toggle popup
+    dropdown:SetScript("OnClick", ShowPopup)
+
+    -- Public methods
+    function dropdown:GetValue()
+        return self.selectedValue
+    end
+
+    function dropdown:SetValue(value)
+        self.selectedValue = value
+        for _, item in ipairs(self.items) do
+            local itemValue, itemLabel, itemIcon, itemColor
+            if type(item) == "table" then
+                itemValue = item.value or item[1]
+                itemLabel = item.label or item[2] or tostring(itemValue)
+                itemIcon = item.icon
+                itemColor = item.color or ""
+            else
+                itemValue = item
+                itemLabel = tostring(item)
+                itemIcon = nil
+                itemColor = ""
+            end
+            if itemValue == value then
+                self.text:SetText(itemColor .. (itemIcon and (itemIcon .. " ") or "") .. itemLabel .. (itemColor ~= "" and "|r" or ""))
+                return
+            end
+        end
+    end
+
+    function dropdown:SetItems(items)
+        self.items = items or {}
+    end
+
+    function dropdown:Close()
+        if styledPopupOwner == self then
+            HideStyledPopup()
+        end
+    end
+
+    -- Set initial value if provided
+    if options.selectedValue then
+        dropdown:SetValue(options.selectedValue)
+    end
+
+    return dropdown
+end
+
+-- ============================================================================
+-- Consolidated Button Creator
+-- ============================================================================
+
+--[[
+    UIFactory:CreateButton(parent, text, options)
+
+    The unified button creation function - use this for all button types.
+
+    Parameters:
+        parent - Parent frame (the WoW frame this button attaches to)
+        text - Button text label
+        options - Table with settings:
+            - type: "styled" | "text" | "animated" | "animatedtext" | "animatedbutton" (default: "styled")
+                - "styled": Standard button with background and border
+                - "text": Text-only button (link style)
+                - "animated" / "animatedtext": Text button with rainbow text on hover
+                - "animatedbutton": Styled button with animated border effects
+            - width: number - Button width (required for styled/animatedbutton, auto for text types)
+            - height: number - Button height (required for styled/animatedbutton, auto for text types)
+            - textColor: {r, g, b, a} - Default text color
+            - hoverColor: {r, g, b, a} - Hover text color (for text/styled types)
+            - hoverTextColor: {r, g, b, a} - Hover text color (for animatedbutton)
+            - pressedTextColor: {r, g, b, a} - Text color when mouse pressed (styled/animatedbutton)
+            - bgColor: {r, g, b, a} - Background color (styled/animatedbutton)
+            - hoverBgColor: {r, g, b, a} - Hover background color (styled/animatedbutton)
+            - borderColor: {r, g, b, a} - Border color (styled/animatedbutton)
+            - hoverBorderColor: {r, g, b, a} - Hover border color (styled/animatedbutton)
+            - borderAnimation: "fade" | "rainbow" - Border animation type (animatedbutton only)
+            - textAnimation: "rainbow" - Text animation on hover (animatedbutton only)
+            - fontSize: number - Font size (default: 11-12)
+            - rainbowSpeed: number - Rainbow animation speed (default: 0.06-0.08)
+            - fadeSpeed: number - Fade animation speed (animatedbutton only, default: 3.0)
+            - textPressEffect: boolean - Text shifts on click (styled/animatedbutton, defaults TRUE)
+            - onClick: function - Click handler
+            - disabled: boolean - Start disabled
+
+    Returns: button frame
+]]
+function UIFactory:CreateButton(parent, text, options)
+    options = options or {}
+    local buttonType = options.type or "styled"
+
+    -- Route to appropriate creator based on type
+    if buttonType == "text" then
+        return self:OldCreateTextButton(parent, text, {
+            textColor = options.textColor,
+            hoverColor = options.hoverColor,
+            fontSize = options.fontSize,
+            onClick = options.onClick,
+        })
+
+    elseif buttonType == "animated" or buttonType == "animatedtext" then
+        -- "animated" is kept for backwards compatibility, "animatedtext" is the new name
+        return self:OldCreateAnimatedTextButton(parent, text, {
+            textColor = options.textColor,
+            fontSize = options.fontSize,
+            onClick = options.onClick,
+            rainbowSpeed = options.rainbowSpeed,
+        })
+
+    elseif buttonType == "animatedbutton" then
+        -- Animated border button with fade or rainbow border effects
+        return self:OldCreateAnimatedBorderButton(parent, options.width or 100, options.height or 28, text, {
+            borderAnimation = options.borderAnimation or "fade",
+            textAnimation = options.textAnimation,  -- Optional: "rainbow" for rainbow text on hover
+            textColor = options.textColor,
+            hoverTextColor = options.hoverTextColor,
+            pressedTextColor = options.pressedTextColor,  -- Text color when pressed
+            bgColor = options.bgColor,
+            hoverBgColor = options.hoverBgColor,
+            borderColor = options.borderColor,
+            hoverBorderColor = options.hoverBorderColor,
+            fontSize = options.fontSize,
+            textPressEffect = options.textPressEffect,
+            rainbowSpeed = options.rainbowSpeed,
+            fadeSpeed = options.fadeSpeed,
+            onClick = options.onClick,
+        })
+
+    else -- "styled" (default)
+        -- Create styled button with full theming
+        local width = options.width or 100
+        local height = options.height or 28
+        local fontSize = options.fontSize or 11
+
+        local textColor = options.textColor or {r = 1, g = 1, b = 1, a = 1}
+        local hoverColor = options.hoverColor or {r = 1, g = 1, b = 1, a = 1}
+
+        -- Theme-aware colors
+        local bgColor, borderColor
+        if not options.bgColor and KOL.Themes and KOL.Themes.GetUIThemeColor then
+            bgColor = KOL.Themes:GetUIThemeColor("ButtonBG", {r = 0.08, g = 0.08, b = 0.08, a = 1})
+            borderColor = KOL.Themes:GetUIThemeColor("ButtonBorder", {r = 0.3, g = 0.3, b = 0.3, a = 1})
+        else
+            bgColor = options.bgColor or {r = 0.08, g = 0.08, b = 0.08, a = 1}
+            borderColor = options.borderColor or {r = 0.3, g = 0.3, b = 0.3, a = 1}
+        end
+
+        local hoverBgColor = options.hoverBgColor or {r = bgColor.r + 0.05, g = bgColor.g + 0.05, b = bgColor.b + 0.05, a = 1}
+        local hoverBorderColor = options.hoverBorderColor or {r = 0, g = 0.8, b = 0.8, a = 1}
+
+        local button = CreateFrame("Button", nil, parent)
+        button:SetSize(width, height)
+        button:EnableMouse(true)
+
+        button:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            tile = false,
+            tileSize = 1,
+            edgeSize = 1,
+            insets = { left = 0, right = 0, top = 0, bottom = 0 }
+        })
+        button:SetBackdropColor(bgColor.r, bgColor.g, bgColor.b, bgColor.a or 1)
+        button:SetBackdropBorderColor(borderColor.r, borderColor.g, borderColor.b, borderColor.a or 1)
+
+        -- Text
+        local fontPath, fontOutline = GetGeneralFont()
+        local buttonText = button:CreateFontString(nil, "OVERLAY")
+        buttonText:SetFont(fontPath, fontSize, fontOutline)
+        buttonText:SetPoint("CENTER")
+        buttonText:SetText(text)
+        buttonText:SetTextColor(textColor.r, textColor.g, textColor.b, textColor.a or 1)
+        button.text = buttonText
+
+        -- Store colors
+        button.bgColor = bgColor
+        button.borderColor = borderColor
+        button.hoverBgColor = hoverBgColor
+        button.hoverBorderColor = hoverBorderColor
+        button.textColor = textColor
+        button.hoverTextColor = hoverColor
+        button.pressedTextColor = options.pressedTextColor  -- Optional: text color when mouse is pressed
+
+        -- Hover effects
+        button:SetScript("OnEnter", function(self)
+            if not self.disabled then
+                self:SetBackdropColor(self.hoverBgColor.r, self.hoverBgColor.g, self.hoverBgColor.b, self.hoverBgColor.a or 1)
+                self:SetBackdropBorderColor(self.hoverBorderColor.r, self.hoverBorderColor.g, self.hoverBorderColor.b, self.hoverBorderColor.a or 1)
+                self.text:SetTextColor(self.hoverTextColor.r, self.hoverTextColor.g, self.hoverTextColor.b, self.hoverTextColor.a or 1)
+            end
+        end)
+
+        button:SetScript("OnLeave", function(self)
+            self:SetBackdropColor(self.bgColor.r, self.bgColor.g, self.bgColor.b, self.bgColor.a or 1)
+            self:SetBackdropBorderColor(self.borderColor.r, self.borderColor.g, self.borderColor.b, self.borderColor.a or 1)
+            self.text:SetTextColor(self.textColor.r, self.textColor.g, self.textColor.b, self.textColor.a or 1)
+            -- Reset text position if it was pressed
+            if self.textPressed then
+                self.text:SetPoint("CENTER", 0, 0)
+                self.textPressed = false
+            end
+        end)
+
+        -- Text press effect (MouseDown/MouseUp) - defaults to TRUE
+        local usePressEffect = options.textPressEffect ~= false  -- Only false if explicitly set to false
+        button.textPressEffect = usePressEffect
+        button.textPressed = false
+        if usePressEffect then
+            button:SetScript("OnMouseDown", function(self)
+                if not self.disabled then
+                    self.text:SetPoint("CENTER", 1, -1)
+                    self.textPressed = true
+                    -- Apply pressed text color if specified
+                    if self.pressedTextColor then
+                        self.text:SetTextColor(self.pressedTextColor.r, self.pressedTextColor.g, self.pressedTextColor.b, self.pressedTextColor.a or 1)
+                    end
+                end
+            end)
+
+            button:SetScript("OnMouseUp", function(self)
+                self.text:SetPoint("CENTER", 0, 0)
+                self.textPressed = false
+                -- Restore to hover color (we're still hovering after mouse up)
+                if self.pressedTextColor then
+                    self.text:SetTextColor(self.hoverTextColor.r, self.hoverTextColor.g, self.hoverTextColor.b, self.hoverTextColor.a or 1)
+                end
+            end)
+        end
+
+        -- Click handler
+        if options.onClick then
+            button:SetScript("OnClick", function(self)
+                if not self.disabled then
+                    options.onClick(self)
+                end
+            end)
+        end
+
+        -- Disabled state helper
+        button.disabled = options.disabled or false
+        function button:SetDisabled(disabled)
+            self.disabled = disabled
+            if disabled then
+                self:SetBackdropColor(0.05, 0.05, 0.05, 0.8)
+                self:SetBackdropBorderColor(0.2, 0.2, 0.2, 1)
+                self.text:SetTextColor(0.4, 0.4, 0.4, 1)
+            else
+                self:SetBackdropColor(self.bgColor.r, self.bgColor.g, self.bgColor.b, self.bgColor.a or 1)
+                self:SetBackdropBorderColor(self.borderColor.r, self.borderColor.g, self.borderColor.b, self.borderColor.a or 1)
+                self.text:SetTextColor(self.textColor.r, self.textColor.g, self.textColor.b, self.textColor.a or 1)
+            end
+        end
+
+        return button
+    end
+end
+
+-- ============================================================================
+-- UI Showcase Frame (/kc showcase)
+-- ============================================================================
+
+local uiShowcaseFrame = nil
+
+function UIFactory:ShowUIShowcase()
+    if uiShowcaseFrame then
+        uiShowcaseFrame:Show()
+        uiShowcaseFrame:Raise()
+        return uiShowcaseFrame
+    end
+
+    -- Create showcase frame (fixed size)
+    local frame = self:CreateStyledFrame(UIParent, "KOL_UIShowcase", 520, 500, {
+        movable = true,
+        closable = true,
+        strata = UIFactory.STRATA.IMPORTANT,  -- DIALOG strata for important windows
+    })
+    frame:SetPoint("CENTER")
+
+    local fontPath, fontOutline = GetGeneralFont()
+
+    -- Title (outside scroll area)
+    local title = frame:CreateFontString(nil, "OVERLAY")
+    title:SetFont(fontPath, 14, fontOutline)
+    title:SetPoint("TOP", frame, "TOP", 0, -10)
+    title:SetText("UIFactory Showcase")
+    title:SetTextColor(0, 0.9, 0.9, 1)
+
+    -- Subtitle
+    local subtitle = frame:CreateFontString(nil, "OVERLAY")
+    subtitle:SetFont(fontPath, 10, fontOutline)
+    subtitle:SetPoint("TOP", title, "BOTTOM", 0, -4)
+    subtitle:SetText("Buttons, Checkboxes, Edit Boxes, Dropdowns, Font Pickers")
+    subtitle:SetTextColor(0.6, 0.6, 0.6, 1)
+
+    -- Close button at bottom (outside scroll area)
+    local closeBtn = self:CreateButton(frame, "Close Showcase", {
+        type = "animated",
+        textColor = {r = 0.7, g = 0.7, b = 0.7, a = 1},
+        fontSize = 11,
+        onClick = function() frame:Hide() end
+    })
+    closeBtn:SetPoint("BOTTOM", frame, "BOTTOM", 0, 10)
+
+    -- Create scroll frame for content
+    local scrollFrame = CreateFrame("ScrollFrame", nil, frame)
+    scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, -50)
+    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -20, 35)
+    scrollFrame:EnableMouseWheel(true)
+
+    -- Content frame (this holds all the buttons)
+    local content = CreateFrame("Frame", nil, scrollFrame)
+    content:SetWidth(scrollFrame:GetWidth() - 10)
+    content:SetHeight(600)  -- Will be resized after adding content
+    scrollFrame:SetScrollChild(content)
+
+    -- Scrollbar
+    local scrollBar = CreateFrame("Slider", nil, frame)
+    scrollBar:SetWidth(12)
+    scrollBar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -50)
+    scrollBar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -5, 35)
+    scrollBar:SetOrientation("VERTICAL")
+    scrollBar:SetMinMaxValues(0, 1)
+    scrollBar:SetValue(0)
+    scrollBar:SetValueStep(20)
+
+    -- Scrollbar track background
+    scrollBar:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        tile = false, edgeSize = 1,
+        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    })
+    scrollBar:SetBackdropColor(0.05, 0.05, 0.05, 0.9)
+    scrollBar:SetBackdropBorderColor(0.2, 0.2, 0.2, 1)
+
+    -- Scrollbar thumb
+    local thumb = scrollBar:CreateTexture(nil, "OVERLAY")
+    thumb:SetTexture("Interface\\Buttons\\WHITE8X8")
+    thumb:SetVertexColor(0.3, 0.3, 0.3, 1)
+    thumb:SetWidth(10)
+    thumb:SetHeight(40)
+    scrollBar:SetThumbTexture(thumb)
+
+    -- Mouse wheel scrolling
+    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+        local current = scrollBar:GetValue()
+        local min, max = scrollBar:GetMinMaxValues()
+        local step = 30
+        if delta > 0 then
+            scrollBar:SetValue(math.max(min, current - step))
+        else
+            scrollBar:SetValue(math.min(max, current + step))
+        end
+    end)
+
+    -- Scrollbar value changed
+    scrollBar:SetScript("OnValueChanged", function(self, value)
+        scrollFrame:SetVerticalScroll(value)
+    end)
+
+    -- Now create content on the content frame
+    local yOffset = -5
+
+    -- ========================================
+    -- Section 1: Styled Buttons
+    -- ========================================
+    local section1 = content:CreateFontString(nil, "OVERLAY")
+    section1:SetFont(fontPath, 11, fontOutline)
+    section1:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+    section1:SetText("type = \"styled\" (with border/background)")
+    section1:SetTextColor(0.9, 0.7, 0.3, 1)
+
+    yOffset = yOffset - 25
+
+    -- Default styled button
+    local btn1 = self:CreateButton(content, "Default Styled", {
+        type = "styled",
+        width = 110,
+        height = 26,
+        onClick = function() KOL:PrintTag("Clicked: Default Styled") end
+    })
+    btn1:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+
+    -- Custom colors styled button
+    local btn2 = self:CreateButton(content, "Green Theme", {
+        type = "styled",
+        width = 100,
+        height = 26,
+        bgColor = {r = 0.1, g = 0.2, b = 0.1, a = 1},
+        borderColor = {r = 0.2, g = 0.5, b = 0.2, a = 1},
+        hoverBorderColor = {r = 0.3, g = 0.9, b = 0.3, a = 1},
+        textColor = {r = 0.6, g = 0.9, b = 0.6, a = 1},
+        onClick = function() KOL:PrintTag("Clicked: Green Theme") end
+    })
+    btn2:SetPoint("LEFT", btn1, "RIGHT", 10, 0)
+
+    -- Red warning button
+    local btn3 = self:CreateButton(content, "Red Warning", {
+        type = "styled",
+        width = 100,
+        height = 26,
+        bgColor = {r = 0.25, g = 0.08, b = 0.08, a = 1},
+        borderColor = {r = 0.5, g = 0.15, b = 0.15, a = 1},
+        hoverBorderColor = {r = 0.9, g = 0.2, b = 0.2, a = 1},
+        textColor = {r = 1, g = 0.5, b = 0.5, a = 1},
+        onClick = function() KOL:PrintTag("Clicked: Red Warning") end
+    })
+    btn3:SetPoint("LEFT", btn2, "RIGHT", 10, 0)
+
+    -- Disabled button
+    local btn4 = self:CreateButton(content, "Disabled", {
+        type = "styled",
+        width = 80,
+        height = 26,
+        disabled = true,
+    })
+    btn4:SetPoint("LEFT", btn3, "RIGHT", 10, 0)
+
+    yOffset = yOffset - 40
+
+    -- ========================================
+    -- Section 2: Text Buttons
+    -- ========================================
+    local section2 = content:CreateFontString(nil, "OVERLAY")
+    section2:SetFont(fontPath, 11, fontOutline)
+    section2:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+    section2:SetText("type = \"text\" (no border, simple hover)")
+    section2:SetTextColor(0.9, 0.7, 0.3, 1)
+
+    yOffset = yOffset - 25
+
+    -- Default text button
+    local txtBtn1 = self:CreateButton(content, "Default Text", {
+        type = "text",
+        onClick = function() KOL:PrintTag("Clicked: Default Text") end
+    })
+    txtBtn1:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+
+    -- Cyan hover text button
+    local txtBtn2 = self:CreateButton(content, "Cyan Hover", {
+        type = "text",
+        textColor = {r = 0.7, g = 0.7, b = 0.7, a = 1},
+        hoverColor = {r = 0, g = 0.9, b = 0.9, a = 1},
+        onClick = function() KOL:PrintTag("Clicked: Cyan Hover") end
+    })
+    txtBtn2:SetPoint("LEFT", txtBtn1, "RIGHT", 20, 0)
+
+    -- Green text button
+    local txtBtn3 = self:CreateButton(content, "Green Link", {
+        type = "text",
+        textColor = {r = 0.4, g = 0.8, b = 0.4, a = 1},
+        hoverColor = {r = 0.6, g = 1, b = 0.6, a = 1},
+        onClick = function() KOL:PrintTag("Clicked: Green Link") end
+    })
+    txtBtn3:SetPoint("LEFT", txtBtn2, "RIGHT", 20, 0)
+
+    -- Large text button
+    local txtBtn4 = self:CreateButton(content, "Large Font", {
+        type = "text",
+        fontSize = 14,
+        textColor = {r = 0.9, g = 0.6, b = 0.3, a = 1},
+        hoverColor = {r = 1, g = 0.8, b = 0.4, a = 1},
+        onClick = function() KOL:PrintTag("Clicked: Large Font") end
+    })
+    txtBtn4:SetPoint("LEFT", txtBtn3, "RIGHT", 20, 0)
+
+    yOffset = yOffset - 40
+
+    -- ========================================
+    -- Section 3: Animated Text Buttons
+    -- ========================================
+    local section3 = content:CreateFontString(nil, "OVERLAY")
+    section3:SetFont(fontPath, 11, fontOutline)
+    section3:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+    section3:SetText("type = \"animated\" (rainbow hover)")
+    section3:SetTextColor(0.9, 0.7, 0.3, 1)
+
+    yOffset = yOffset - 25
+
+    -- Default animated button
+    local animBtn1 = self:CreateButton(content, "Rainbow Hover", {
+        type = "animated",
+        onClick = function() KOL:PrintTag("Clicked: Rainbow Hover") end
+    })
+    animBtn1:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+
+    -- Green start animated button
+    local animBtn2 = self:CreateButton(content, "Green Start", {
+        type = "animated",
+        textColor = {r = 0.5, g = 0.9, b = 0.5, a = 1},
+        onClick = function() KOL:PrintTag("Clicked: Green Start") end
+    })
+    animBtn2:SetPoint("LEFT", animBtn1, "RIGHT", 20, 0)
+
+    -- Slow rainbow
+    local animBtn3 = self:CreateButton(content, "Slow Rainbow", {
+        type = "animated",
+        rainbowSpeed = 0.15,
+        onClick = function() KOL:PrintTag("Clicked: Slow Rainbow") end
+    })
+    animBtn3:SetPoint("LEFT", animBtn2, "RIGHT", 20, 0)
+
+    -- Fast rainbow
+    local animBtn4 = self:CreateButton(content, "Fast Rainbow", {
+        type = "animated",
+        rainbowSpeed = 0.04,
+        onClick = function() KOL:PrintTag("Clicked: Fast Rainbow") end
+    })
+    animBtn4:SetPoint("LEFT", animBtn3, "RIGHT", 20, 0)
+
+    yOffset = yOffset - 40
+
+    -- ========================================
+    -- Section 4: Font Sizes Comparison
+    -- ========================================
+    local section4 = content:CreateFontString(nil, "OVERLAY")
+    section4:SetFont(fontPath, 11, fontOutline)
+    section4:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+    section4:SetText("Font Size Comparison (animated type)")
+    section4:SetTextColor(0.9, 0.7, 0.3, 1)
+
+    yOffset = yOffset - 25
+
+    local sizes = {9, 10, 11, 12, 14}
+    local lastBtn = nil
+    for _, size in ipairs(sizes) do
+        local sizeBtn = self:CreateButton(content, "Size " .. size, {
+            type = "animated",
+            fontSize = size,
+            onClick = function() KOL:PrintTag("Clicked: Size " .. size) end
+        })
+        if lastBtn then
+            sizeBtn:SetPoint("LEFT", lastBtn, "RIGHT", 15, 0)
+        else
+            sizeBtn:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+        end
+        lastBtn = sizeBtn
+    end
+
+    yOffset = yOffset - 45
+
+    -- ========================================
+    -- Section 5: Practical Examples
+    -- ========================================
+    local section5 = content:CreateFontString(nil, "OVERLAY")
+    section5:SetFont(fontPath, 11, fontOutline)
+    section5:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+    section5:SetText("Practical Examples")
+    section5:SetTextColor(0.9, 0.7, 0.3, 1)
+
+    yOffset = yOffset - 25
+
+    -- Save/Cancel row (like tracker-editor)
+    local exampleLabel1 = content:CreateFontString(nil, "OVERLAY")
+    exampleLabel1:SetFont(fontPath, 10, fontOutline)
+    exampleLabel1:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+    exampleLabel1:SetText("Form Actions:")
+    exampleLabel1:SetTextColor(0.6, 0.6, 0.6, 1)
+
+    local saveEx = self:CreateButton(content, "Save", {
+        type = "animated",
+        textColor = {r = 0.5, g = 0.9, b = 0.5, a = 1},
+        fontSize = 11,
+        onClick = function() KOL:PrintTag("Save clicked!") end
+    })
+    saveEx:SetPoint("LEFT", exampleLabel1, "RIGHT", 15, 0)
+
+    local cancelEx = self:CreateButton(content, "Cancel", {
+        type = "animated",
+        textColor = {r = 0.7, g = 0.7, b = 0.7, a = 1},
+        fontSize = 11,
+        onClick = function() KOL:PrintTag("Cancel clicked!") end
+    })
+    cancelEx:SetPoint("LEFT", saveEx, "RIGHT", 15, 0)
+
+    yOffset = yOffset - 30
+
+    -- Action buttons row
+    local exampleLabel2 = content:CreateFontString(nil, "OVERLAY")
+    exampleLabel2:SetFont(fontPath, 10, fontOutline)
+    exampleLabel2:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+    exampleLabel2:SetText("Action Bar:")
+    exampleLabel2:SetTextColor(0.6, 0.6, 0.6, 1)
+
+    local showEx = self:CreateButton(content, "Show", {
+        type = "styled",
+        width = 60,
+        height = 24,
+        onClick = function() KOL:PrintTag("Show clicked!") end
+    })
+    showEx:SetPoint("LEFT", exampleLabel2, "RIGHT", 15, 0)
+
+    local hideEx = self:CreateButton(content, "Hide", {
+        type = "styled",
+        width = 60,
+        height = 24,
+        onClick = function() KOL:PrintTag("Hide clicked!") end
+    })
+    hideEx:SetPoint("LEFT", showEx, "RIGHT", 8, 0)
+
+    local resetEx = self:CreateButton(content, "Reset", {
+        type = "styled",
+        width = 60,
+        height = 24,
+        bgColor = {r = 0.2, g = 0.1, b = 0.1, a = 1},
+        borderColor = {r = 0.4, g = 0.2, b = 0.2, a = 1},
+        hoverBorderColor = {r = 0.8, g = 0.3, b = 0.3, a = 1},
+        onClick = function() KOL:PrintTag("Reset clicked!") end
+    })
+    resetEx:SetPoint("LEFT", hideEx, "RIGHT", 8, 0)
+
+    yOffset = yOffset - 35
+
+    -- Link-style navigation
+    local exampleLabel3 = content:CreateFontString(nil, "OVERLAY")
+    exampleLabel3:SetFont(fontPath, 10, fontOutline)
+    exampleLabel3:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+    exampleLabel3:SetText("Navigation:")
+    exampleLabel3:SetTextColor(0.6, 0.6, 0.6, 1)
+
+    local navItems = {"Home", "Settings", "Profile", "Help"}
+    local lastNavBtn = exampleLabel3
+    for _, navText in ipairs(navItems) do
+        local navBtn = self:CreateButton(content, navText, {
+            type = "text",
+            fontSize = 10,
+            textColor = {r = 0.5, g = 0.7, b = 0.9, a = 1},
+            hoverColor = {r = 0.7, g = 0.9, b = 1, a = 1},
+            onClick = function() KOL:PrintTag(navText .. " clicked!") end
+        })
+        navBtn:SetPoint("LEFT", lastNavBtn, "RIGHT", 12, 0)
+        lastNavBtn = navBtn
+    end
+
+    yOffset = yOffset - 40
+
+    -- ========================================
+    -- Section 6: Animated Border Buttons (NEW)
+    -- ========================================
+    local section6 = content:CreateFontString(nil, "OVERLAY")
+    section6:SetFont(fontPath, 11, fontOutline)
+    section6:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+    section6:SetText("Animated Border Buttons (type=animatedbutton)")
+    section6:SetTextColor(0.9, 0.7, 0.3, 1)
+
+    yOffset = yOffset - 25
+
+    -- Row 1: Fade animation variants
+    local fadeLabel = content:CreateFontString(nil, "OVERLAY")
+    fadeLabel:SetFont(fontPath, 10, fontOutline)
+    fadeLabel:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+    fadeLabel:SetText("Fade Border:")
+    fadeLabel:SetTextColor(0.6, 0.6, 0.6, 1)
+
+    local fadeCyan = self:CreateButton(content, "Cyan Fade", {
+        type = "animatedbutton",
+        borderAnimation = "fade",
+        width = 85,
+        height = 26,
+        borderColor = {r = 0.3, g = 0.3, b = 0.3, a = 1},
+        hoverBorderColor = {r = 0, g = 0.9, b = 0.9, a = 1},
+        onClick = function() KOL:PrintTag("Cyan Fade clicked!") end
+    })
+    fadeCyan:SetPoint("LEFT", fadeLabel, "RIGHT", 15, 0)
+
+    local fadeGreen = self:CreateButton(content, "Green Fade", {
+        type = "animatedbutton",
+        borderAnimation = "fade",
+        width = 85,
+        height = 26,
+        borderColor = {r = 0.3, g = 0.3, b = 0.3, a = 1},
+        hoverBorderColor = {r = 0.3, g = 0.9, b = 0.3, a = 1},
+        onClick = function() KOL:PrintTag("Green Fade clicked!") end
+    })
+    fadeGreen:SetPoint("LEFT", fadeCyan, "RIGHT", 8, 0)
+
+    local fadeRed = self:CreateButton(content, "Red Fade", {
+        type = "animatedbutton",
+        borderAnimation = "fade",
+        width = 85,
+        height = 26,
+        borderColor = {r = 0.3, g = 0.3, b = 0.3, a = 1},
+        hoverBorderColor = {r = 0.9, g = 0.3, b = 0.3, a = 1},
+        bgColor = {r = 0.15, g = 0.08, b = 0.08, a = 1},
+        hoverBgColor = {r = 0.2, g = 0.1, b = 0.1, a = 1},
+        onClick = function() KOL:PrintTag("Red Fade clicked!") end
+    })
+    fadeRed:SetPoint("LEFT", fadeGreen, "RIGHT", 8, 0)
+
+    yOffset = yOffset - 32
+
+    -- Row 2: Rainbow border
+    local rainbowLabel = content:CreateFontString(nil, "OVERLAY")
+    rainbowLabel:SetFont(fontPath, 10, fontOutline)
+    rainbowLabel:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+    rainbowLabel:SetText("Rainbow Border:")
+    rainbowLabel:SetTextColor(0.6, 0.6, 0.6, 1)
+
+    local rainbowBtn = self:CreateButton(content, "Rainbow!", {
+        type = "animatedbutton",
+        borderAnimation = "rainbow",
+        width = 90,
+        height = 26,
+        onClick = function() KOL:PrintTag("Rainbow border clicked!") end
+    })
+    rainbowBtn:SetPoint("LEFT", rainbowLabel, "RIGHT", 15, 0)
+
+    local rainbowFast = self:CreateButton(content, "Fast Rainbow", {
+        type = "animatedbutton",
+        borderAnimation = "rainbow",
+        width = 100,
+        height = 26,
+        rainbowSpeed = 0.03,
+        onClick = function() KOL:PrintTag("Fast Rainbow clicked!") end
+    })
+    rainbowFast:SetPoint("LEFT", rainbowBtn, "RIGHT", 8, 0)
+
+    local rainbowFull = self:CreateButton(content, "Full Rainbow", {
+        type = "animatedbutton",
+        borderAnimation = "rainbow",
+        textAnimation = "rainbow",
+        width = 105,
+        height = 26,
+        rainbowSpeed = 0.04,
+        onClick = function() KOL:PrintTag("Full Rainbow clicked!") end
+    })
+    rainbowFull:SetPoint("LEFT", rainbowFast, "RIGHT", 8, 0)
+
+    yOffset = yOffset - 32
+
+    -- Row 3: Text Press Effect on styled buttons
+    local pressLabel = content:CreateFontString(nil, "OVERLAY")
+    pressLabel:SetFont(fontPath, 10, fontOutline)
+    pressLabel:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+    pressLabel:SetText("Press Effect:")
+    pressLabel:SetTextColor(0.6, 0.6, 0.6, 1)
+
+    local pressBtn = self:CreateButton(content, "Default (On)", {
+        type = "styled",
+        width = 95,
+        height = 26,
+        onClick = function() KOL:PrintTag("Press effect button clicked!") end
+    })
+    pressBtn:SetPoint("LEFT", pressLabel, "RIGHT", 15, 0)
+
+    local noPressBtn = self:CreateButton(content, "Disabled", {
+        type = "styled",
+        width = 85,
+        height = 26,
+        textPressEffect = false,
+        onClick = function() KOL:PrintTag("No press effect clicked!") end
+    })
+    noPressBtn:SetPoint("LEFT", pressBtn, "RIGHT", 8, 0)
+
+    yOffset = yOffset - 45
+
+    -- ========================================
+    -- Section 7: Checkboxes
+    -- ========================================
+    local section7 = content:CreateFontString(nil, "OVERLAY")
+    section7:SetFont(fontPath, 11, fontOutline)
+    section7:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+    section7:SetText("Checkboxes (CreateCheckbox)")
+    section7:SetTextColor(0.9, 0.7, 0.3, 1)
+
+    yOffset = yOffset - 25
+
+    local check1 = self:CreateCheckbox(content, "Default Checkbox", {
+        checked = false,
+        onChange = function(checked) KOL:PrintTag("Default: " .. tostring(checked)) end
+    })
+    check1:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+
+    local check2 = self:CreateCheckbox(content, "Checked", {
+        checked = true,
+        onChange = function(checked) KOL:PrintTag("Checked: " .. tostring(checked)) end
+    })
+    check2:SetPoint("LEFT", check1, "RIGHT", 20, 0)
+
+    local check3 = self:CreateCheckbox(content, "Green Check", {
+        checked = true,
+        checkColor = {r = 0.3, g = 0.9, b = 0.3, a = 1},
+        onChange = function(checked) KOL:PrintTag("Green: " .. tostring(checked)) end
+    })
+    check3:SetPoint("LEFT", check2, "RIGHT", 20, 0)
+
+    local check4 = self:CreateCheckbox(content, "Gold Check", {
+        checked = true,
+        checkColor = {r = 0.9, g = 0.7, b = 0.2, a = 1},
+        onChange = function(checked) KOL:PrintTag("Gold: " .. tostring(checked)) end
+    })
+    check4:SetPoint("LEFT", check3, "RIGHT", 20, 0)
+
+    yOffset = yOffset - 35
+
+    -- ========================================
+    -- Section 8: Edit Boxes
+    -- ========================================
+    local section8 = content:CreateFontString(nil, "OVERLAY")
+    section8:SetFont(fontPath, 11, fontOutline)
+    section8:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+    section8:SetText("Edit Boxes (CreateEditBox)")
+    section8:SetTextColor(0.9, 0.7, 0.3, 1)
+
+    yOffset = yOffset - 25
+
+    local editLabel1 = content:CreateFontString(nil, "OVERLAY")
+    editLabel1:SetFont(fontPath, 10, fontOutline)
+    editLabel1:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+    editLabel1:SetText("Default:")
+    editLabel1:SetTextColor(0.6, 0.6, 0.6, 1)
+
+    local edit1 = self:CreateEditBox(content, 120, 24, {
+        placeholder = "Type here..."
+    })
+    edit1:SetPoint("LEFT", editLabel1, "RIGHT", 10, 0)
+
+    local editLabel2 = content:CreateFontString(nil, "OVERLAY")
+    editLabel2:SetFont(fontPath, 10, fontOutline)
+    editLabel2:SetPoint("LEFT", edit1, "RIGHT", 15, 0)
+    editLabel2:SetText("Wide:")
+    editLabel2:SetTextColor(0.6, 0.6, 0.6, 1)
+
+    local edit2 = self:CreateEditBox(content, 180, 24, {
+        placeholder = "Wider input field..."
+    })
+    edit2:SetPoint("LEFT", editLabel2, "RIGHT", 10, 0)
+
+    yOffset = yOffset - 35
+
+    -- ========================================
+    -- Section 9: Dropdowns
+    -- ========================================
+    local section9 = content:CreateFontString(nil, "OVERLAY")
+    section9:SetFont(fontPath, 11, fontOutline)
+    section9:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+    section9:SetText("Dropdowns (CreateDropdown)")
+    section9:SetTextColor(0.9, 0.7, 0.3, 1)
+
+    yOffset = yOffset - 25
+
+    local dropLabel1 = content:CreateFontString(nil, "OVERLAY")
+    dropLabel1:SetFont(fontPath, 10, fontOutline)
+    dropLabel1:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+    dropLabel1:SetText("Basic:")
+    dropLabel1:SetTextColor(0.6, 0.6, 0.6, 1)
+
+    local dropdown1 = self:CreateDropdown(content, 130, {
+        placeholder = "Select option...",
+        items = {
+            {value = "opt1", label = "Option 1"},
+            {value = "opt2", label = "Option 2"},
+            {value = "opt3", label = "Option 3"},
+        },
+        onSelect = function(value, label) KOL:PrintTag("Selected: " .. label) end
+    })
+    dropdown1:SetPoint("LEFT", dropLabel1, "RIGHT", 10, 0)
+
+    local dropLabel2 = content:CreateFontString(nil, "OVERLAY")
+    dropLabel2:SetFont(fontPath, 10, fontOutline)
+    dropLabel2:SetPoint("LEFT", dropdown1, "RIGHT", 15, 0)
+    dropLabel2:SetText("Colors:")
+    dropLabel2:SetTextColor(0.6, 0.6, 0.6, 1)
+
+    local dropdown2 = self:CreateDropdown(content, 130, {
+        placeholder = "Pick a color...",
+        items = {
+            {value = "red", label = "Red", color = {r = 1, g = 0.4, b = 0.4}},
+            {value = "green", label = "Green", color = {r = 0.4, g = 1, b = 0.4}},
+            {value = "blue", label = "Blue", color = {r = 0.4, g = 0.6, b = 1}},
+            {value = "gold", label = "Gold", color = {r = 1, g = 0.8, b = 0.2}},
+        },
+        onSelect = function(value, label) KOL:PrintTag("Color: " .. label) end
+    })
+    dropdown2:SetPoint("LEFT", dropLabel2, "RIGHT", 10, 0)
+
+    yOffset = yOffset - 35
+
+    -- ========================================
+    -- Section 10: Scrollable Dropdown
+    -- ========================================
+    local section10 = content:CreateFontString(nil, "OVERLAY")
+    section10:SetFont(fontPath, 11, fontOutline)
+    section10:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+    section10:SetText("Scrollable Dropdown (CreateScrollableDropdown)")
+    section10:SetTextColor(0.9, 0.7, 0.3, 1)
+
+    yOffset = yOffset - 25
+
+    local scrollDropLabel = content:CreateFontString(nil, "OVERLAY")
+    scrollDropLabel:SetFont(fontPath, 10, fontOutline)
+    scrollDropLabel:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+    scrollDropLabel:SetText("Many Items:")
+    scrollDropLabel:SetTextColor(0.6, 0.6, 0.6, 1)
+
+    -- Generate many items for scrollable dropdown
+    local manyItems = {}
+    for i = 1, 20 do
+        table.insert(manyItems, {value = "item" .. i, label = "Item " .. i})
+    end
+
+    local scrollDrop = self:CreateScrollableDropdown(content, 150, {
+        placeholder = "Scroll to see more...",
+        items = manyItems,
+        onSelect = function(value, label) KOL:PrintTag("Scrollable: " .. label) end
+    })
+    scrollDrop:SetPoint("LEFT", scrollDropLabel, "RIGHT", 10, 0)
+
+    yOffset = yOffset - 35
+
+    -- ========================================
+    -- Section 11: Font Picker
+    -- ========================================
+    local section11 = content:CreateFontString(nil, "OVERLAY")
+    section11:SetFont(fontPath, 11, fontOutline)
+    section11:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+    section11:SetText("Font Picker (CreateFontChoiceDropdown)")
+    section11:SetTextColor(0.9, 0.7, 0.3, 1)
+
+    yOffset = yOffset - 25
+
+    local fontPickerLabel = content:CreateFontString(nil, "OVERLAY")
+    fontPickerLabel:SetFont(fontPath, 10, fontOutline)
+    fontPickerLabel:SetPoint("TOPLEFT", content, "TOPLEFT", 10, yOffset)
+    fontPickerLabel:SetText("Font Preview:")
+    fontPickerLabel:SetTextColor(0.6, 0.6, 0.6, 1)
+
+    local fontPicker = self:CreateFontChoiceDropdown(content, nil, nil, 200, function(fontPath, fontName)
+        KOL:PrintTag("Font selected: " .. fontName)
+    end)
+    fontPicker:SetPoint("LEFT", fontPickerLabel, "RIGHT", 10, 0)
+
+    yOffset = yOffset - 50
+
+    -- Set final content height based on yOffset
+    local contentHeight = math.abs(yOffset) + 20
+    content:SetHeight(contentHeight)
+
+    -- Update scrollbar max value
+    local scrollMax = math.max(0, contentHeight - scrollFrame:GetHeight())
+    scrollBar:SetMinMaxValues(0, scrollMax)
+
+    uiShowcaseFrame = frame
+    frame:Show()
+
+    KOL:PrintTag("UI Showcase opened - /kc showcase")
+    return frame
+end
+
+function UIFactory:HideUIShowcase()
+    if uiShowcaseFrame then
+        uiShowcaseFrame:Hide()
+    end
 end
 
 KOL:DebugPrint("UI Factory loaded with enhanced components", 1)

@@ -820,7 +820,8 @@ function BuildManager:CreateMainFrame()
     buttonRow:SetPoint("TOPLEFT", editBox, "BOTTOMLEFT", 0, -10)
     buttonRow:SetSize(220, 25)
 
-    local importBtn = KOL.UIFactory:CreateTextButton(buttonRow, "IMPORT", {
+    local importBtn = KOL.UIFactory:CreateButton(buttonRow, "IMPORT", {
+        type = "animated",
         onClick = function()
             local text = editBox:GetText()
             if text and text ~= "" then
@@ -832,7 +833,8 @@ function BuildManager:CreateMainFrame()
     })
     importBtn:SetPoint("LEFT", buttonRow, "LEFT", 40, 0)
 
-    local exportBtn = KOL.UIFactory:CreateTextButton(buttonRow, "EXPORT", {
+    local exportBtn = KOL.UIFactory:CreateButton(buttonRow, "EXPORT", {
+        type = "animated",
         onClick = function()
             local buildStr = BuildManager:ExportFullBuild()
             editBox:SetText(buildStr)
@@ -977,14 +979,16 @@ function BuildManager:CreateMainFrame()
     actionRow:SetPoint("TOPLEFT", listContainer, "BOTTOMLEFT", 0, -10)
     actionRow:SetSize(240, 25)
 
-    local createBtn = KOL.UIFactory:CreateTextButton(actionRow, "CREATE", {
+    local createBtn = KOL.UIFactory:CreateButton(actionRow, "CREATE", {
+        type = "animated",
         onClick = function()
             BuildManager:ShowCreateFrame()
         end,
     })
     createBtn:SetPoint("LEFT", actionRow, "LEFT", 0, 0)
 
-    local editBtn = KOL.UIFactory:CreateTextButton(actionRow, "EDIT", {
+    local editBtn = KOL.UIFactory:CreateButton(actionRow, "EDIT", {
+        type = "animated",
         onClick = function()
             if selectedBuildId then
                 BuildManager:ShowCreateFrame(selectedBuildId)
@@ -995,7 +999,8 @@ function BuildManager:CreateMainFrame()
     })
     editBtn:SetPoint("LEFT", createBtn, "RIGHT", 20, 0)
 
-    local deleteBtn = KOL.UIFactory:CreateTextButton(actionRow, "DELETE", {
+    local deleteBtn = KOL.UIFactory:CreateButton(actionRow, "DELETE", {
+        type = "animated",
         onClick = function()
             if selectedBuildId then
                 BuildManager:ShowDeleteFrame(selectedBuildId)
@@ -1006,7 +1011,8 @@ function BuildManager:CreateMainFrame()
     })
     deleteBtn:SetPoint("LEFT", editBtn, "RIGHT", 20, 0)
 
-    local restoreBtn = KOL.UIFactory:CreateTextButton(actionRow, "RESTORE", {
+    local restoreBtn = KOL.UIFactory:CreateButton(actionRow, "RESTORE", {
+        type = "animated",
         onClick = function()
             BuildManager:ShowRecoverFrame()
         end,
@@ -1254,14 +1260,17 @@ function BuildManager:CreateCreateFrame()
     buttonRow:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -20, 20)
     buttonRow:SetSize(200, 25)
 
-    local cancelBtn = KOL.UIFactory:CreateTextButton(buttonRow, "CANCEL", {
+    local cancelBtn = KOL.UIFactory:CreateButton(buttonRow, "CANCEL", {
+        type = "animated",
         onClick = function()
             createFrame:Hide()
         end,
     })
     cancelBtn:SetPoint("RIGHT", buttonRow, "RIGHT", 0, 0)
 
-    local saveBtn = KOL.UIFactory:CreateTextButton(buttonRow, "SAVE", {
+    local saveBtn = KOL.UIFactory:CreateButton(buttonRow, "SAVE", {
+        type = "animated",
+        textColor = {r = 0.5, g = 0.9, b = 0.5, a = 1},
         onClick = function()
             local name = createFrame.nameEditBox:GetText()
             local class = createFrame.selectedClass
@@ -1351,16 +1360,17 @@ function BuildManager:CreateDeleteFrame()
     deleteFrame.checkbox = checkbox
 
     -- Delete / Cancel buttons (aligned right)
-    local cancelBtn = KOL.UIFactory:CreateTextButton(deleteFrame, "CANCEL", {
+    local cancelBtn = KOL.UIFactory:CreateButton(deleteFrame, "CANCEL", {
+        type = "animated",
         onClick = function()
             deleteFrame:Hide()
         end,
     })
     cancelBtn:SetPoint("BOTTOMRIGHT", deleteFrame, "BOTTOMRIGHT", -15, 8)
 
-    local deleteBtn = KOL.UIFactory:CreateTextButton(deleteFrame, "DELETE", {
+    local deleteBtn = KOL.UIFactory:CreateButton(deleteFrame, "DELETE", {
+        type = "animated",
         textColor = { r = 0.8, g = 0.3, b = 0.3, a = 1 },
-        hoverColor = { r = 1, g = 0.3, b = 0.3, a = 1 },
         onClick = function()
             if deleteFrame.buildId then
                 BuildManager:DeleteBuild(deleteFrame.buildId)
@@ -1533,7 +1543,8 @@ function BuildManager:CreateRecoverFrame()
     recoverFrame.recoverItems = {}
 
     -- Close button
-    local closeBtn = KOL.UIFactory:CreateTextButton(content, "CLOSE", {
+    local closeBtn = KOL.UIFactory:CreateButton(content, "CLOSE", {
+        type = "animated",
         onClick = function()
             recoverFrame:Hide()
         end,
@@ -1591,7 +1602,8 @@ function BuildManager:RefreshRecoverList()
         nameText:SetTextColor(0.7, 0.7, 0.7)
 
         -- Restore button (rightmost)
-        local restoreBtn = KOL.UIFactory:CreateTextButton(item, "RESTORE", {
+        local restoreBtn = KOL.UIFactory:CreateButton(item, "RESTORE", {
+            type = "animated",
             onClick = function()
                 BuildManager:RestoreBuild(build.id)
                 BuildManager:Print("Build restored: " .. build.name)
@@ -1602,9 +1614,9 @@ function BuildManager:RefreshRecoverList()
         restoreBtn:SetPoint("RIGHT", item, "RIGHT", -5, 0)
 
         -- Delete button (left of restore)
-        local deleteBtn = KOL.UIFactory:CreateTextButton(item, "DELETE", {
-            normalColor = { 0.6, 0.3, 0.3 },
-            hoverColor = { 1.0, 0.3, 0.3 },
+        local deleteBtn = KOL.UIFactory:CreateButton(item, "DELETE", {
+            type = "animated",
+            textColor = { r = 0.6, g = 0.3, b = 0.3, a = 1 },
             onClick = function()
                 BuildManager:PermanentDeleteBuild(build.id)
                 BuildManager:Print("Build permanently deleted: " .. build.name)

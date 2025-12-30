@@ -6,6 +6,7 @@
 
 local KOL = KoalityOfLife
 local LSM = LibStub("LibSharedMedia-3.0")
+local UIFactory = KOL.UIFactory
 
 -- Create module
 local MacroUpdater = {}
@@ -397,78 +398,21 @@ local function CreateCommandBlockEditor()
     local fontPath = LSM:Fetch("font", KOL.db.profile.generalFont or "Friz Quadrata TT")
     local fontOutline = KOL.db.profile.generalFontOutline or "NONE"
 
-    -- Create main frame
-    local frame = CreateFrame("Frame", "KOL_CommandBlockEditor", UIParent)
-    frame:SetSize(700, 550)
+    -- Create main frame using UIFactory
+    local frame = UIFactory:CreateStyledFrame(UIParent, "KOL_CommandBlockEditor", 700, 550, {
+        movable = true,
+        closable = true,
+        strata = UIFactory.STRATA.IMPORTANT,
+        bgColor = {r = 0.05, g = 0.05, b = 0.05, a = 0.95},
+        borderColor = {r = 0, g = 0.8, b = 0.8, a = 1},
+    })
     frame:SetPoint("CENTER")
-    frame:SetMovable(true)
-    frame:EnableMouse(true)
-    frame:SetFrameStrata("DIALOG")
-    frame:Hide()
 
-    -- Background
-    frame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        edgeSize = 2,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    -- Title bar using UIFactory
+    local titleBar, titleText, closeBtn = UIFactory:CreateTitleBar(frame, 24, "|cFF00CCCCCommand Block Editor|r", {
+        showCloseButton = true,
+        bgColor = {r = 0, g = 0.5, b = 0.5, a = 1},
     })
-    frame:SetBackdropColor(0.05, 0.05, 0.05, 0.95)
-    frame:SetBackdropBorderColor(0, 0.8, 0.8, 1)
-
-    -- Title bar
-    local titleBar = CreateFrame("Frame", nil, frame)
-    titleBar:SetPoint("TOPLEFT", 0, 0)
-    titleBar:SetPoint("TOPRIGHT", 0, 0)
-    titleBar:SetHeight(24)
-    titleBar:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        edgeSize = 1,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
-    })
-    titleBar:SetBackdropColor(0, 0.5, 0.5, 1)
-    titleBar:SetBackdropBorderColor(0, 0.8, 0.8, 1)
-    titleBar:EnableMouse(true)
-    titleBar:RegisterForDrag("LeftButton")
-    titleBar:SetScript("OnDragStart", function() frame:StartMoving() end)
-    titleBar:SetScript("OnDragStop", function() frame:StopMovingOrSizing() end)
-
-    -- Title text
-    local titleText = titleBar:CreateFontString(nil, "OVERLAY")
-    titleText:SetFont(fontPath, 12, fontOutline)
-    titleText:SetPoint("LEFT", 8, 0)
-    titleText:SetText("|cFF00CCCCCommand Block Editor|r")
-
-    -- Close button
-    local closeBtn = CreateFrame("Button", nil, titleBar)
-    closeBtn:SetSize(18, 18)
-    closeBtn:SetPoint("RIGHT", -3, 0)
-    closeBtn:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        edgeSize = 1,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
-    })
-    closeBtn:SetBackdropColor(0.15, 0.15, 0.15, 0.8)
-    closeBtn:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.9)
-    local closeBtnText = closeBtn:CreateFontString(nil, "OVERLAY")
-    closeBtnText:SetFont(CHAR_LIGATURESFONT, 12, CHAR_LIGATURESOUTLINE)
-    closeBtnText:SetPoint("CENTER", 0, 0)
-    closeBtnText:SetText(CHAR_UI_CLOSE)
-    closeBtnText:SetTextColor(1, 0.4, 0.4, 1)
-    closeBtn:SetScript("OnClick", function() frame:Hide() end)
-    closeBtn:SetScript("OnEnter", function(self)
-        self:SetBackdropColor(0.25, 0.25, 0.25, 0.95)
-        closeBtnText:SetTextColor(1, 0.6, 0.6, 1)
-    end)
-    closeBtn:SetScript("OnLeave", function(self)
-        self:SetBackdropColor(0.15, 0.15, 0.15, 0.8)
-        closeBtnText:SetTextColor(1, 0.4, 0.4, 1)
-    end)
 
     -- Block Name label
     local nameLabel = frame:CreateFontString(nil, "OVERLAY")
@@ -969,78 +913,21 @@ local function CreateMacroUpdaterWindow()
     local fontPath = LSM:Fetch("font", KOL.db.profile.generalFont or "Friz Quadrata TT")
     local fontOutline = KOL.db.profile.generalFontOutline or "NONE"
 
-    -- Create main frame
-    local frame = CreateFrame("Frame", "KOL_MacroUpdater", UIParent)
-    frame:SetSize(700, 550)
+    -- Create main frame using UIFactory
+    local frame = UIFactory:CreateStyledFrame(UIParent, "KOL_MacroUpdater", 700, 550, {
+        movable = true,
+        closable = true,
+        strata = UIFactory.STRATA.IMPORTANT,
+        bgColor = {r = 0.05, g = 0.05, b = 0.05, a = 0.95},
+        borderColor = {r = 0, g = 0.8, b = 0.8, a = 1},
+    })
     frame:SetPoint("CENTER")
-    frame:SetMovable(true)
-    frame:EnableMouse(true)
-    frame:SetFrameStrata("DIALOG")
-    frame:Hide()
 
-    -- Background
-    frame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        edgeSize = 2,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    -- Title bar using UIFactory
+    local titleBar, titleText, closeBtn = UIFactory:CreateTitleBar(frame, 24, "|cFF00CCCCMacro Updater|r", {
+        showCloseButton = true,
+        bgColor = {r = 0, g = 0.5, b = 0.5, a = 1},
     })
-    frame:SetBackdropColor(0.05, 0.05, 0.05, 0.95)
-    frame:SetBackdropBorderColor(0, 0.8, 0.8, 1)
-
-    -- Title bar
-    local titleBar = CreateFrame("Frame", nil, frame)
-    titleBar:SetPoint("TOPLEFT", 0, 0)
-    titleBar:SetPoint("TOPRIGHT", 0, 0)
-    titleBar:SetHeight(24)
-    titleBar:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        edgeSize = 1,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
-    })
-    titleBar:SetBackdropColor(0, 0.5, 0.5, 1)
-    titleBar:SetBackdropBorderColor(0, 0.8, 0.8, 1)
-    titleBar:EnableMouse(true)
-    titleBar:RegisterForDrag("LeftButton")
-    titleBar:SetScript("OnDragStart", function() frame:StartMoving() end)
-    titleBar:SetScript("OnDragStop", function() frame:StopMovingOrSizing() end)
-
-    -- Title text
-    local titleText = titleBar:CreateFontString(nil, "OVERLAY")
-    titleText:SetFont(fontPath, 12, fontOutline)
-    titleText:SetPoint("LEFT", 8, 0)
-    titleText:SetText("|cFF00CCCCMacro Updater|r")
-
-    -- Close button
-    local closeBtn = CreateFrame("Button", nil, titleBar)
-    closeBtn:SetSize(18, 18)
-    closeBtn:SetPoint("RIGHT", -3, 0)
-    closeBtn:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        edgeSize = 1,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
-    })
-    closeBtn:SetBackdropColor(0.15, 0.15, 0.15, 0.8)
-    closeBtn:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.9)
-    local closeBtnText = closeBtn:CreateFontString(nil, "OVERLAY")
-    closeBtnText:SetFont(CHAR_LIGATURESFONT, 12, CHAR_LIGATURESOUTLINE)
-    closeBtnText:SetPoint("CENTER", 0, 0)
-    closeBtnText:SetText(CHAR_UI_CLOSE)
-    closeBtnText:SetTextColor(1, 0.4, 0.4, 1)
-    closeBtn:SetScript("OnClick", function() frame:Hide() end)
-    closeBtn:SetScript("OnEnter", function(self)
-        self:SetBackdropColor(0.25, 0.25, 0.25, 0.95)
-        closeBtnText:SetTextColor(1, 0.6, 0.6, 1)
-    end)
-    closeBtn:SetScript("OnLeave", function(self)
-        self:SetBackdropColor(0.15, 0.15, 0.15, 0.8)
-        closeBtnText:SetTextColor(1, 0.4, 0.4, 1)
-    end)
 
     -- Helper function to create styled buttons
     local function CreateStyledButton(parent, width, height, text)

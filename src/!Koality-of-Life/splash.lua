@@ -151,13 +151,22 @@ frame:SetScript("OnEvent", function(self, event)
                 KOL:DebugPrint("Splash: Registered /kol splash command")
             end
         end
-        
-        -- Show splash on first login only
+
+        -- Show splash on first login only (if enabled in settings)
         if not splashShown then
             splashShown = true
-            -- Small delay to ensure UI is ready
+            -- Small delay to ensure UI and SavedVariables are ready
             C_Timer.After(0.5, function()
-                ShowSplash()
+                -- Check if splash is enabled (default true if setting doesn't exist yet)
+                local showSplash = true
+                if KOL and KOL.db and KOL.db.profile then
+                    showSplash = KOL.db.profile.showSplash
+                    if showSplash == nil then showSplash = true end
+                end
+
+                if showSplash then
+                    ShowSplash()
+                end
             end)
         end
     end

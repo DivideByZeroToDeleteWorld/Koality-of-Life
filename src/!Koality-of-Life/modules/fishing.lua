@@ -150,8 +150,8 @@ function Fishing:CheckForGhostfish()
 
     KOL:DebugPrint("Fishing: Checking for Ghostfish (in Sholazar + quest active)...")
 
-    -- Scan bags for Phantom Ghostfish using utility function
-    local found, bag, slot = KOL:ScanInventory(GHOSTFISH_ID)
+    -- Find Ghostfish location for using it
+    local found, bag, slot = KOL:FindItemLocation(GHOSTFISH_ID)
     if found then
         KOL:DebugPrint("Fishing: GHOSTFISH DETECTED in bag " .. bag .. " slot " .. slot .. " - activating!", 1)
         self:UseGhostfish()
@@ -409,7 +409,7 @@ function Fishing:HijackBagToggle()
     KOL:DebugPrint("[" .. timestamp .. "] Bags currently: " .. (bagsWereOpen and "OPEN" or "CLOSED"))
 
     -- Find the fish in bags FIRST (we need bag/slot for secure button)
-    local found, foundBag, foundSlot = KOL:ScanInventory(GHOSTFISH_ID)
+    local found, foundBag, foundSlot = KOL:FindItemLocation(GHOSTFISH_ID)
 
     if not found then
         KOL:DebugPrint("[" .. timestamp .. "] ERROR: Cannot find Ghostfish in bags!")
@@ -650,8 +650,8 @@ function Fishing:UseGhostfish()
     KOL:PrintTag("|cFF00FF00FISHING:|r UseGhostfish() called!")
     KOL:DebugPrint("Found " .. YELLOW(GHOSTFISH_NAME) .. " in bags!")
 
-    -- Find the fish in bags using utility function
-    local found, foundBag, foundSlot = KOL:ScanInventory(GHOSTFISH_ID)
+    -- Find the fish location for using it
+    local found, foundBag, foundSlot = KOL:FindItemLocation(GHOSTFISH_ID)
 
     if not found then
         KOL:DebugPrint("ERROR: Ghostfish not found in bags!")
@@ -691,8 +691,8 @@ function Fishing:ForceUseContainerItem()
         return
     end
 
-    -- Find Ghostfish using utility function
-    local found, bag, slot = KOL:ScanInventory(GHOSTFISH_ID)
+    -- Find Ghostfish location for using it
+    local found, bag, slot = KOL:FindItemLocation(GHOSTFISH_ID)
 
     if found then
         KOL:DebugPrint("Found Ghostfish in bag " .. bag .. " slot " .. slot)

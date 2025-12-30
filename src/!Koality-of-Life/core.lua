@@ -37,6 +37,7 @@ local defaults = {
         debugMaxLines = 1000,  -- Maximum lines to keep in debug console (default: 1000, max: 10000)
         watchDeathsLevel = 0,  -- 0 = disabled, 1 = bosses only, 2 = elites+bosses, 3 = all mobs
         showPrints = false,  -- Controls PrintTag visibility (separate from debug)
+        showSplash = true,  -- Show splash screen on login
 
         -- Command Blocks: Reusable code snippets that return values
         commandBlocks = {},
@@ -190,15 +191,21 @@ CO = ColorOutput
 function KOL:OnInitialize()
     -- Initialize database with AceDB-3.0
     self.db = LibStub("AceDB-3.0"):New("KoalityOfLifeDB", defaults, true)
-    
+
     self:DebugPrint("Core: Database initialized", 2)
-    
+
     -- Initialize themes module after database is ready
     if self.Themes and self.Themes.Initialize then
         self:DebugPrint("Core: Calling Themes:Initialize()", 2)
         self.Themes:Initialize()
     else
         self:DebugPrint("Core: Themes module not available", 1)
+    end
+
+    -- Initialize objective tracking system
+    if self.InitializeObjectives then
+        self:InitializeObjectives()
+        self:DebugPrint("Core: Objective tracking initialized", 2)
     end
 end
 

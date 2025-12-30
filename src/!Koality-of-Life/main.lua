@@ -145,10 +145,20 @@ function KOL:OnEnable()
     self:RegisterChatCommand("kt", "TestSlashCommand")  -- Alias for test commands
     self:RegisterChatCommand("kdc", function() self:ToggleDebugConsole() end)  -- Koality Debug Console
     self:RegisterChatCommand("kcv", function() self:ToggleCharViewer() end)  -- Koality Character Viewer
-    self:RegisterChatCommand("kc", function()
-        -- Open config panel
-        self:OpenConfig()
-    end)  -- Koality Config
+    self:RegisterChatCommand("kc", function(args)
+        args = strtrim(args or "")
+        if args == "showcase" then
+            -- Show UI showcase demo frame
+            if KOL.UIFactory and KOL.UIFactory.ShowUIShowcase then
+                KOL.UIFactory:ShowUIShowcase()
+            else
+                self:PrintTag("UIFactory not loaded yet!")
+            end
+        else
+            -- Open config panel
+            self:OpenConfig()
+        end
+    end)  -- Koality Config (with /kc showcase subcommand)
     self:RegisterChatCommand("kcpt", function()
         -- Open config and navigate to Progress Tracker
         self:OpenConfig()

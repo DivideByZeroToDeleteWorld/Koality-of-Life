@@ -160,7 +160,7 @@ function Breadcrumb:UpdateBreadcrumbs()
             local sepKey = "_breadcrumb_sep_" .. i
             KOL.configOptions.args[sepKey] = {
                 type = "description",
-                name = " " .. CHAR("ARROWS_RIGHT") .. " ",
+                name = " " .. CHAR("RIGHT") .. " ",
                 width = "normal",
                 order = order,
             }

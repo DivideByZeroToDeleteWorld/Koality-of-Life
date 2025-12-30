@@ -6,6 +6,7 @@
 
 local KOL = KoalityOfLife
 local LSM = LibStub("LibSharedMedia-3.0")
+local UIFactory = KOL.UIFactory
 
 -- Debug message storage
 local debugMessages = {}
@@ -113,148 +114,31 @@ local function CreateConsoleFrame()
         return consoleFrame
     end
 
-    -- Main frame
-    local frame = CreateFrame("Frame", "KOL_DebugConsole", UIParent)
-    frame:SetWidth(700)
-    frame:SetHeight(500)
+    -- Main frame using UIFactory (auto-registered, movable, closable)
+    local frame = UIFactory:CreateStyledFrame(UIParent, "KOL_DebugConsole", 700, 500, {
+        movable = true,
+        closable = true,
+        strata = UIFactory.STRATA.MODAL,  -- High strata to always be on top
+        bgColor = {r = 0.02, g = 0.02, b = 0.02, a = 0.98},
+    })
     frame:SetPoint("CENTER")
-    frame:SetFrameStrata("FULLSCREEN_DIALOG")  -- High strata to always be on top
-    frame:SetFrameLevel(100)
 
-    -- Backdrop - dark theme matching Queue Viewer
-    frame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        tileSize = 1,
-        edgeSize = 1,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    -- Title bar using UIFactory
+    local titleBar, title, titleCloseBtn = UIFactory:CreateTitleBar(frame, 20, "Debug Console", {
+        showCloseButton = true,
     })
-    -- Apply theme colors
-    local bgColor, borderColor
-    if KOL.Themes and KOL.Themes.GetUIThemeColor then
-        bgColor = KOL.Themes:GetUIThemeColor("GlobalBG", {r = 0.02, g = 0.02, b = 0.02, a = 0.98})
-        borderColor = KOL.Themes:GetUIThemeColor("GlobalBorder", {r = 0.4, g = 0.4, b = 0.4, a = 1})
-    else
-        bgColor = {r = 0.02, g = 0.02, b = 0.02, a = 0.98}
-        borderColor = {r = 0.4, g = 0.4, b = 0.4, a = 1}
-    end
-    frame:SetBackdropColor(bgColor.r, bgColor.g, bgColor.b, bgColor.a)
-    frame:SetBackdropBorderColor(borderColor.r, borderColor.g, borderColor.b, borderColor.a)
+    frame.title = title
 
-    frame:EnableMouse(true)
-    frame:SetMovable(true)
-    frame:RegisterForDrag("LeftButton")
-    frame:SetScript("OnDragStart", frame.StartMoving)
-    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-    frame:Hide()
-
-    -- Make it closable with ESC
-    tinsert(UISpecialFrames, "KOL_DebugConsole")
-
-    -- Title bar (much less tall!)
-    local titleBar = CreateFrame("Frame", nil, frame)
-    titleBar:SetPoint("TOPLEFT", 1, -1)
-    titleBar:SetPoint("TOPRIGHT", -1, -1)
-    titleBar:SetHeight(20)  -- Much less tall!
-    titleBar:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-    })
-    -- Apply theme colors to title bar
-    local titleBgColor
-    if KOL.Themes and KOL.Themes.GetUIThemeColor then
-        titleBgColor = KOL.Themes:GetUIThemeColor("GlobalTitleBG", {r = 0.08, g = 0.08, b = 0.08, a = 1})
-    else
-        titleBgColor = {r = 0.08, g = 0.08, b = 0.08, a = 1}
-    end
-    titleBar:SetBackdropColor(titleBgColor.r, titleBgColor.g, titleBgColor.b, titleBgColor.a)
-
-    -- Title text
+    -- Message count (on title bar, right side)
     local fontPath, fontOutline = GetDebugFont()
-    local title = frame:CreateFontString(nil, "OVERLAY")
-    title:SetFont(fontPath, 12, fontOutline)  -- Smaller font
-    title:SetPoint("LEFT", titleBar, "LEFT", 8, 0)
-    title:SetText("Debug Console")
-    -- Apply theme color to title text
-    local titleTextColor
-    if KOL.Themes and KOL.Themes.GetUIThemeColor then
-        titleTextColor = KOL.Themes:GetUIThemeColor("TextPrimary", {r = 1, g = 1, b = 0.6, a = 1})
-    else
-        titleTextColor = {r = 1, g = 1, b = 0.6, a = 1}
-    end
-    title:SetTextColor(titleTextColor.r, titleTextColor.g, titleTextColor.b, titleTextColor.a)
-
-    -- Message count
     local messageCount = frame:CreateFontString(nil, "OVERLAY")
-    messageCount:SetFont(fontPath, 10, fontOutline)  -- Smaller font
+    messageCount:SetFont(fontPath, 10, fontOutline)
     messageCount:SetPoint("RIGHT", titleBar, "RIGHT", -26, 0)  -- Leave room for X button
     messageCount:SetTextColor(0.7, 0.7, 0.7, 1)
     frame.messageCount = messageCount
 
-    -- Close button (X) - styled like D button
-    local closeButton = CreateFrame("Button", nil, titleBar)
-    closeButton:SetWidth(16)
-    closeButton:SetHeight(16)
-    closeButton:SetPoint("RIGHT", titleBar, "RIGHT", -2, 0)
-
-    closeButton:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        tileSize = 1,
-        edgeSize = 1,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
-    })
-    closeButton:SetBackdropColor(0.15, 0.15, 0.15, 0.8)
-    closeButton:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.9)
-
-    local xText = closeButton:CreateFontString(nil, "OVERLAY")
-    xText:SetFont(fontPath, 10, fontOutline)
-    xText:SetPoint("CENTER", 0, 0)
-    xText:SetText("X")
-    xText:SetTextColor(1, 0.4, 0.4, 1)
-    closeButton.text = xText
-
-    closeButton:SetScript("OnEnter", function(self)
-        self:SetBackdropColor(0.25, 0.25, 0.25, 0.95)
-        self:SetBackdropBorderColor(1, 0.5, 0.5, 1)
-        self.text:SetTextColor(1, 0.6, 0.6, 1)
-    end)
-
-    closeButton:SetScript("OnLeave", function(self)
-        self:SetBackdropColor(0.15, 0.15, 0.15, 0.8)
-        self:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.9)
-        self.text:SetTextColor(1, 0.4, 0.4, 1)
-    end)
-
-    closeButton:SetScript("OnClick", function()
-        frame:Hide()
-    end)
-
-    -- Content area background
-    local contentBG = CreateFrame("Frame", nil, frame)
-    contentBG:SetPoint("TOPLEFT", 8, -24)  -- Adjusted for shorter title bar (20 + 4)
-    contentBG:SetPoint("BOTTOMRIGHT", -8, 40)
-    contentBG:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        tileSize = 1,
-        edgeSize = 1,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
-    })
-    -- Apply theme colors to content area
-    local contentBgColor, contentBorderColor
-    if KOL.Themes and KOL.Themes.GetUIThemeColor then
-        contentBgColor = KOL.Themes:GetUIThemeColor("ContentAreaBG", {r = 0.01, g = 0.01, b = 0.01, a = 1})
-        contentBorderColor = KOL.Themes:GetUIThemeColor("ContentAreaBorder", {r = 0.25, g = 0.25, b = 0.25, a = 1})
-    else
-        contentBgColor = {r = 0.01, g = 0.01, b = 0.01, a = 1}
-        contentBorderColor = {r = 0.25, g = 0.25, b = 0.25, a = 1}
-    end
-    contentBG:SetBackdropColor(contentBgColor.r, contentBgColor.g, contentBgColor.b, contentBgColor.a)
-    contentBG:SetBackdropBorderColor(contentBorderColor.r, contentBorderColor.g, contentBorderColor.b, contentBorderColor.a)
+    -- Content area using UIFactory
+    local contentBG = UIFactory:CreateContentArea(frame, {top = 24, bottom = 40, left = 8, right = 8})
 
     -- Scroll frame for messages
     local scrollFrame = CreateFrame("ScrollFrame", "KOL_DebugConsoleScroll", frame, "UIPanelScrollFrameTemplate")
@@ -292,164 +176,56 @@ local function CreateConsoleFrame()
 
     frame.messageText = messageText
 
-    -- Buttons
+    -- Buttons using UIFactory
     local buttonY = 8
-
-    -- Pause Updates button
-    local pauseButton = CreateFrame("Button", nil, frame)
-    pauseButton:SetWidth(100)
-    pauseButton:SetHeight(25)
-    pauseButton:SetPoint("BOTTOMLEFT", 10, buttonY)
-    pauseButton:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        tileSize = 1,
-        edgeSize = 1,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
-    })
-    -- Apply theme colors to pause button
-    local buttonBgColor, buttonBorderColor, buttonTextColor
-    if KOL.Themes and KOL.Themes.GetUIThemeColor then
-        buttonBgColor = KOL.Themes:GetUIThemeColor("ButtonNormal", {r = 0.8, g = 0.6, b = 0.2, a = 1})
-        buttonBorderColor = KOL.Themes:GetUIThemeColor("ButtonBorder", {r = 0.2, g = 0.2, b = 0.2, a = 1})
-        buttonTextColor = KOL.Themes:GetUIThemeColor("TextPrimary", {r = 1, g = 1, b = 0.6, a = 1})
-    else
-        buttonBgColor = {r = 0.8, g = 0.6, b = 0.2, a = 1}
-        buttonBorderColor = {r = 0.2, g = 0.2, b = 0.2, a = 1}
-        buttonTextColor = {r = 1, g = 1, b = 0.6, a = 1}
-    end
-    pauseButton:SetBackdropColor(buttonBgColor.r, buttonBgColor.g, buttonBgColor.b, buttonBgColor.a)
-    pauseButton:SetBackdropBorderColor(buttonBorderColor.r, buttonBorderColor.g, buttonBorderColor.b, buttonBorderColor.a)
-
-    local pauseText = pauseButton:CreateFontString(nil, "OVERLAY")
-    pauseText:SetFont(fontPath, 11, fontOutline)
-    pauseText:SetPoint("CENTER")
-    pauseText:SetText("Pause Updates")
-    pauseText:SetTextColor(buttonTextColor.r, buttonTextColor.g, buttonTextColor.b, buttonTextColor.a)
-    pauseButton.text = pauseText
-
-    pauseButton:SetScript("OnEnter", function(self)
-        local hoverColor
-        if KOL.Themes and KOL.Themes.GetUIThemeColor then
-            hoverColor = KOL.Themes:GetUIThemeColor("ButtonHover", {r = 0.9, g = 0.7, b = 0.3, a = 1})
-        else
-            hoverColor = {r = 0.9, g = 0.7, b = 0.3, a = 1}
-        end
-        self:SetBackdropColor(hoverColor.r, hoverColor.g, hoverColor.b, hoverColor.a)
-    end)
-    pauseButton:SetScript("OnLeave", function(self)
-        local isPaused = frame.updatesPaused
-        if isPaused then
-            self:SetBackdropColor(0.2, 0.6, 0.2, 1)  -- Green when paused
-        else
-            self:SetBackdropColor(buttonBgColor.r, buttonBgColor.g, buttonBgColor.b, buttonBgColor.a)  -- Use theme color when active
-        end
-    end)
-    pauseButton:SetScript("OnClick", function(self)
-        frame.updatesPaused = not frame.updatesPaused
-        if frame.updatesPaused then
-            self.text:SetText("Resume Updates")
-            self:SetBackdropColor(0.2, 0.6, 0.2, 1)  -- Green when paused
-            KOL:PrintTag("Debug console updates " .. RED("PAUSED"))
-        else
-            self.text:SetText("Pause Updates")
-            self:SetBackdropColor(0.8, 0.6, 0.2, 1)  -- Orange when active
-            -- Update display to show any missed messages
-            UpdateConsoleDisplay()
-            KOL:PrintTag("Debug console updates " .. GREEN("RESUMED"))
-        end
-    end)
-    frame.pauseButton = pauseButton
     frame.updatesPaused = false
 
-    -- Clear button
-    local clearButton = CreateFrame("Button", nil, frame)
-    clearButton:SetWidth(80)
-    clearButton:SetHeight(25)
-    clearButton:SetPoint("LEFT", pauseButton, "RIGHT", 5, 0)
-    clearButton:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        tileSize = 1,
-        edgeSize = 1,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    -- Pause Updates button (styled button with toggle behavior)
+    local pauseButton = UIFactory:CreateButton(frame, "Pause Updates", {
+        type = "styled",
+        width = 110,
+        height = 25,
+        bgColor = {r = 0.8, g = 0.6, b = 0.2, a = 1},
+        onClick = function(self)
+            frame.updatesPaused = not frame.updatesPaused
+            if frame.updatesPaused then
+                self.text:SetText("Resume Updates")
+                self:SetBackdropColor(0.2, 0.6, 0.2, 1)  -- Green when paused
+                KOL:PrintTag("Debug console updates " .. RED("PAUSED"))
+            else
+                self.text:SetText("Pause Updates")
+                self:SetBackdropColor(0.8, 0.6, 0.2, 1)  -- Orange when active
+                UpdateConsoleDisplay()
+                KOL:PrintTag("Debug console updates " .. GREEN("RESUMED"))
+            end
+        end,
     })
-    -- Apply theme colors to clear button
-    local clearButtonBgColor, clearButtonBorderColor
-    if KOL.Themes and KOL.Themes.GetUIThemeColor then
-        clearButtonBgColor = KOL.Themes:GetUIThemeColor("ButtonDanger", {r = 0.8, g = 0.4, b = 0.4, a = 1})
-        clearButtonBorderColor = KOL.Themes:GetUIThemeColor("ButtonBorder", {r = 0.2, g = 0.2, b = 0.2, a = 1})
-    else
-        clearButtonBgColor = {r = 0.8, g = 0.4, b = 0.4, a = 1}
-        clearButtonBorderColor = {r = 0.2, g = 0.2, b = 0.2, a = 1}
-    end
-    clearButton:SetBackdropColor(clearButtonBgColor.r, clearButtonBgColor.g, clearButtonBgColor.b, clearButtonBgColor.a)
-    clearButton:SetBackdropBorderColor(clearButtonBorderColor.r, clearButtonBorderColor.g, clearButtonBorderColor.b, clearButtonBorderColor.a)
+    pauseButton:SetPoint("BOTTOMLEFT", 10, buttonY)
+    frame.pauseButton = pauseButton
 
-    local clearText = clearButton:CreateFontString(nil, "OVERLAY")
-    clearText:SetFont(fontPath, 11, fontOutline)
-    clearText:SetPoint("CENTER")
-    clearText:SetText("Clear")
-    clearText:SetTextColor(buttonTextColor.r, buttonTextColor.g, buttonTextColor.b, buttonTextColor.a)
-
-    clearButton:SetScript("OnEnter", function(self)
-        local hoverColor
-        if KOL.Themes and KOL.Themes.GetUIThemeColor then
-            hoverColor = KOL.Themes:GetUIThemeColor("ButtonDangerHover", {r = 0.9, g = 0.5, b = 0.5, a = 1})
-        else
-            hoverColor = {r = 0.9, g = 0.5, b = 0.5, a = 1}
-        end
-        self:SetBackdropColor(hoverColor.r, hoverColor.g, hoverColor.b, hoverColor.a)
-    end)
-    clearButton:SetScript("OnLeave", function(self)
-        self:SetBackdropColor(clearButtonBgColor.r, clearButtonBgColor.g, clearButtonBgColor.b, clearButtonBgColor.a)
-    end)
-    clearButton:SetScript("OnClick", function()
-        debugMessages = {}
-        UpdateConsoleDisplay()
-        KOL:PrintTag("Debug console cleared")
-    end)
+    -- Clear button
+    local clearButton = UIFactory:CreateButton(frame, "Clear", {
+        type = "styled",
+        width = 80,
+        height = 25,
+        bgColor = {r = 0.8, g = 0.4, b = 0.4, a = 1},
+        onClick = function()
+            debugMessages = {}
+            UpdateConsoleDisplay()
+            KOL:PrintTag("Debug console cleared")
+        end,
+    })
+    clearButton:SetPoint("LEFT", pauseButton, "RIGHT", 5, 0)
 
     -- Close button
-    local closeButton = CreateFrame("Button", nil, frame)
-    closeButton:SetWidth(80)
-    closeButton:SetHeight(25)
-    closeButton:SetPoint("BOTTOMRIGHT", -10, buttonY)
-    closeButton:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        tileSize = 1,
-        edgeSize = 1,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    local closeButton = UIFactory:CreateButton(frame, "Close", {
+        type = "styled",
+        width = 80,
+        height = 25,
+        bgColor = {r = 0.8, g = 0.4, b = 0.4, a = 1},
+        onClick = function() frame:Hide() end,
     })
-    -- Apply theme colors to close button (reuse clear button colors)
-    closeButton:SetBackdropColor(clearButtonBgColor.r, clearButtonBgColor.g, clearButtonBgColor.b, clearButtonBgColor.a)
-    closeButton:SetBackdropBorderColor(clearButtonBorderColor.r, clearButtonBorderColor.g, clearButtonBorderColor.b, clearButtonBorderColor.a)
-
-    local closeText = closeButton:CreateFontString(nil, "OVERLAY")
-    closeText:SetFont(fontPath, 11, fontOutline)
-    closeText:SetPoint("CENTER")
-    closeText:SetText("Close")
-    closeText:SetTextColor(buttonTextColor.r, buttonTextColor.g, buttonTextColor.b, buttonTextColor.a)
-
-    closeButton:SetScript("OnEnter", function(self)
-        local hoverColor
-        if KOL.Themes and KOL.Themes.GetUIThemeColor then
-            hoverColor = KOL.Themes:GetUIThemeColor("ButtonDangerHover", {r = 0.9, g = 0.5, b = 0.5, a = 1})
-        else
-            hoverColor = {r = 0.9, g = 0.5, b = 0.5, a = 1}
-        end
-        self:SetBackdropColor(hoverColor.r, hoverColor.g, hoverColor.b, hoverColor.a)
-    end)
-    closeButton:SetScript("OnLeave", function(self)
-        self:SetBackdropColor(clearButtonBgColor.r, clearButtonBgColor.g, clearButtonBgColor.b, clearButtonBgColor.a)
-    end)
-    closeButton:SetScript("OnClick", function()
-        frame:Hide()
-    end)
+    closeButton:SetPoint("BOTTOMRIGHT", -10, buttonY)
 
     -- Auto-scroll checkbox
     local autoScrollCheck = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")

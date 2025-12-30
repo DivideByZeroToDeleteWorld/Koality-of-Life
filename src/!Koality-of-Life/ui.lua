@@ -38,6 +38,58 @@ local function RainbowText(text)
 end
 
 -- ============================================================================
+-- Raid Size/Difficulty Helper Functions
+-- ============================================================================
+
+-- Get raid size from expansion, difficulty, and name
+local function GetRaidSize(expansion, difficulty, name)
+    if expansion == "classic" then
+        -- Classic: 20-man (ZG, AQ20) vs 40-man (MC, BWL, AQ40)
+        if name and (name:find("Zul'Gurub") or name:find("Ruins")) then
+            return 20
+        else
+            return 40
+        end
+    elseif expansion == "tbc" then
+        -- TBC: difficulty 1 = 10-man, difficulty 2 = 25-man
+        return difficulty == 1 and 10 or 25
+    elseif expansion == "wotlk" then
+        -- WotLK: difficulty 1/3 = 10-man, difficulty 2/4 = 25-man
+        return (difficulty == 1 or difficulty == 3) and 10 or 25
+    end
+    return 10  -- default
+end
+
+-- Check if raid is heroic mode
+local function IsHeroicRaid(expansion, difficulty)
+    -- Only WotLK has heroic raids (difficulty 3 = 10H, difficulty 4 = 25H)
+    if expansion == "wotlk" then
+        return difficulty == 3 or difficulty == 4
+    end
+    return false
+end
+
+-- Get unified difficulty code (e.g., "10n", "25h")
+local function GetUnifiedDifficultyCode(expansion, difficulty, name)
+    local size = GetRaidSize(expansion, difficulty, name)
+    local isHeroic = IsHeroicRaid(expansion, difficulty)
+    return size .. (isHeroic and "h" or "n")
+end
+
+-- Get display name for unified difficulty code
+local function GetDifficultyDisplayName(code, colored)
+    local displays = {
+        ["10n"] = colored and "|cFF66FF66" .. string.char(149) .. " 10N|r" or "10N",
+        ["10h"] = colored and "|cFFFF6666" .. string.char(149) .. " 10H|r" or "10H",
+        ["20n"] = colored and "|cFF66FF66" .. string.char(149) .. " 20N|r" or "20N",
+        ["25n"] = colored and "|cFF66FF66" .. string.char(149) .. " 25N|r" or "25N",
+        ["25h"] = colored and "|cFFFF6666" .. string.char(149) .. " 25H|r" or "25H",
+        ["40n"] = colored and "|cFF66FF66" .. string.char(149) .. " 40N|r" or "40N",
+    }
+    return displays[code] or code
+end
+
+-- ============================================================================
 -- Initialize UI System
 -- ============================================================================
 
@@ -72,6 +124,15 @@ function KOL:InitializeUI()
                         set = function(_, value) self.db.profile.enabled = value end,
                         width = "full",
                         order = 1,
+                    },
+                    showSplash = {
+                        type = "toggle",
+                        name = "Show Splash Screen",
+                        desc = "Show the Koality of Life splash image on login",
+                        get = function() return self.db.profile.showSplash end,
+                        set = function(_, value) self.db.profile.showSplash = value end,
+                        width = "full",
+                        order = 1.5,
                     },
                     spacer1 = {
                         type = "description",
@@ -134,6 +195,23 @@ function KOL:InitializeUI()
                     stats = {
                         type = "description",
                         name = function()
+                            -- Use cached stats to avoid memory churn on every UI refresh
+                            -- Stats are updated by the Refresh button or periodically
+                            if not KOL.cachedStats then
+                                KOL.cachedStats = {
+                                    text = "|cFFFFDD00Memory Usage:|r |cFF888888Loading...|r",
+                                    lastUpdate = 0,
+                                    lastFreed = nil,  -- Set by Refresh Stats button
+                                }
+                            end
+
+                            -- Only update stats every 2 seconds to reduce memory allocations
+                            local now = GetTime()
+                            if now - KOL.cachedStats.lastUpdate < 2 then
+                                return KOL.cachedStats.text
+                            end
+                            KOL.cachedStats.lastUpdate = now
+
                             -- Update memory usage (with safety check for API availability)
                             local mem = 0
                             local memMB = 0
@@ -172,9 +250,14 @@ function KOL:InitializeUI()
                                 if memMB > 20 then
                                     memColor = "|cFFFF8888"  -- Red
                                 end
+
+                                -- Show how much was freed on last GC (from last Refresh Stats click)
+                                if KOL.cachedStats.lastFreed and KOL.cachedStats.lastFreed > 0.01 then
+                                    memText = string.format("%.2f MB |cFF888888(|r|cFF88FF88freed %.2f|r on last |cFFFFAA00GC|r|cFF888888)|r", memMB, KOL.cachedStats.lastFreed)
+                                end
                             end
 
-                            return string.format(
+                            KOL.cachedStats.text = string.format(
                                 "|cFFFFDD00Memory Usage:|r %s%s|r\n" ..
                                 "|cFFFFDD00Batch Channels:|r |cFF88DDFF%d running|r / |cFFAAAA00%d total|r\n" ..
                                 "|cFFFFDD00Debug Messages:|r |cFFAAAA00%d|r / |cFF888888%d max|r",
@@ -182,15 +265,49 @@ function KOL:InitializeUI()
                                 runningChannels, totalChannels,
                                 debugCount, debugMax
                             )
+                            return KOL.cachedStats.text
                         end,
                         fontSize = "medium",
                         order = 13,
                     },
+                    refreshNote = {
+                        type = "description",
+                        name = "Running |cFF88DDFFRefresh Stats|r will |cFFFFAA00Collect Garbage|r before |cFF88DDFFRefreshing Stats|r.",
+                        fontSize = "small",
+                        order = 13.5,
+                    },
                     refreshStats = {
                         type = "execute",
                         name = "Refresh Stats",
-                        desc = "Manually refresh performance statistics (auto-refreshes every 2 seconds)",
+                        desc = "Force garbage collection and refresh stats for accurate memory reading",
                         func = function()
+                            -- Get memory BEFORE garbage collection
+                            local memBefore = 0
+                            if UpdateAddOnMemoryUsage and GetAddOnMemoryUsage then
+                                UpdateAddOnMemoryUsage()
+                                memBefore = GetAddOnMemoryUsage("!Koality-of-Life") or 0
+                            end
+
+                            -- Force garbage collection
+                            collectgarbage("collect")
+
+                            -- Get memory AFTER garbage collection
+                            local memAfter = 0
+                            if UpdateAddOnMemoryUsage and GetAddOnMemoryUsage then
+                                UpdateAddOnMemoryUsage()
+                                memAfter = GetAddOnMemoryUsage("!Koality-of-Life") or 0
+                            end
+
+                            -- Calculate how much was freed by GC
+                            local freed = (memBefore - memAfter) / 1024  -- Convert to MB
+
+                            -- Store freed amount for display
+                            if not KOL.cachedStats then
+                                KOL.cachedStats = { lastUpdate = 0 }
+                            end
+                            KOL.cachedStats.lastFreed = freed > 0 and freed or nil
+                            KOL.cachedStats.lastUpdate = 0  -- Force immediate refresh
+
                             -- Force refresh by notifying AceConfigRegistry
                             LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
                         end,
@@ -372,7 +489,7 @@ function KOL:InitializeUI()
                             },
                             standardDesc = {
                                 type = "description",
-                                name = "|cFFAAAAAAAAvailable via color functions: RED(), GREEN(), YELLOW(), etc.|r\n",
+                                name = "|cFFAAAAAAAvailable via color functions: RED(), GREEN(), YELLOW(), etc.|r\n",
                                 order = 2,
                             },
                             standardColors = {
@@ -474,7 +591,7 @@ function KOL:InitializeUI()
             tweaks = {
                 type = "group",
                 name = "|cFF88DDFFTweaks|r",
-                order = 2,
+                order = 3,
                 childGroups = "tab",
                 args = {
                     header = {
@@ -496,7 +613,7 @@ function KOL:InitializeUI()
             commandblocks = {
                 type = "group",
                 name = "|cFFFFAA66Command Blocks|r",
-                order = 3,
+                order = 4,
                 args = {
                     header = {
                         type = "description",
@@ -542,7 +659,7 @@ function KOL:InitializeUI()
             tracker = {
                 type = "group",
                 name = "|cFF66FFCCProgress Tracker|r",
-                order = 4,
+                order = 2,
                 childGroups = "tab",
                 args = {
                     header = {
@@ -588,42 +705,25 @@ function KOL:InitializeUI()
                                 name = "UI Visibility",
                                 order = 4,
                             },
-                            hideUI = {
+                            showBgOnHover = {
                                 type = "toggle",
-                                name = "Hide UI Elements",
-                                desc = "Hide all UI elements (background, borders, scrollbar, minimize button, titlebar background)",
+                                name = "Show Background on Mouseover Only",
+                                desc = "Hide the frame background by default, show it only when hovering (creates a floating text look)",
                                 get = function()
-                                    return KOL.db.profile.tracker and KOL.db.profile.tracker.hideUI or false
+                                    return KOL.db.profile.tracker and KOL.db.profile.tracker.showBgOnHover or false
                                 end,
                                 set = function(_, value)
                                     if not KOL.db.profile.tracker then
                                         KOL.db.profile.tracker = {}
                                     end
+                                    KOL.db.profile.tracker.showBgOnHover = value
+                                    -- Also set the old values for compatibility
                                     KOL.db.profile.tracker.hideUI = value
-                                    KOL:PrintTag("Hide UI: " .. (value and GREEN("Enabled") or RED("Disabled")))
+                                    KOL.db.profile.tracker.showUIOnMouseover = value
+                                    KOL:PrintTag("Show BG on hover: " .. (value and GREEN("Enabled") or RED("Disabled")))
                                 end,
                                 width = "full",
                                 order = 5,
-                            },
-                            showUIOnMouseover = {
-                                type = "toggle",
-                                name = "Show UI On Mouseover",
-                                desc = "Show all hidden UI elements when mouse hovers over the watch frame (only works when 'Hide UI Elements' is enabled)",
-                                disabled = function()
-                                    return not (KOL.db.profile.tracker and KOL.db.profile.tracker.hideUI)
-                                end,
-                                get = function()
-                                    return KOL.db.profile.tracker and KOL.db.profile.tracker.showUIOnMouseover or false
-                                end,
-                                set = function(_, value)
-                                    if not KOL.db.profile.tracker then
-                                        KOL.db.profile.tracker = {}
-                                    end
-                                    KOL.db.profile.tracker.showUIOnMouseover = value
-                                    KOL:PrintTag("Show UI on mouseover: " .. (value and GREEN("Enabled") or RED("Disabled")))
-                                end,
-                                width = "full",
-                                order = 6,
                             },
                             spacerButtons = {
                                 type = "description",
@@ -1378,119 +1478,7 @@ function KOL:InitializeUI()
                                     end,
                                     order = 2,
                                 },
-                            filterExpansion = {
-                                type = "select",
-                                name = "Show Expansion",
-                                desc = "Select which expansion's dungeons to display",
-                                values = {
-                                    [""] = "-- Select Expansion --",
-                                    classic = "Classic",
-                                    tbc = "The Burning Crusade",
-                                    wotlk = "Wrath of the Lich King",
-                                    all = "All Expansions",
-                                },
-                                get = function()
-                                    return KOL.db.profile.tracker.dungeonFilterExpansion or ""
-                                end,
-                                set = function(_, value)
-                                    KOL.db.profile.tracker.dungeonFilterExpansion = value
-                                    KOL:PopulateTrackerConfigUI()
-                                    LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
-                                end,
-                                order = 1,
-                            },
-                            filterDifficulty = {
-                                type = "select",
-                                name = "Show Difficulty",
-                                desc = "Filter dungeons by difficulty",
-                                values = function()
-                                    local expansion = KOL.db.profile.tracker.dungeonFilterExpansion or "all"
-                                    if expansion == "all" then
-                                        return {
-                                            all = "All Difficulties",
-                                            normal = "Normal",
-                                            heroic = "Heroic",
-                                        }
-                                    elseif expansion == "classic" then
-                                        return {
-                                            all = "All Difficulties",
-                                            normal = "Normal",
-                                        }
-                                    else  -- TBC or WotLK
-                                        return {
-                                            all = "All Difficulties",
-                                            normal = "Normal",
-                                            heroic = "Heroic",
-                                        }
-                                    end
-                                end,
-                                get = function()
-                                    return KOL.db.profile.tracker.dungeonFilterDifficulty or "all"
-                                end,
-                                set = function(_, value)
-                                    KOL.db.profile.tracker.dungeonFilterDifficulty = value
-                                    KOL:PopulateTrackerConfigUI()
-                                    LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
-                                end,
-                                order = 2,
-                            },
-                            selectInstance = {
-                                type = "select",
-                                name = "Select Instance",
-                                desc = "Choose which instance to configure",
-                                values = function()
-                                    -- Build list of instances that match current filters
-                                    local instances = {[""] = "-- Select Instance --"}
-                                    if not KOL.Tracker or not KOL.Tracker.instances then
-                                        return instances
-                                    end
-
-                                    local expansion = KOL.db.profile.tracker.dungeonFilterExpansion or ""
-                                    local difficulty = KOL.db.profile.tracker.dungeonFilterDifficulty or "all"
-
-                                    if expansion == "" then
-                                        return instances
-                                    end
-
-                                    for instanceId, data in pairs(KOL.Tracker.instances) do
-                                        if data.type == "dungeon" then
-                                            -- Check expansion filter
-                                            if expansion == "all" or data.expansion == expansion then
-                                                -- Check difficulty filter
-                                                local matchesDifficulty = false
-                                                if difficulty == "all" then
-                                                    matchesDifficulty = true
-                                                elseif difficulty == "normal" and (data.difficulty == nil or data.difficulty == 1) then
-                                                    matchesDifficulty = true
-                                                elseif difficulty == "heroic" and data.difficulty == 2 then
-                                                    matchesDifficulty = true
-                                                end
-
-                                                if matchesDifficulty then
-                                                    instances[instanceId] = data.name
-                                                end
-                                            end
-                                        end
-                                    end
-
-                                    return instances
-                                end,
-                                get = function()
-                                    return KOL.db.profile.tracker.selectedDungeonInstance or ""
-                                end,
-                                set = function(_, value)
-                                    KOL.db.profile.tracker.selectedDungeonInstance = value
-                                    KOL:PopulateTrackerConfigUI()
-                                    LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
-                                end,
-                                order = 3,
-                            },
-                            spacer = {
-                                type = "description",
-                                name = " ",
-                                order = 4,
-                            },
-                            -- Dungeon instances will be populated below this
+                                -- Dungeon instances will be populated below this
                         }
                     },
                     raids = {
@@ -1534,41 +1522,45 @@ function KOL:InitializeUI()
                                         filterDifficulty = {
                                             type = "select",
                                             name = "Size/Difficulty",
-                                            desc = "Filter raids by size and difficulty",
-                                            width = 140,
+                                            desc = "Filter raids by size and difficulty (N=Normal, H=Heroic)",
+                                            width = 100,
                                             values = function()
                                                 local expansion = KOL.db.profile.tracker.raidFilterExpansion or "all"
+                                                -- Unified N/H naming with color coding
+                                                -- Green bullet = Normal, Red bullet = Heroic
+                                                local green = "|cFF66FF66"
+                                                local red = "|cFFFF6666"
+                                                local bullet = string.char(149) .. " "
+
                                                 if expansion == "classic" then
                                                     return {
-                                                        all = "All Sizes",
-                                                        ["20"] = "20-Player",
-                                                        ["40"] = "40-Player",
+                                                        all = "All",
+                                                        ["20n"] = green .. bullet .. "20N|r",
+                                                        ["40n"] = green .. bullet .. "40N|r",
                                                     }
                                                 elseif expansion == "tbc" then
                                                     return {
-                                                        all = "All Sizes",
-                                                        ["10"] = "10-Player",
-                                                        ["25"] = "25-Player",
+                                                        all = "All",
+                                                        ["10n"] = green .. bullet .. "10N|r",
+                                                        ["25n"] = green .. bullet .. "25N|r",
                                                     }
                                                 elseif expansion == "wotlk" then
                                                     return {
-                                                        all = "All Sizes/Difficulties",
-                                                        ["10n"] = "10-Player Normal",
-                                                        ["25n"] = "25-Player Normal",
-                                                        ["10h"] = "10-Player Heroic",
-                                                        ["25h"] = "25-Player Heroic",
+                                                        all = "All",
+                                                        ["10n"] = green .. bullet .. "10N|r",
+                                                        ["25n"] = green .. bullet .. "25N|r",
+                                                        ["10h"] = red .. bullet .. "10H|r",
+                                                        ["25h"] = red .. bullet .. "25H|r",
                                                     }
-                                                else  -- all
+                                                else  -- all expansions
                                                     return {
-                                                        all = "All Sizes/Difficulties",
-                                                        ["10"] = "10-Player",
-                                                        ["20"] = "20-Player",
-                                                        ["25"] = "25-Player",
-                                                        ["40"] = "40-Player",
-                                                        ["10n"] = "10-Player Normal",
-                                                        ["25n"] = "25-Player Normal",
-                                                        ["10h"] = "10-Player Heroic",
-                                                        ["25h"] = "25-Player Heroic",
+                                                        all = "All",
+                                                        ["10n"] = green .. bullet .. "10N|r",
+                                                        ["20n"] = green .. bullet .. "20N|r",
+                                                        ["25n"] = green .. bullet .. "25N|r",
+                                                        ["40n"] = green .. bullet .. "40N|r",
+                                                        ["10h"] = red .. bullet .. "10H|r",
+                                                        ["25h"] = red .. bullet .. "25H|r",
                                                     }
                                                 end
                                             end,
@@ -1594,63 +1586,70 @@ function KOL:InitializeUI()
                                         if not KOL.Tracker or not KOL.Tracker.instances then
                                             return instances
                                         end
-                                        
-                                        local raidFilterExpansion = KOL.db.profile.tracker.raidFilterExpansion or ""
-                                        local raidFilterDifficulty = KOL.db.profile.tracker.raidFilterDifficulty or "all"
-                                        
+
+                                        local filterExpansion = KOL.db.profile.tracker.raidFilterExpansion or ""
+                                        local filterDifficulty = KOL.db.profile.tracker.raidFilterDifficulty or "all"
+
+                                        -- Collect raids for sorting
+                                        local raidList = {}
+
                                         for id, data in pairs(KOL.Tracker.instances) do
                                             if data.type == "raid" then
                                                 local include = true
-                                                
+
                                                 -- Filter by expansion
-                                                if raidFilterExpansion ~= "" and raidFilterExpansion ~= "all" then
-                                                    if data.expansion ~= raidFilterExpansion then
+                                                if filterExpansion ~= "" and filterExpansion ~= "all" then
+                                                    if data.expansion ~= filterExpansion then
                                                         include = false
                                                     end
                                                 end
-                                                
-                                                -- Filter by difficulty
-                                                if raidFilterDifficulty ~= "" and raidFilterDifficulty ~= "all" then
-                                                    if raidFilterDifficulty == "20" then
-                                                        if data.difficulty ~= 20 then
-                                                            include = false
-                                                        end
-                                                    elseif raidFilterDifficulty == "40" then
-                                                        if data.difficulty ~= 40 then
-                                                            include = false
-                                                        end
-                                                    elseif raidFilterDifficulty == "10" then
-                                                        if data.difficulty ~= 10 then
-                                                            include = false
-                                                        end
-                                                    elseif raidFilterDifficulty == "25" then
-                                                        if data.difficulty ~= 25 then
-                                                            include = false
-                                                        end
-                                                    elseif raidFilterDifficulty == "10n" then
-                                                        if data.difficulty ~= 1 then
-                                                            include = false
-                                                        end
-                                                    elseif raidFilterDifficulty == "25n" then
-                                                        if data.difficulty ~= 2 then
-                                                            include = false
-                                                        end
-                                                    elseif raidFilterDifficulty == "10h" then
-                                                        if data.difficulty ~= 3 then
-                                                            include = false
-                                                        end
-                                                    elseif raidFilterDifficulty == "25h" then
-                                                        if data.difficulty ~= 4 then
-                                                            include = false
-                                                        end
+
+                                                -- Filter by unified difficulty code (e.g., "10n", "25h", "40n")
+                                                if include and filterDifficulty ~= "" and filterDifficulty ~= "all" then
+                                                    -- Get this raid's unified code
+                                                    local raidCode = GetUnifiedDifficultyCode(data.expansion, data.difficulty, data.name)
+                                                    if raidCode ~= filterDifficulty then
+                                                        include = false
                                                     end
                                                 end
-                                                
+
                                                 if include then
-                                                    instances[id] = data.name
+                                                    -- Get size and heroic status for sorting
+                                                    local size = GetRaidSize(data.expansion, data.difficulty, data.name)
+                                                    local isHeroic = IsHeroicRaid(data.expansion, data.difficulty)
+                                                    local expansionOrder = ({classic = 1, tbc = 2, wotlk = 3})[data.expansion] or 4
+
+                                                    table.insert(raidList, {
+                                                        id = id,
+                                                        name = data.name,
+                                                        expansion = data.expansion,
+                                                        expansionOrder = expansionOrder,
+                                                        size = size,
+                                                        isHeroic = isHeroic,
+                                                    })
                                                 end
                                             end
                                         end
+
+                                        -- Sort by: expansion, then size, then heroic, then name
+                                        table.sort(raidList, function(a, b)
+                                            if a.expansionOrder ~= b.expansionOrder then
+                                                return a.expansionOrder < b.expansionOrder
+                                            end
+                                            if a.size ~= b.size then
+                                                return a.size < b.size
+                                            end
+                                            if a.isHeroic ~= b.isHeroic then
+                                                return not a.isHeroic  -- Normal before Heroic
+                                            end
+                                            return a.name < b.name
+                                        end)
+
+                                        -- Build ordered instances table
+                                        for _, raid in ipairs(raidList) do
+                                            instances[raid.id] = raid.name
+                                        end
+
                                         return instances
                                     end,
                                     get = function()
@@ -1663,164 +1662,12 @@ function KOL:InitializeUI()
                                     end,
                                     order = 2,
                                 },
-                            filterExpansion = {
-                                type = "select",
-                                name = "Show Expansion",
-                                desc = "Select which expansion's raids to display",
-                                values = {
-                                    [""] = "-- Select Expansion --",
-                                    classic = "Classic",
-                                    tbc = "The Burning Crusade",
-                                    wotlk = "Wrath of the Lich King",
-                                    all = "All Expansions",
-                                },
-                                get = function()
-                                    return KOL.db.profile.tracker.raidFilterExpansion or ""
-                                end,
-                                set = function(_, value)
-                                    KOL.db.profile.tracker.raidFilterExpansion = value
-                                    KOL:PopulateTrackerConfigUI()
-                                    LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
-                                end,
-                                order = 1,
-                            },
-                            filterDifficulty = {
-                                type = "select",
-                                name = "Show Size/Difficulty",
-                                desc = "Filter raids by size and difficulty",
-                                values = function()
-                                    local expansion = KOL.db.profile.tracker.raidFilterExpansion or "all"
-                                    if expansion == "classic" then
-                                        return {
-                                            all = "All Sizes",
-                                            ["20"] = "20-Player",
-                                            ["40"] = "40-Player",
-                                        }
-                                    elseif expansion == "tbc" then
-                                        return {
-                                            all = "All Sizes",
-                                            ["10"] = "10-Player",
-                                            ["25"] = "25-Player",
-                                        }
-                                    elseif expansion == "wotlk" then
-                                        return {
-                                            all = "All Sizes/Difficulties",
-                                            ["10n"] = "10-Player Normal",
-                                            ["25n"] = "25-Player Normal",
-                                            ["10h"] = "10-Player Heroic",
-                                            ["25h"] = "25-Player Heroic",
-                                        }
-                                    else  -- all
-                                        return {
-                                            all = "All Sizes/Difficulties",
-                                            ["10"] = "10-Player",
-                                            ["20"] = "20-Player",
-                                            ["25"] = "25-Player",
-                                            ["40"] = "40-Player",
-                                            ["10n"] = "10-Player Normal",
-                                            ["25n"] = "25-Player Normal",
-                                            ["10h"] = "10-Player Heroic",
-                                            ["25h"] = "25-Player Heroic",
-                                        }
-                                    end
-                                end,
-                                get = function()
-                                    return KOL.db.profile.tracker.raidFilterDifficulty or "all"
-                                end,
-                                set = function(_, value)
-                                    KOL.db.profile.tracker.raidFilterDifficulty = value
-                                    KOL:PopulateTrackerConfigUI()
-                                    LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
-                                end,
-                                order = 2,
-                            },
-                            selectInstance = {
-                                type = "select",
-                                name = "Select Instance",
-                                desc = "Choose which instance to configure",
-                                values = function()
-                                    -- Build list of instances that match current filters
-                                    local instances = {[""] = "-- Select Instance --"}
-                                    if not KOL.Tracker or not KOL.Tracker.instances then
-                                        return instances
-                                    end
-
-                                    local expansion = KOL.db.profile.tracker.raidFilterExpansion or ""
-                                    local difficulty = KOL.db.profile.tracker.raidFilterDifficulty or "all"
-
-                                    if expansion == "" then
-                                        return instances
-                                    end
-
-                                    for instanceId, data in pairs(KOL.Tracker.instances) do
-                                        if data.type == "raid" then
-                                            -- Check expansion filter
-                                            if expansion == "all" or data.expansion == expansion then
-                                                -- Check difficulty/size filter
-                                                local matchesDifficulty = false
-                                                if difficulty == "all" then
-                                                    matchesDifficulty = true
-                                                else
-                                                    -- Similar logic to PassesFilters in PopulateTrackerConfigUI
-                                                    if data.expansion == "classic" then
-                                                        if difficulty == "20" then
-                                                            matchesDifficulty = (string.find(data.name, "Zul'Gurub") or string.find(data.name, "AQ20") or string.find(data.name, "Ruins"))
-                                                        elseif difficulty == "40" then
-                                                            matchesDifficulty = not (string.find(data.name, "Zul'Gurub") or string.find(data.name, "AQ20") or string.find(data.name, "Ruins"))
-                                                        end
-                                                    elseif data.expansion == "tbc" then
-                                                        if difficulty == "10" then
-                                                            matchesDifficulty = (string.find(data.name, "10") or string.find(data.name, "Karazhan") or string.find(data.name, "Zul'Aman"))
-                                                        elseif difficulty == "25" then
-                                                            matchesDifficulty = not (string.find(data.name, "10") or string.find(data.name, "Karazhan") or string.find(data.name, "Zul'Aman"))
-                                                        end
-                                                    elseif data.expansion == "wotlk" then
-                                                        if difficulty == "10n" and data.difficulty == 1 then
-                                                            matchesDifficulty = true
-                                                        elseif difficulty == "25n" and data.difficulty == 2 then
-                                                            matchesDifficulty = true
-                                                        elseif difficulty == "10h" and data.difficulty == 3 then
-                                                            matchesDifficulty = true
-                                                        elseif difficulty == "25h" and data.difficulty == 4 then
-                                                            matchesDifficulty = true
-                                                        elseif difficulty == "10" and (data.difficulty == 1 or data.difficulty == 3) then
-                                                            matchesDifficulty = true
-                                                        elseif difficulty == "25" and (data.difficulty == 2 or data.difficulty == 4) then
-                                                            matchesDifficulty = true
-                                                        end
-                                                    end
-                                                end
-
-                                                if matchesDifficulty then
-                                                    instances[instanceId] = data.name
-                                                end
-                                            end
-                                        end
-                                    end
-
-                                    return instances
-                                end,
-                                get = function()
-                                    return KOL.db.profile.tracker.selectedRaidInstance or ""
-                                end,
-                                set = function(_, value)
-                                    KOL.db.profile.tracker.selectedRaidInstance = value
-                                    KOL:PopulateTrackerConfigUI()
-                                    LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
-                                end,
-                                order = 3,
-                            },
-                            spacer = {
-                                type = "description",
-                                name = " ",
-                                order = 4,
-                            },
-                            -- Raid instances will be populated below this
+                                -- Raid instances will be populated below this
                         }
                     },
                     custom = {
                         type = "group",
-                        name = "|cFFFFAA00Custom Panels|r",
+                        name = "|cFFFFAA00Custom Trackers|r",
                         order = 4,
                         args = {
                             -- Will be populated dynamically by PopulateTrackerConfigUI()
@@ -1936,6 +1783,25 @@ function KOL:PopulateTrackerConfigUI()
     local raidFilterExpansion = KOL.db.profile.tracker.raidFilterExpansion or ""
     local raidFilterDifficulty = KOL.db.profile.tracker.raidFilterDifficulty or "all"
     local selectedRaidInstance = KOL.db.profile.tracker.selectedRaidInstance or ""
+    local selectedCustomInstance = KOL.db.profile.tracker.selectedCustomInstance or ""
+
+    -- Validate that selected custom instance still exists
+    if selectedCustomInstance ~= "" then
+        local foundInInstances = KOL.Tracker.instances[selectedCustomInstance]
+        local foundInDB = KOL.db.profile.tracker.customPanels and KOL.db.profile.tracker.customPanels[selectedCustomInstance]
+
+        if not foundInInstances and not foundInDB then
+            KOL:DebugPrint("Tracker Config: Selected custom instance '" .. selectedCustomInstance .. "' not found anywhere, clearing selection", 2)
+            KOL.db.profile.tracker.selectedCustomInstance = ""
+            selectedCustomInstance = ""
+        elseif not foundInInstances and foundInDB then
+            -- Instance exists in DB but not loaded - reload it
+            KOL:DebugPrint("Tracker Config: Selected custom instance '" .. selectedCustomInstance .. "' found in DB, reloading", 2)
+            KOL.Tracker:RegisterInstance(selectedCustomInstance, foundInDB)
+        else
+            KOL:DebugPrint("Tracker Config: Found selected custom instance: " .. selectedCustomInstance, 3)
+        end
+    end
 
     -- Clear existing instance entries (keep filter UI)
     for k, _ in pairs(dungeonsArgs) do
@@ -1954,7 +1820,7 @@ function KOL:PopulateTrackerConfigUI()
 
     local dungeonOrder = 10  -- Start after filter UI
     local raidOrder = 10
-    local customOrder = 0
+    local customOrder = 20  -- Start after control UI (header, create, select, management)
 
     -- Helper functions for instance settings (defined once, not per-instance)
     local function GetInstanceSetting(instanceId, key, defaultValue)
@@ -2064,6 +1930,24 @@ function KOL:PopulateTrackerConfigUI()
         return true
     end
 
+    -- Debug: Count instances by type and list custom trackers
+    local debugCounts = {dungeon = 0, raid = 0, custom = 0}
+    local customPanelIds = {}
+    for id, d in pairs(KOL.Tracker.instances) do
+        local t = d.type or "custom"
+        debugCounts[t] = (debugCounts[t] or 0) + 1
+        if t ~= "dungeon" and t ~= "raid" then
+            table.insert(customPanelIds, id)
+        end
+    end
+    KOL:DebugPrint("Tracker Config: Instances - " .. debugCounts.dungeon .. " dungeons, " .. debugCounts.raid .. " raids, " .. (debugCounts.custom or 0) .. " custom", 2)
+    if #customPanelIds > 0 then
+        KOL:DebugPrint("Tracker Config: Custom tracker IDs: " .. table.concat(customPanelIds, ", "), 2)
+    end
+    if selectedCustomInstance ~= "" then
+        KOL:DebugPrint("Tracker Config: Looking for selectedCustomInstance: '" .. selectedCustomInstance .. "'", 2)
+    end
+
     -- Iterate through all registered instances
     for instanceId, data in pairs(KOL.Tracker.instances) do
         -- Check if we should only show a specific instance
@@ -2079,8 +1963,13 @@ function KOL:PopulateTrackerConfigUI()
                 shouldShow = true
             end
         else
-            -- Custom panels - always show if they pass filters
-            shouldShow = PassesFilters(data)
+            -- Custom trackers - only show if selected
+            local isMatch = (instanceId == selectedCustomInstance)
+            KOL:DebugPrint("Tracker Config: Custom '" .. instanceId .. "' == '" .. selectedCustomInstance .. "' ? " .. tostring(isMatch), 2)
+            if selectedCustomInstance ~= "" and isMatch then
+                shouldShow = true
+                KOL:DebugPrint("Tracker Config: MATCH! Will show config for: " .. instanceId, 2)
+            end
         end
 
         -- Only process if should be shown
@@ -2095,76 +1984,678 @@ function KOL:PopulateTrackerConfigUI()
             else
                 args = customArgs
                 order = customOrder
+                KOL:DebugPrint("Tracker Config: Adding custom config to customArgs with order " .. order, 2)
             end
 
-            -- Create inline group for this instance
-        args[instanceId] = {
-            type = "group",
-            name = data.name,
-            inline = true,
-            order = order,
-            args = {
-                status = {
-                    type = "description",
-                    name = function()
-                        -- Count killed bosses
-                        local killed = 0
-                        local total = 0
+            -- Check if this is a custom tracker (not dungeon/raid)
+            local isCustomTracker = (data.type ~= "dungeon" and data.type ~= "raid")
 
-                        if data.bosses and #data.bosses > 0 then
-                            total = #data.bosses
-                            for i = 1, total do
-                                if KOL.Tracker:IsBossKilled(instanceId, i) then
-                                    killed = killed + 1
+            if isCustomTracker then
+                -- NEW Custom Tracker structure with Display, Layout, Appearance groups
+                args[instanceId] = {
+                    type = "group",
+                    name = data.name,
+                    inline = true,
+                    order = order,
+                    args = {
+                        -- Display group - action buttons + display options
+                        displayGroup = {
+                            type = "group",
+                            name = "Display",
+                            inline = true,
+                            order = 10,
+                            args = {
+                                -- Action buttons row
+                                showFrame = {
+                                    type = "execute",
+                                    name = "Show",
+                                    desc = "Show the watch frame for this tracker",
+                                    func = function()
+                                        if KOL.Tracker then
+                                            KOL.Tracker:ShowWatchFrame(instanceId)
+                                        end
+                                    end,
+                                    width = 0.4,
+                                    order = 1,
+                                },
+                                hideFrame = {
+                                    type = "execute",
+                                    name = "Hide",
+                                    desc = "Hide the watch frame for this tracker",
+                                    func = function()
+                                        if KOL.Tracker then
+                                            KOL.Tracker:HideWatchFrame(instanceId)
+                                        end
+                                    end,
+                                    width = 0.4,
+                                    order = 2,
+                                },
+                                resetProgress = {
+                                    type = "execute",
+                                    name = "Reset Progress",
+                                    desc = "Reset all progress for this tracker back to 0.\n\n|cFFFFFF00Note:|r Loot items will re-count from your inventory.",
+                                    func = function()
+                                        if KOL.Tracker then
+                                            KOL.Tracker:ResetInstance(instanceId)
+                                            KOL:PrintTag("Reset progress for: " .. data.name)
+                                            LibStub("AceConfigRegistry-3.0"):NotifyChange("KoalityOfLife")
+                                        end
+                                    end,
+                                    width = 0.55,
+                                    order = 3,
+                                    confirm = function()
+                                        return "Reset all progress for " .. data.name .. "?\n\nNote: Loot items will re-count from inventory."
+                                    end,
+                                },
+                                resetAllSettings = {
+                                    type = "execute",
+                                    name = "Reset All Settings",
+                                    desc = "Reset ALL settings for this tracker back to defaults.\n\n|cFF00FF00This does NOT delete:|r Your entries/objectives.",
+                                    func = function()
+                                        -- Reset per-instance settings
+                                        if KOL.db.profile.tracker.instances and KOL.db.profile.tracker.instances[instanceId] then
+                                            KOL.db.profile.tracker.instances[instanceId] = nil
+                                        end
+                                        -- Refresh the watch frame if shown
+                                        if KOL.Tracker.activeFrames[instanceId] then
+                                            KOL.Tracker:HideWatchFrame(instanceId)
+                                            KOL.Tracker:ShowWatchFrame(instanceId)
+                                        end
+                                        KOL:PrintTag("Reset all settings for: " .. data.name)
+                                        LibStub("AceConfigRegistry-3.0"):NotifyChange("KoalityOfLife")
+                                    end,
+                                    width = 0.65,
+                                    order = 4,
+                                    confirm = function()
+                                        return "Reset ALL settings for " .. data.name .. "?\n\nYour entries will NOT be deleted."
+                                    end,
+                                },
+                                -- Separator after buttons
+                                buttonSpacer = {
+                                    type = "description",
+                                    name = " ",
+                                    width = "full",
+                                    order = 5,
+                                },
+                                -- Display options
+                                enabled = {
+                                    type = "toggle",
+                                    name = "Enable Auto-Show",
+                                    desc = "Automatically show watch frame when entering tracked zones",
+                                    get = function()
+                                        -- Read from panel data (same as Tracker Manager)
+                                        local panelData = KOL.Tracker.instances[instanceId]
+                                        if panelData then
+                                            return panelData.autoShow or false
+                                        end
+                                        return false
+                                    end,
+                                    set = function(_, value)
+                                        -- Write to both panel data AND saved DB
+                                        local panelData = KOL.Tracker.instances[instanceId]
+                                        if panelData then
+                                            panelData.autoShow = value
+                                        end
+                                        if KOL.db.profile.tracker.customPanels and KOL.db.profile.tracker.customPanels[instanceId] then
+                                            KOL.db.profile.tracker.customPanels[instanceId].autoShow = value
+                                        end
+                                        -- If turning off and frame is visible, hide it
+                                        if not value and KOL.Tracker.activeFrames[instanceId] then
+                                            KOL.Tracker:HideWatchFrame(instanceId)
+                                        end
+                                        KOL:PrintTag(data.name .. " auto-show: " .. (value and GREEN("Enabled") or RED("Disabled")))
+                                    end,
+                                    width = 1.0,
+                                    order = 6,
+                                },
+                                autoCollapse = {
+                                    type = "toggle",
+                                    name = "Auto-Collapse Completed Groups",
+                                    desc = "Automatically collapse groups when all entries are complete",
+                                    get = function()
+                                        local val = GetInstanceSetting(instanceId, "autoCollapse", nil)
+                                        if val == nil then return true end  -- Default ON
+                                        return val
+                                    end,
+                                    set = function(_, value)
+                                        SetInstanceSetting(instanceId, "autoCollapse", value)
+                                        KOL:PrintTag(data.name .. " auto-collapse: " .. (value and GREEN("Enabled") or RED("Disabled")))
+                                    end,
+                                    width = 1.2,
+                                    order = 7,
+                                },
+                                customZoneText = {
+                                    type = "input",
+                                    name = "Custom Zone Text",
+                                    desc = "Override the default title text (leave empty to use default: " .. data.name .. ")",
+                                    get = function() return GetInstanceSetting(instanceId, "titleText", "") end,
+                                    set = function(_, value)
+                                        SetInstanceSetting(instanceId, "titleText", value)
+                                        KOL:PrintTag("Title text updated for: " .. data.name)
+                                    end,
+                                    width = "full",
+                                    order = 8,
+                                },
+                            },
+                        },
+
+                        -- Layout group - frame dimensions and visibility
+                        layoutGroup = {
+                            type = "group",
+                            name = "Layout",
+                            inline = true,
+                            order = 15,
+                            args = {
+                                frameWidth = {
+                                    type = "range",
+                                    name = "Frame Width",
+                                    desc = "Override frame width (0 = use default)",
+                                    min = 0,
+                                    max = 600,
+                                    step = 1,
+                                    get = function() return GetInstanceSetting(instanceId, "frameWidth", 0) end,
+                                    set = function(_, value)
+                                        SetInstanceSetting(instanceId, "frameWidth", value)
+                                    end,
+                                    order = 1,
+                                },
+                                frameHeight = {
+                                    type = "range",
+                                    name = "Frame Height",
+                                    desc = "Override frame height (0 = use default)",
+                                    min = 0,
+                                    max = 800,
+                                    step = 1,
+                                    get = function() return GetInstanceSetting(instanceId, "frameHeight", 0) end,
+                                    set = function(_, value)
+                                        SetInstanceSetting(instanceId, "frameHeight", value)
+                                    end,
+                                    order = 2,
+                                },
+                                showScrollBar = {
+                                    type = "select",
+                                    name = "Scrollbar Visibility",
+                                    desc = "Control scrollbar visibility (Default = use global setting)",
+                                    values = {
+                                        ["default"] = "Default (Use Global)",
+                                        ["hidden"] = "Hidden",
+                                        ["visible"] = "Visible",
+                                    },
+                                    get = function()
+                                        local value = GetInstanceSetting(instanceId, "showScrollBar", nil)
+                                        if value == nil then
+                                            return "default"
+                                        elseif value == true then
+                                            return "visible"
+                                        else
+                                            return "hidden"
+                                        end
+                                    end,
+                                    set = function(_, value)
+                                        if value == "default" then
+                                            if KOL.db.profile.tracker.instances and KOL.db.profile.tracker.instances[instanceId] then
+                                                KOL.db.profile.tracker.instances[instanceId].showScrollBar = nil
+                                            end
+                                        elseif value == "visible" then
+                                            SetInstanceSetting(instanceId, "showScrollBar", true)
+                                        else
+                                            SetInstanceSetting(instanceId, "showScrollBar", false)
+                                        end
+                                    end,
+                                    order = 3,
+                                },
+                                scrollBarWidth = {
+                                    type = "range",
+                                    name = "Scrollbar Width",
+                                    desc = "Width of the scrollbar in pixels (0 = use global setting)",
+                                    min = 0,
+                                    max = 32,
+                                    step = 1,
+                                    get = function() return GetInstanceSetting(instanceId, "scrollBarWidth", 0) end,
+                                    set = function(_, value)
+                                        SetInstanceSetting(instanceId, "scrollBarWidth", value)
+                                    end,
+                                    order = 4,
+                                },
+                                showBgOnHover = {
+                                    type = "toggle",
+                                    name = "Show BG on Mouseover Only",
+                                    desc = "Hide the frame background by default, show it only when hovering (floating text look)",
+                                    get = function() return GetInstanceSetting(instanceId, "showBgOnHover", false) end,
+                                    set = function(_, value)
+                                        SetInstanceSetting(instanceId, "showBgOnHover", value)
+                                        -- Also set the old values for compatibility
+                                        SetInstanceSetting(instanceId, "hideUI", value)
+                                        SetInstanceSetting(instanceId, "showUIOnMouseover", value)
+                                    end,
+                                    width = "full",
+                                    order = 5,
+                                },
+                            },
+                        },
+
+                        -- Appearance group - colors + fonts combined
+                        appearanceGroup = {
+                            type = "group",
+                            name = "Appearance",
+                            inline = true,
+                            order = 20,
+                            args = {
+                                -- Objective Colors section
+                                objectiveColorsLabel = {
+                                    type = "description",
+                                    name = "|cFF88DDFF--- Objective Colors ---|r",
+                                    fontSize = "medium",
+                                    order = 1,
+                                },
+                                titleFontColor = {
+                                    type = "color",
+                                    name = "Title Font Color",
+                                    desc = "Color of the title text",
+                                    hasAlpha = false,
+                                    get = function()
+                                        local color = GetInstanceSetting(instanceId, "titleFontColor", nil)
+                                        if color then
+                                            return color[1], color[2], color[3]
+                                        end
+                                        local colorName = data.color or "PINK"
+                                        local rgb = KOL.Colors:GetPastel(colorName)
+                                        return rgb[1], rgb[2], rgb[3]
+                                    end,
+                                    set = function(_, r, g, b)
+                                        SetInstanceSetting(instanceId, "titleFontColor", {r, g, b})
+                                    end,
+                                    order = 2,
+                                },
+                                groupIncompleteColor = {
+                                    type = "color",
+                                    name = "Group Incomplete",
+                                    desc = "Color for group headers when not all entries are complete",
+                                    hasAlpha = false,
+                                    get = function()
+                                        local color = GetInstanceSetting(instanceId, "groupIncompleteColor", nil)
+                                        if color then
+                                            return color[1], color[2], color[3]
+                                        end
+                                        local colorName = data.color or "PINK"
+                                        local rgb = KOL.Colors:GetPastel(colorName)
+                                        return rgb[1], rgb[2], rgb[3]
+                                    end,
+                                    set = function(_, r, g, b)
+                                        SetInstanceSetting(instanceId, "groupIncompleteColor", {r, g, b})
+                                    end,
+                                    order = 3,
+                                },
+                                groupCompleteColor = {
+                                    type = "color",
+                                    name = "Group Complete",
+                                    desc = "Color for group headers when all entries are complete",
+                                    hasAlpha = false,
+                                    get = function()
+                                        local color = GetInstanceSetting(instanceId, "groupCompleteColor", nil)
+                                        if color then
+                                            return color[1], color[2], color[3]
+                                        end
+                                        return 0.75, 1, 0.75
+                                    end,
+                                    set = function(_, r, g, b)
+                                        SetInstanceSetting(instanceId, "groupCompleteColor", {r, g, b})
+                                    end,
+                                    order = 4,
+                                },
+                                objectiveIncompleteColor = {
+                                    type = "color",
+                                    name = "Objective Incomplete",
+                                    desc = "Color for objectives that are not yet completed",
+                                    hasAlpha = false,
+                                    get = function()
+                                        local color = GetInstanceSetting(instanceId, "objectiveIncompleteColor", nil)
+                                        if color then
+                                            return color[1], color[2], color[3]
+                                        end
+                                        return 1, 0.6, 0.6
+                                    end,
+                                    set = function(_, r, g, b)
+                                        SetInstanceSetting(instanceId, "objectiveIncompleteColor", {r, g, b})
+                                    end,
+                                    order = 5,
+                                },
+                                objectiveCompleteColor = {
+                                    type = "color",
+                                    name = "Objective Complete",
+                                    desc = "Color for objectives that are completed",
+                                    hasAlpha = false,
+                                    get = function()
+                                        local color = GetInstanceSetting(instanceId, "objectiveCompleteColor", nil)
+                                        if color then
+                                            return color[1], color[2], color[3]
+                                        end
+                                        return 0.7, 1, 0.7
+                                    end,
+                                    set = function(_, r, g, b)
+                                        SetInstanceSetting(instanceId, "objectiveCompleteColor", {r, g, b})
+                                    end,
+                                    order = 6,
+                                },
+
+                                -- UI Colors section
+                                uiColorsLabel = {
+                                    type = "description",
+                                    name = "\n|cFF88DDFF--- UI Colors ---|r",
+                                    fontSize = "medium",
+                                    order = 10,
+                                },
+                                backgroundColor = {
+                                    type = "color",
+                                    name = "Background",
+                                    desc = "Main frame background color",
+                                    hasAlpha = true,
+                                    get = function()
+                                        local color = GetInstanceSetting(instanceId, "backgroundColor", nil)
+                                        if color then
+                                            return color[1], color[2], color[3], color[4] or 0.95
+                                        end
+                                        return 0.05, 0.05, 0.05, 0.95
+                                    end,
+                                    set = function(_, r, g, b, a)
+                                        SetInstanceSetting(instanceId, "backgroundColor", {r, g, b, a})
+                                    end,
+                                    order = 11,
+                                },
+                                borderColor = {
+                                    type = "color",
+                                    name = "Border",
+                                    desc = "Frame border color",
+                                    hasAlpha = true,
+                                    get = function()
+                                        local color = GetInstanceSetting(instanceId, "borderColor", nil)
+                                        if color then
+                                            return color[1], color[2], color[3], color[4] or 1
+                                        end
+                                        return 0.2, 0.2, 0.2, 1
+                                    end,
+                                    set = function(_, r, g, b, a)
+                                        SetInstanceSetting(instanceId, "borderColor", {r, g, b, a})
+                                    end,
+                                    order = 12,
+                                },
+                                titleBarColor = {
+                                    type = "color",
+                                    name = "Title Bar",
+                                    desc = "Title bar background color",
+                                    hasAlpha = true,
+                                    get = function()
+                                        local color = GetInstanceSetting(instanceId, "titleBarColor", nil)
+                                        if color then
+                                            return color[1], color[2], color[3], color[4] or 1
+                                        end
+                                        return 0.1, 0.1, 0.1, 1
+                                    end,
+                                    set = function(_, r, g, b, a)
+                                        SetInstanceSetting(instanceId, "titleBarColor", {r, g, b, a})
+                                    end,
+                                    order = 13,
+                                },
+                                scrollBarColor = {
+                                    type = "color",
+                                    name = "Scroll Bar BG",
+                                    desc = "Scroll bar background color",
+                                    hasAlpha = true,
+                                    get = function()
+                                        local color = GetInstanceSetting(instanceId, "scrollBarColor", nil)
+                                        if color then
+                                            return color[1], color[2], color[3], color[4] or 0.9
+                                        end
+                                        return 0.1, 0.1, 0.1, 0.9
+                                    end,
+                                    set = function(_, r, g, b, a)
+                                        SetInstanceSetting(instanceId, "scrollBarColor", {r, g, b, a})
+                                    end,
+                                    order = 14,
+                                },
+                                scrollThumbColor = {
+                                    type = "color",
+                                    name = "Scroll Thumb",
+                                    desc = "Scroll bar thumb/slider color",
+                                    hasAlpha = true,
+                                    get = function()
+                                        local color = GetInstanceSetting(instanceId, "scrollThumbColor", nil)
+                                        if color then
+                                            return color[1], color[2], color[3], color[4] or 1
+                                        end
+                                        return 0.3, 0.3, 0.3, 1
+                                    end,
+                                    set = function(_, r, g, b, a)
+                                        SetInstanceSetting(instanceId, "scrollThumbColor", {r, g, b, a})
+                                    end,
+                                    order = 15,
+                                },
+                                scrollBarBorderColor = {
+                                    type = "color",
+                                    name = "Scroll Border",
+                                    desc = "Scroll bar border color",
+                                    hasAlpha = true,
+                                    get = function()
+                                        local color = GetInstanceSetting(instanceId, "scrollBarBorderColor", nil)
+                                        if color then
+                                            return color[1], color[2], color[3], color[4] or 1
+                                        end
+                                        return 0.2, 0.2, 0.2, 1
+                                    end,
+                                    set = function(_, r, g, b, a)
+                                        SetInstanceSetting(instanceId, "scrollBarBorderColor", {r, g, b, a})
+                                    end,
+                                    order = 16,
+                                },
+
+                                -- Fonts section
+                                fontsLabel = {
+                                    type = "description",
+                                    name = "\n|cFF88DDFF--- Fonts ---|r",
+                                    fontSize = "medium",
+                                    order = 20,
+                                },
+                                globalFont = {
+                                    type = "select",
+                                    name = "Global Font",
+                                    desc = "Default font for all text",
+                                    dialogControl = "LSM30_Font",
+                                    values = LibStub("LibSharedMedia-3.0"):HashTable("font"),
+                                    get = function() return GetInstanceSetting(instanceId, "globalFont", KOL.db.profile.generalFont or "Friz Quadrata TT") end,
+                                    set = function(_, value)
+                                        SetInstanceSetting(instanceId, "globalFont", value)
+                                    end,
+                                    order = 21,
+                                    width = "double",
+                                },
+                                fontScale = {
+                                    type = "range",
+                                    name = "Font Scale",
+                                    desc = "Scale multiplier for ALL fonts",
+                                    min = 0.5,
+                                    max = 2.0,
+                                    step = 0.05,
+                                    get = function() return GetInstanceSetting(instanceId, "fontScale", 1.0) end,
+                                    set = function(_, value)
+                                        SetInstanceSetting(instanceId, "fontScale", value)
+                                    end,
+                                    order = 22,
+                                },
+                                globalFontOutline = {
+                                    type = "select",
+                                    name = "Global Outline",
+                                    desc = "Default outline style for all text",
+                                    values = {
+                                        ["NONE"] = "None",
+                                        ["OUTLINE"] = "Outline",
+                                        ["THICKOUTLINE"] = "Thick Outline",
+                                    },
+                                    get = function() return GetInstanceSetting(instanceId, "globalFontOutline", "OUTLINE") end,
+                                    set = function(_, value)
+                                        SetInstanceSetting(instanceId, "globalFontOutline", value)
+                                    end,
+                                    order = 23,
+                                },
+                                titleFont = {
+                                    type = "select",
+                                    name = "Title Font",
+                                    desc = "Font for title bar (empty = use Global)",
+                                    dialogControl = "LSM30_Font",
+                                    values = function()
+                                        local fonts = LibStub("LibSharedMedia-3.0"):HashTable("font")
+                                        fonts[""] = "Use Global Font"
+                                        return fonts
+                                    end,
+                                    get = function() return GetInstanceSetting(instanceId, "titleFont", "") end,
+                                    set = function(_, value)
+                                        SetInstanceSetting(instanceId, "titleFont", value ~= "" and value or nil)
+                                    end,
+                                    order = 24,
+                                },
+                                titleFontSize = {
+                                    type = "range",
+                                    name = "Title Size",
+                                    desc = "Font size for title (0 = auto)",
+                                    min = 0,
+                                    max = 32,
+                                    step = 1,
+                                    get = function() return GetInstanceSetting(instanceId, "titleFontSize", 0) end,
+                                    set = function(_, value)
+                                        SetInstanceSetting(instanceId, "titleFontSize", value > 0 and value or nil)
+                                    end,
+                                    order = 25,
+                                },
+                                groupFont = {
+                                    type = "select",
+                                    name = "Group Font",
+                                    desc = "Font for group headers (empty = use Global)",
+                                    dialogControl = "LSM30_Font",
+                                    values = function()
+                                        local fonts = LibStub("LibSharedMedia-3.0"):HashTable("font")
+                                        fonts[""] = "Use Global Font"
+                                        return fonts
+                                    end,
+                                    get = function() return GetInstanceSetting(instanceId, "groupFont", "") end,
+                                    set = function(_, value)
+                                        SetInstanceSetting(instanceId, "groupFont", value ~= "" and value or nil)
+                                    end,
+                                    order = 26,
+                                },
+                                groupFontSize = {
+                                    type = "range",
+                                    name = "Group Size",
+                                    desc = "Font size for group headers (0 = auto)",
+                                    min = 0,
+                                    max = 32,
+                                    step = 1,
+                                    get = function() return GetInstanceSetting(instanceId, "groupFontSize", 0) end,
+                                    set = function(_, value)
+                                        SetInstanceSetting(instanceId, "groupFontSize", value > 0 and value or nil)
+                                    end,
+                                    order = 27,
+                                },
+                                objectiveFont = {
+                                    type = "select",
+                                    name = "Objective Font",
+                                    desc = "Font for objectives (empty = use Global)",
+                                    dialogControl = "LSM30_Font",
+                                    values = function()
+                                        local fonts = LibStub("LibSharedMedia-3.0"):HashTable("font")
+                                        fonts[""] = "Use Global Font"
+                                        return fonts
+                                    end,
+                                    get = function() return GetInstanceSetting(instanceId, "objectiveFont", "") end,
+                                    set = function(_, value)
+                                        SetInstanceSetting(instanceId, "objectiveFont", value ~= "" and value or nil)
+                                    end,
+                                    order = 28,
+                                },
+                                objectiveFontSize = {
+                                    type = "range",
+                                    name = "Objective Size",
+                                    desc = "Font size for objectives (0 = auto)",
+                                    min = 0,
+                                    max = 32,
+                                    step = 1,
+                                    get = function() return GetInstanceSetting(instanceId, "objectiveFontSize", 0) end,
+                                    set = function(_, value)
+                                        SetInstanceSetting(instanceId, "objectiveFontSize", value > 0 and value or nil)
+                                    end,
+                                    order = 29,
+                                },
+                            },
+                        },
+                    },
+                }
+            else
+                -- EXISTING Dungeons/Raids structure (unchanged)
+                args[instanceId] = {
+                type = "group",
+                name = data.name,
+                inline = true,
+                order = order,
+                args = {
+                    status = {
+                        type = "description",
+                        name = function()
+                            -- Count killed bosses
+                            local killed = 0
+                            local total = 0
+
+                            if data.bosses and #data.bosses > 0 then
+                                total = #data.bosses
+                                for i = 1, total do
+                                    if KOL.Tracker:IsBossKilled(instanceId, i) then
+                                        killed = killed + 1
+                                    end
                                 end
-                            end
-                        elseif data.groups and #data.groups > 0 then
-                            for groupIndex, group in ipairs(data.groups) do
-                                if group.bosses then
-                                    for bossIndex, boss in ipairs(group.bosses) do
-                                        total = total + 1
-                                        local bossId = "g" .. groupIndex .. "-b" .. bossIndex
-                                        if KOL.Tracker:IsBossKilled(instanceId, bossId) then
-                                            killed = killed + 1
+                            elseif data.groups and #data.groups > 0 then
+                                for groupIndex, group in ipairs(data.groups) do
+                                    if group.bosses then
+                                        for bossIndex, boss in ipairs(group.bosses) do
+                                            total = total + 1
+                                            local bossId = "g" .. groupIndex .. "-b" .. bossIndex
+                                            if KOL.Tracker:IsBossKilled(instanceId, bossId) then
+                                                killed = killed + 1
+                                            end
                                         end
                                     end
                                 end
                             end
-                        end
 
-                        local statusColor = killed == total and GREEN or (killed > 0 and YELLOW or RED)
-                        local expansionText = data.expansion and " (" .. string.upper(data.expansion) .. ")" or ""
-                        return statusColor(killed .. "/" .. total .. " defeated") .. expansionText .. "\n"
-                    end,
-                    fontSize = "small",
-                    order = 1,
-                },
-                enabled = {
-                    type = "toggle",
-                    name = "Enable Auto-Show",
-                    desc = "Automatically show watch frame when entering this instance",
-                    get = function() return GetInstanceSetting(instanceId, "enabled", true) end,
-                    set = function(_, value)
-                        SetInstanceSetting(instanceId, "enabled", value)
-                        KOL:PrintTag(data.name .. " auto-show: " .. (value and GREEN("Enabled") or RED("Disabled")))
-                    end,
-                    width = "full",
-                    order = 2,
-                },
+                            local statusColor = killed == total and GREEN or (killed > 0 and YELLOW or RED)
+                            local expansionText = data.expansion and " (" .. string.upper(data.expansion) .. ")" or ""
+                            return statusColor(killed .. "/" .. total .. " defeated") .. expansionText .. "\n"
+                        end,
+                        fontSize = "small",
+                        order = 1,
+                    },
+                    enabled = {
+                        type = "toggle",
+                        name = "Enable Auto-Show",
+                        desc = "Automatically show watch frame when entering this instance",
+                        get = function() return GetInstanceSetting(instanceId, "enabled", true) end,
+                        set = function(_, value)
+                            SetInstanceSetting(instanceId, "enabled", value)
+                            KOL:PrintTag(data.name .. " auto-show: " .. (value and GREEN("Enabled") or RED("Disabled")))
+                        end,
+                        width = "full",
+                        order = 2,
+                    },
 
-                -- Custom Zone Text
-                customZoneText = {
-                    type = "input",
-                    name = "Custom Zone Text",
-                    desc = "Override the default title text (leave empty to use default: " .. data.name .. ")",
-                    get = function() return GetInstanceSetting(instanceId, "titleText", "") end,
-                    set = function(_, value)
-                        SetInstanceSetting(instanceId, "titleText", value)
-                        KOL:PrintTag("Title text updated for: " .. data.name)
-                    end,
-                    width = "full",
-                    order = 5,
-                },
+                    -- Custom Zone Text
+                    customZoneText = {
+                        type = "input",
+                        name = "Custom Zone Text",
+                        desc = "Override the default title text (leave empty to use default: " .. data.name .. ")",
+                        get = function() return GetInstanceSetting(instanceId, "titleText", "") end,
+                        set = function(_, value)
+                            SetInstanceSetting(instanceId, "titleText", value)
+                            KOL:PrintTag("Title text updated for: " .. data.name)
+                        end,
+                        width = "full",
+                        order = 5,
+                    },
 
                 -- Colors Group
                 colorsGroup = {
@@ -2298,7 +2789,23 @@ function KOL:PopulateTrackerConfigUI()
                             set = function(_, value)
                                 SetInstanceSetting(instanceId, "fontScale", value)
                             end,
-                            order = 2,
+                            order = 1.5,
+                            width = "normal",
+                        },
+                        globalFontOutline = {
+                            type = "select",
+                            name = "Global Outline",
+                            desc = "Default outline style for all text (used when specific outlines are not set)",
+                            values = {
+                                ["NONE"] = "None",
+                                ["OUTLINE"] = "Outline",
+                                ["THICKOUTLINE"] = "Thick Outline",
+                            },
+                            get = function() return GetInstanceSetting(instanceId, "globalFontOutline", "OUTLINE") end,
+                            set = function(_, value)
+                                SetInstanceSetting(instanceId, "globalFontOutline", value)
+                            end,
+                            order = 1.7,
                             width = "normal",
                         },
                         spacer1 = {
@@ -2340,17 +2847,18 @@ function KOL:PopulateTrackerConfigUI()
                         titleFontOutline = {
                             type = "select",
                             name = "Title Bar Outline",
-                            desc = "Outline style for title bar",
+                            desc = "Outline style for title bar (leave empty to use Global Outline)",
                             values = {
+                                [""] = "Use Global Outline",
                                 ["NONE"] = "None",
                                 ["OUTLINE"] = "Outline",
                                 ["THICKOUTLINE"] = "Thick Outline",
                                 ["MONOCHROME"] = "Monochrome",
                                 ["OUTLINE, MONOCHROME"] = "Outline + Monochrome",
                             },
-                            get = function() return GetInstanceSetting(instanceId, "titleFontOutline", "OUTLINE") end,
+                            get = function() return GetInstanceSetting(instanceId, "titleFontOutline", "") end,
                             set = function(_, value)
-                                SetInstanceSetting(instanceId, "titleFontOutline", value)
+                                SetInstanceSetting(instanceId, "titleFontOutline", value ~= "" and value or nil)
                             end,
                             order = 5,
                             width = "normal",
@@ -2389,17 +2897,18 @@ function KOL:PopulateTrackerConfigUI()
                         groupFontOutline = {
                             type = "select",
                             name = "Group Header Outline",
-                            desc = "Outline style for group headers",
+                            desc = "Outline style for group headers (leave empty to use Global Outline)",
                             values = {
+                                [""] = "Use Global Outline",
                                 ["NONE"] = "None",
                                 ["OUTLINE"] = "Outline",
                                 ["THICKOUTLINE"] = "Thick Outline",
                                 ["MONOCHROME"] = "Monochrome",
                                 ["OUTLINE, MONOCHROME"] = "Outline + Monochrome",
                             },
-                            get = function() return GetInstanceSetting(instanceId, "groupFontOutline", "OUTLINE") end,
+                            get = function() return GetInstanceSetting(instanceId, "groupFontOutline", "") end,
                             set = function(_, value)
-                                SetInstanceSetting(instanceId, "groupFontOutline", value)
+                                SetInstanceSetting(instanceId, "groupFontOutline", value ~= "" and value or nil)
                             end,
                             order = 8,
                             width = "normal",
@@ -2438,17 +2947,18 @@ function KOL:PopulateTrackerConfigUI()
                         objectiveFontOutline = {
                             type = "select",
                             name = "Objective Outline",
-                            desc = "Outline style for boss names/objectives",
+                            desc = "Outline style for boss names/objectives (leave empty to use Global Outline)",
                             values = {
+                                [""] = "Use Global Outline",
                                 ["NONE"] = "None",
                                 ["OUTLINE"] = "Outline",
                                 ["THICKOUTLINE"] = "Thick Outline",
                                 ["MONOCHROME"] = "Monochrome",
                                 ["OUTLINE, MONOCHROME"] = "Outline + Monochrome",
                             },
-                            get = function() return GetInstanceSetting(instanceId, "objectiveFontOutline", "OUTLINE") end,
+                            get = function() return GetInstanceSetting(instanceId, "objectiveFontOutline", "") end,
                             set = function(_, value)
-                                SetInstanceSetting(instanceId, "objectiveFontOutline", value)
+                                SetInstanceSetting(instanceId, "objectiveFontOutline", value ~= "" and value or nil)
                             end,
                             order = 11,
                             width = "normal",
@@ -2548,6 +3058,23 @@ function KOL:PopulateTrackerConfigUI()
                             end,
                             order = 5,
                         },
+                        scrollBarBorderColor = {
+                            type = "color",
+                            name = "Scroll Bar Border",
+                            desc = "Scroll bar border color",
+                            hasAlpha = true,
+                            get = function()
+                                local color = GetInstanceSetting(instanceId, "scrollBarBorderColor", nil)
+                                if color then
+                                    return color[1], color[2], color[3], color[4] or 1
+                                end
+                                return 0.2, 0.2, 0.2, 1  -- Default dark gray
+                            end,
+                            set = function(_, r, g, b, a)
+                                SetInstanceSetting(instanceId, "scrollBarBorderColor", {r, g, b, a})
+                            end,
+                            order = 6,
+                        },
                     }
                 },
 
@@ -2558,30 +3085,20 @@ function KOL:PopulateTrackerConfigUI()
                     inline = true,
                     order = 30,
                     args = {
-                        hideUI = {
+                        showBgOnHover = {
                             type = "toggle",
-                            name = "Hide UI Elements",
-                            desc = "Hide all UI elements (background, borders, scrollbar, minimize button, titlebar background)",
-                            get = function() return GetInstanceSetting(instanceId, "hideUI", false) end,
+                            name = "Show Background on Mouseover Only",
+                            desc = "Hide the frame background by default, show it only when hovering (floating text look)",
+                            get = function() return GetInstanceSetting(instanceId, "showBgOnHover", false) end,
                             set = function(_, value)
+                                SetInstanceSetting(instanceId, "showBgOnHover", value)
+                                -- Also set the old values for compatibility
                                 SetInstanceSetting(instanceId, "hideUI", value)
-                                KOL:PrintTag(data.name .. " Hide UI: " .. (value and GREEN("Enabled") or RED("Disabled")))
+                                SetInstanceSetting(instanceId, "showUIOnMouseover", value)
+                                KOL:PrintTag(data.name .. " Show BG on hover: " .. (value and GREEN("Enabled") or RED("Disabled")))
                             end,
                             width = "full",
                             order = 1,
-                        },
-                        showUIOnMouseover = {
-                            type = "toggle",
-                            name = "Show UI On Mouseover",
-                            desc = "Show hidden UI elements when mouse hovers over the watch frame",
-                            disabled = function() return not GetInstanceSetting(instanceId, "hideUI", false) end,
-                            get = function() return GetInstanceSetting(instanceId, "showUIOnMouseover", false) end,
-                            set = function(_, value)
-                                SetInstanceSetting(instanceId, "showUIOnMouseover", value)
-                                KOL:PrintTag(data.name .. " Show UI on mouseover: " .. (value and GREEN("Enabled") or RED("Disabled")))
-                            end,
-                            width = "full",
-                            order = 2,
                         },
                     }
                 },
@@ -2603,6 +3120,10 @@ function KOL:PopulateTrackerConfigUI()
                             get = function() return GetInstanceSetting(instanceId, "frameWidth", 0) end,
                             set = function(_, value)
                                 SetInstanceSetting(instanceId, "frameWidth", value)
+                                -- Refresh the watch frame to apply new size
+                                if KOL.Tracker and KOL.Tracker.UpdateWatchFrame then
+                                    KOL.Tracker:UpdateWatchFrame(instanceId)
+                                end
                             end,
                             order = 1,
                         },
@@ -2616,6 +3137,10 @@ function KOL:PopulateTrackerConfigUI()
                             get = function() return GetInstanceSetting(instanceId, "frameHeight", 0) end,
                             set = function(_, value)
                                 SetInstanceSetting(instanceId, "frameHeight", value)
+                                -- Refresh the watch frame to apply new size
+                                if KOL.Tracker and KOL.Tracker.UpdateWatchFrame then
+                                    KOL.Tracker:UpdateWatchFrame(instanceId)
+                                end
                             end,
                             order = 2,
                         },
@@ -2629,6 +3154,10 @@ function KOL:PopulateTrackerConfigUI()
                             get = function() return GetInstanceSetting(instanceId, "scrollBarWidth", 0) end,
                             set = function(_, value)
                                 SetInstanceSetting(instanceId, "scrollBarWidth", value)
+                                -- Refresh the watch frame to apply new size
+                                if KOL.Tracker and KOL.Tracker.UpdateWatchFrame then
+                                    KOL.Tracker:UpdateWatchFrame(instanceId)
+                                end
                             end,
                             order = 3,
                         },
@@ -2673,7 +3202,7 @@ function KOL:PopulateTrackerConfigUI()
                     }
                 },
 
-                -- Actions Group
+                -- Actions Group (4 buttons on one row)
                 actions = {
                     type = "group",
                     name = "Actions",
@@ -2682,7 +3211,7 @@ function KOL:PopulateTrackerConfigUI()
                     args = {
                         showFrame = {
                             type = "execute",
-                            name = "Show Watch Frame",
+                            name = "Show",
                             desc = "Manually show the watch frame for this instance",
                             func = function()
                                 if KOL.Tracker then
@@ -2690,8 +3219,21 @@ function KOL:PopulateTrackerConfigUI()
                                     KOL:PrintTag("Showing watch frame: " .. data.name)
                                 end
                             end,
-                            width = "half",
+                            width = 0.4,
                             order = 1,
+                        },
+                        hideFrame = {
+                            type = "execute",
+                            name = "Hide",
+                            desc = "Hide the watch frame for this instance",
+                            func = function()
+                                if KOL.Tracker then
+                                    KOL.Tracker:HideWatchFrame(instanceId)
+                                    KOL:PrintTag("Hidden watch frame: " .. data.name)
+                                end
+                            end,
+                            width = 0.4,
+                            order = 2,
                         },
                         resetProgress = {
                             type = "execute",
@@ -2705,8 +3247,8 @@ function KOL:PopulateTrackerConfigUI()
                                     LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
                                 end
                             end,
-                            width = "half",
-                            order = 2,
+                            width = 0.55,
+                            order = 3,
                             confirm = function()
                                 return "Are you sure you want to reset all progress for " .. data.name .. "?"
                             end,
@@ -2730,8 +3272,8 @@ function KOL:PopulateTrackerConfigUI()
                                     LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
                                 end
                             end,
-                            width = "full",
-                            order = 3,
+                            width = 0.7,
+                            order = 4,
                             confirm = function()
                                 return "Are you sure you want to reset all customizations (colors, fonts, dimensions, etc.) for " .. data.name .. " back to defaults?"
                             end,
@@ -2740,118 +3282,16 @@ function KOL:PopulateTrackerConfigUI()
                 },
             }
         }
+            end  -- end if isCustomTracker else
 
-        -- Add entries list and action buttons for custom panels
-        if data.type == "custom" then
-            -- Entry type icons
-            local typeIcons = {
-                kill = "|cFF00FF00*|r",
-                loot = "|cFFFFD700$|r",
-                yell = "|cFF00BFFF!|r",
-                multikill = "|cFFFF6600#|r",
-            }
-
-            -- Entries list display
-            args[instanceId].args.entriesList = {
-                type = "description",
-                name = function()
-                    local lines = {"|cFF88CCFFEntries:|r"}
-                    local entries = data.entries or {}
-
-                    -- Also check old formats
-                    if #entries == 0 and data.groups and #data.groups > 0 then
-                        for _, group in ipairs(data.groups) do
-                            if group.bosses then
-                                for _, boss in ipairs(group.bosses) do
-                                    local entryType = KOL.Tracker:GetDetectionType(boss)
-                                    local icon = typeIcons[entryType] or "?"
-                                    table.insert(lines, "  " .. icon .. " " .. (boss.name or "Unknown"))
-                                end
-                            end
-                        end
-                    elseif #entries == 0 and data.objectives and #data.objectives > 0 then
-                        for _, obj in ipairs(data.objectives) do
-                            table.insert(lines, "  |cFF00FF00*|r " .. (obj.name or "Unknown"))
-                        end
-                    else
-                        for _, entry in ipairs(entries) do
-                            local entryType = entry.type or "kill"
-                            local icon = typeIcons[entryType] or "?"
-                            local info = ""
-                            if entryType == "kill" then
-                                info = entry.id and (" |cFF666666(ID: " .. entry.id .. ")|r") or ""
-                            elseif entryType == "loot" then
-                                local itemId = entry.itemId or (entry.itemIds and entry.itemIds[1])
-                                info = itemId and (" |cFF666666(Item: " .. itemId .. ")|r") or ""
-                            elseif entryType == "yell" then
-                                local yell = entry.yell
-                                if type(yell) == "table" then yell = yell[1] end
-                                if yell and #yell > 20 then yell = string.sub(yell, 1, 17) .. "..." end
-                                info = yell and (" |cFF666666(\"" .. yell .. "\")|r") or ""
-                            elseif entryType == "multikill" then
-                                local ids = entry.ids or entry.id
-                                if type(ids) == "table" then
-                                    info = " |cFF666666(" .. #ids .. " NPCs)|r"
-                                end
-                            end
-                            table.insert(lines, "  " .. icon .. " " .. (entry.name or "Unknown") .. info)
-                        end
-                    end
-
-                    if #lines == 1 then
-                        table.insert(lines, "  |cFFAAAAAAAANo entries yet|r")
-                    end
-
-                    return table.concat(lines, "\n") .. "\n"
-                end,
-                fontSize = "small",
-                order = 8,
-            }
-
-            args[instanceId].args.spacer3 = {
-                type = "description",
-                name = " ",
-                order = 8.5,
-            }
-
-            args[instanceId].args.editPanel = {
-                type = "execute",
-                name = "Edit Panel",
-                desc = "Edit this custom panel (objectives, groups, zones, etc.)",
-                func = function()
-                    if KOL.ShowCustomPanelEditor then
-                        KOL:ShowCustomPanelEditor(instanceId)
-                    end
-                end,
-                width = "half",
-                order = 9,
-            }
-
-            args[instanceId].args.deletePanel = {
-                type = "execute",
-                name = "Delete Panel",
-                desc = "Permanently delete this custom panel",
-                func = function()
-                    if KOL.Tracker then
-                        KOL.Tracker:DeleteCustomPanel(instanceId)
-                    end
-                end,
-                width = "half",
-                order = 10,
-                confirm = function()
-                    return "Are you sure you want to delete " .. data.name .. "? This cannot be undone."
-                end,
-            }
+        if data.type == "dungeon" then
+            dungeonOrder = dungeonOrder + 1
+        elseif data.type == "raid" then
+            raidOrder = raidOrder + 1
+        else
+            customOrder = customOrder + 1
         end
-
-            if data.type == "dungeon" then
-                dungeonOrder = dungeonOrder + 1
-            elseif data.type == "raid" then
-                raidOrder = raidOrder + 1
-            else
-                customOrder = customOrder + 1
-            end
-        end  -- end if PassesFilters
+        end  -- end if shouldShow
     end
 
     -- Add message if no instances shown
@@ -2866,7 +3306,7 @@ function KOL:PopulateTrackerConfigUI()
         else
             dungeonsArgs.noinstances = {
                 type = "description",
-                name = "|cFFAAAAAAAANo dungeons match the selected filters.|r",
+                name = "|cFFAAAAAANo dungeons match the selected filters.|r",
                 fontSize = "medium",
                 order = 10,
             }
@@ -2884,54 +3324,153 @@ function KOL:PopulateTrackerConfigUI()
         else
             raidsArgs.noinstances = {
                 type = "description",
-                name = "|cFFAAAAAAAANo raids match the selected filters.|r",
+                name = "|cFFAAAAAANo raids match the selected filters.|r",
                 fontSize = "medium",
                 order = 10,
             }
         end
     end
 
-    -- Custom Panels tab population
+    -- Custom Trackers tab population - reorganized layout
     customArgs.header = {
         type = "description",
-        name = "|cFFFFFFFFCustom Watch Panels|r\n|cFFAAAAAACreate custom tracking panels with your own objectives and boss groups.|r\n",
+        name = "|cFFFFFFFFCustom Trackers|r\n|cFFAAAAAACreate and manage custom progress trackers.|r\n",
         fontSize = "medium",
         order = 0,
     }
 
-    customArgs.createNew = {
-        type = "execute",
-        name = "Create New Custom Panel",
-        desc = "Create a new custom watch panel",
-        func = function()
-            if KOL.ShowCustomPanelEditor then
-                KOL:ShowCustomPanelEditor()
-            end
-        end,
-        width = "full",
-        order = 1,
+    -- Management group - Select Tracker + Create/Edit/Delete
+    customArgs.management = {
+        type = "group",
+        name = "Management",
+        inline = true,
+        order = 5,
+        args = {
+            selectInstance = {
+                type = "select",
+                name = "Select Tracker",
+                desc = "Choose which custom tracker to configure",
+                values = function()
+                    local panels = {[""] = "-- Select Tracker --"}
+                    if not KOL.Tracker or not KOL.Tracker.instances then
+                        return panels
+                    end
+                    for instanceId, data in pairs(KOL.Tracker.instances) do
+                        if data.type ~= "dungeon" and data.type ~= "raid" then
+                            panels[instanceId] = data.name
+                        end
+                    end
+                    return panels
+                end,
+                get = function()
+                    return KOL.db.profile.tracker.selectedCustomInstance or ""
+                end,
+                set = function(_, value)
+                    KOL.db.profile.tracker.selectedCustomInstance = value
+                    KOL:PopulateTrackerConfigUI()
+                    LibStub("AceConfigRegistry-3.0"):NotifyChange("KoalityOfLife")
+                end,
+                width = 1.0,
+                order = 1,
+            },
+            createNew = {
+                type = "execute",
+                name = "Create",
+                desc = "Create a new custom progress tracker",
+                func = function()
+                    if KOL.ShowTrackerManager then
+                        KOL:ShowTrackerManager()
+                    end
+                end,
+                width = 0.4,
+                order = 2,
+            },
+            editPanel = {
+                type = "execute",
+                name = "Edit",
+                desc = "Edit this custom tracker's entries and settings",
+                func = function()
+                    if selectedCustomInstance ~= "" and KOL.ShowTrackerManager then
+                        KOL:ShowTrackerManager(selectedCustomInstance)
+                    else
+                        KOL:PrintTag("|cFFFF6600Select a tracker first!|r")
+                    end
+                end,
+                width = 0.4,
+                order = 3,
+                disabled = function() return selectedCustomInstance == "" end,
+            },
+            deletePanel = {
+                type = "execute",
+                name = "Delete",
+                desc = "Permanently delete this custom tracker",
+                func = function()
+                    if selectedCustomInstance == "" then return end
+                    local panelName = KOL.Tracker.instances[selectedCustomInstance] and KOL.Tracker.instances[selectedCustomInstance].name or "Tracker"
+                    StaticPopupDialogs["KOL_DELETE_CUSTOM_PANEL"] = {
+                        text = "Are you sure you want to delete '" .. panelName .. "'?",
+                        button1 = "Delete",
+                        button2 = "Cancel",
+                        OnAccept = function()
+                            if KOL.Tracker.DeleteCustomPanel then
+                                KOL.Tracker:DeleteCustomPanel(selectedCustomInstance)
+                            end
+                            KOL.db.profile.tracker.selectedCustomInstance = ""
+                            KOL:PopulateTrackerConfigUI()
+                            LibStub("AceConfigRegistry-3.0"):NotifyChange("KoalityOfLife")
+                            KOL:PrintTag(RED("Deleted:") .. " " .. panelName)
+                        end,
+                        timeout = 0,
+                        whileDead = true,
+                        hideOnEscape = true,
+                    }
+                    StaticPopup_Show("KOL_DELETE_CUSTOM_PANEL")
+                end,
+                width = 0.4,
+                order = 4,
+                disabled = function() return selectedCustomInstance == "" end,
+            },
+        },
     }
 
-    customArgs.spacer = {
-        type = "description",
-        name = " ",
-        order = 2,
-    }
+    -- Count custom trackers (check both Tracker.instances AND saved DB)
+    local customPanelCount = 0
+    for instanceId, data in pairs(KOL.Tracker.instances) do
+        if data.type ~= "dungeon" and data.type ~= "raid" then
+            customPanelCount = customPanelCount + 1
+        end
+    end
+    -- Also check saved custom trackers in DB (in case Tracker.instances isn't populated yet)
+    if customPanelCount == 0 and KOL.db.profile.tracker.customPanels then
+        for _ in pairs(KOL.db.profile.tracker.customPanels) do
+            customPanelCount = customPanelCount + 1
+        end
+    end
 
-    if customOrder == 0 then
-        customArgs.noinstances = {
+    if customPanelCount == 0 then
+        customArgs.noTrackers = {
             type = "description",
-            name = "|cFFAAAAAAAANo custom panels created yet. Click 'Create New Custom Panel' to get started.|r",
+            name = "|cFFAAAAAANo custom trackers created yet. Click 'Create' to get started.|r",
             fontSize = "medium",
-            order = 3,
+            order = 6,
+        }
+    elseif selectedCustomInstance == "" then
+        customArgs.selectPrompt = {
+            type = "description",
+            name = "|cFF88CCFFSelect a tracker from the dropdown above to view its configuration.|r",
+            fontSize = "medium",
+            order = 6,
         }
     end
+
+    -- Update customOrder for proper tracking (start at 20 + count for proper ordering)
+    customOrder = 20 + customPanelCount
 
     -- Calculate actual counts (subtract starting order)
     local actualDungeonCount = math.max(0, dungeonOrder - 10)
     local actualRaidCount = math.max(0, raidOrder - 10)
 
-    KOL:DebugPrint("Tracker Config: Populated " .. actualDungeonCount .. " dungeons, " .. actualRaidCount .. " raids, and " .. customOrder .. " custom panels", 2)
+    KOL:DebugPrint("Tracker Config: Populated " .. actualDungeonCount .. " dungeons, " .. actualRaidCount .. " raids, and " .. customOrder .. " custom trackers", 2)
     KOL:DebugPrint("Tracker Config: Filters - Dungeons: " .. dungeonFilterExpansion .. "/" .. dungeonFilterDifficulty .. ", Raids: " .. raidFilterExpansion .. "/" .. raidFilterDifficulty, 3)
 end
 

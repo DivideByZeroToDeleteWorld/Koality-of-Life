@@ -60,14 +60,14 @@ local defaultTheme = {
         CloseButtonHoverBorder = "FF8080",
         CloseButtonHoverText = "FF9999",
 
-        -- SCROLLBAR COLORS
+        -- SCROLLBAR COLORS (matching Nuclear Zero dark theme)
         ScrollbarTrackBG = "0D0D0D",
         ScrollbarTrackBorder = "333333",
         ScrollbarThumbBG = "4D4D4D",
-        ScrollbarThumbBorder = "009999",
+        ScrollbarThumbBorder = "666666",
         ScrollbarButtonBG = "262626",
-        ScrollbarButtonBorder = "009999",
-        ScrollbarButtonArrow = "00CCCC",
+        ScrollbarButtonBorder = "404040",
+        ScrollbarButtonArrow = "999999",
 
         -- CONTENT AREA COLORS
         ContentAreaBG = "030303",

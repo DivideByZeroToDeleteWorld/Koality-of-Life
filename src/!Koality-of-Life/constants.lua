@@ -34,7 +34,7 @@ CHAR_OBJECTIVE_COMPLETE = "☑" -- 4 usages
 
 -- Status Indicators
 CHAR_LIGHTNING = "⚡"          -- Hardmode indicator (filled/emoji style)
-CHAR_LIGHTNING_HOLLOW = "☇"   -- Speed indicator (simple/hollow style)
+CHAR_LIGHTNING_HOLLOW = "○"   -- Speed indicator (neutral/base - circle indicates stable)
 
 -- Text Formatting (separator for info displays)
 CHAR_SEPARATOR = "|"          -- Simple pipe separator for text output (universal font support)

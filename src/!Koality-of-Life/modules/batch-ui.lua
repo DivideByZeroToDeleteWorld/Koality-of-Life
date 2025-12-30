@@ -37,116 +37,31 @@ local function CreateQueueViewer()
         return queueViewerFrame
     end
 
-    -- Create main frame with square 1px border
-    local frame = CreateFrame("Frame", "KOL_BatchQueueViewer", UIParent)
-    frame:SetWidth(450)
-    frame:SetHeight(550)
+    -- Create main frame using UIFactory (auto-registered, movable, closable)
+    local frame = UIFactory:CreateStyledFrame(UIParent, "KOL_BatchQueueViewer", 450, 550, {
+        movable = true,
+        closable = true,
+        strata = UIFactory.STRATA.NORMAL,  -- Normal KOL window strata
+        bgColor = {r = 0.15, g = 0.15, b = 0.15, a = 0.95},
+    })
     frame:SetPoint("CENTER")
-    frame:SetFrameStrata("FULLSCREEN_DIALOG")  -- High strata to always be on top
 
-    -- Main backdrop: Dark gray background, 1px border
-    frame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        tileSize = 1,
-        edgeSize = 1,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    -- Create title bar using UIFactory
+    local titleBar, title, titleCloseBtn = UIFactory:CreateTitleBar(frame, 24, "Batch Queue Viewer", {
+        showCloseButton = true,
     })
-    frame:SetBackdropColor(0.15, 0.15, 0.15, 0.95)  -- Dark gray background
-    frame:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)  -- Mid gray border
-
-    frame:EnableMouse(true)
-    frame:SetMovable(true)
-    frame:RegisterForDrag("LeftButton")
-    frame:SetScript("OnDragStart", frame.StartMoving)
-    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-    frame:Hide()
-
-    -- Make it closable with ESC
-    tinsert(UISpecialFrames, "KOL_BatchQueueViewer")
-
-    -- Title bar (much less tall!)
-    local titleBar = CreateFrame("Frame", nil, frame)
-    titleBar:SetPoint("TOPLEFT", 1, -1)
-    titleBar:SetPoint("TOPRIGHT", -1, -1)
-    titleBar:SetHeight(24)  -- Much less tall!
-    titleBar:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-    })
-    titleBar:SetBackdropColor(0.08, 0.08, 0.08, 1)  -- Darker to match debug console
-
-    -- Title
-    local fontPath, fontOutline = UIFactory.GetGeneralFont()
-    local title = frame:CreateFontString(nil, "OVERLAY")
-    title:SetFont(fontPath, 12, fontOutline)  -- Smaller font
-    title:SetPoint("LEFT", titleBar, "LEFT", 8, 0)  -- Left-aligned
-    title:SetText("Batch Queue Viewer")
-    title:SetTextColor(1, 1, 0.6, 1)
     frame.title = title
 
     -- Channel name label (on title bar, right side)
+    local fontPath, fontOutline = UIFactory.GetGeneralFont()
     local channelLabel = frame:CreateFontString(nil, "OVERLAY")
     channelLabel:SetFont(fontPath, 10, fontOutline)
     channelLabel:SetPoint("RIGHT", titleBar, "RIGHT", -26, 0)  -- Leave room for X button
     channelLabel:SetTextColor(0.7, 0.7, 0.7, 1)
     frame.channelLabel = channelLabel
 
-    -- Close button (X) - styled like debug console
-    local closeButton = CreateFrame("Button", nil, titleBar)
-    closeButton:SetWidth(20)
-    closeButton:SetHeight(20)
-    closeButton:SetPoint("RIGHT", titleBar, "RIGHT", -2, 0)
-
-    closeButton:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        tileSize = 1,
-        edgeSize = 1,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
-    })
-    closeButton:SetBackdropColor(0.15, 0.15, 0.15, 0.8)
-    closeButton:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.9)
-
-    local xText = closeButton:CreateFontString(nil, "OVERLAY")
-    xText:SetFont(fontPath, 12, fontOutline)
-    xText:SetPoint("CENTER", 0, 0)
-    xText:SetText("X")
-    xText:SetTextColor(1, 0.4, 0.4, 1)
-    closeButton.text = xText
-
-    closeButton:SetScript("OnEnter", function(self)
-        self:SetBackdropColor(0.25, 0.25, 0.25, 0.95)
-        self:SetBackdropBorderColor(1, 0.5, 0.5, 1)
-        self.text:SetTextColor(1, 0.6, 0.6, 1)
-    end)
-
-    closeButton:SetScript("OnLeave", function(self)
-        self:SetBackdropColor(0.15, 0.15, 0.15, 0.8)
-        self:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.9)
-        self.text:SetTextColor(1, 0.4, 0.4, 1)
-    end)
-
-    closeButton:SetScript("OnClick", function()
-        frame:Hide()
-    end)
-
-    -- Content area background
-    local contentBG = CreateFrame("Frame", nil, frame)
-    contentBG:SetPoint("TOPLEFT", 8, -28)  -- Adjusted for shorter title bar
-    contentBG:SetPoint("BOTTOMRIGHT", -8, 48)
-    contentBG:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        tileSize = 1,
-        edgeSize = 1,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
-    })
-    contentBG:SetBackdropColor(0.1, 0.1, 0.1, 1)  -- Very dark for content
-    contentBG:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)  -- Dark border
+    -- Content area using UIFactory
+    local contentBG = UIFactory:CreateContentArea(frame, {top = 28, bottom = 48, left = 8, right = 8})
 
     -- Scroll frame for queue items
     local scrollFrame = CreateFrame("ScrollFrame", "KOL_BatchQueueScroll", frame, "UIPanelScrollFrameTemplate")
@@ -158,13 +73,16 @@ local function CreateQueueViewer()
     scrollChild:SetHeight(1)
     scrollFrame:SetScrollChild(scrollChild)
     frame.scrollChild = scrollChild
+    frame.scrollFrame = scrollFrame
 
-    -- Close button (styled)
-    local closeButton = UIFactory:CreateStyledButton(frame, 100, 30, "Close")
-    closeButton:SetPoint("BOTTOM", 0, 10)
-    closeButton:SetScript("OnClick", function()
-        frame:Hide()
-    end)
+    -- Close button at bottom (styled)
+    local closeBtn = UIFactory:CreateButton(frame, "Close", {
+        type = "styled",
+        width = 100,
+        height = 30,
+        onClick = function() frame:Hide() end
+    })
+    closeBtn:SetPoint("BOTTOM", 0, 10)
 
     queueViewerFrame = frame
     return frame
@@ -273,7 +191,6 @@ local function ShowQueueViewer(channelName)
     viewer.scrollChild:SetHeight(math.max(math.abs(yOffset) + 10, scrollFrameHeight))
 
     KOL:DebugPrint("Batch: About to show viewer frame", 4)
-    viewer:SetFrameStrata("FULLSCREEN_DIALOG")  -- Ensure always on top
     viewer:Show()
     KOL:DebugPrint("Batch: Viewer should now be visible", 4)
 end
