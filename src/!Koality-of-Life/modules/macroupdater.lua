@@ -442,19 +442,16 @@ local function CreateCommandBlockEditor()
     nameDropdownText:SetText("|cFF888888(Select Command Block)|r")
     nameDropdownText:SetTextColor(0.7, 0.7, 0.7, 1)
 
-    local nameDropdownArrow = nameDropdown:CreateFontString(nil, "OVERLAY")
-    nameDropdownArrow:SetFont(CHAR_LIGATURESFONT, 11, CHAR_LIGATURESOUTLINE)
+    local nameDropdownArrow = KOL.UIFactory:CreateGlyph(nameDropdown, CHAR_ARROW_DOWNFILLED, {r = 0, g = 0.8, b = 0.8}, 11)
     nameDropdownArrow:SetPoint("RIGHT", -5, 0)
-    nameDropdownArrow:SetText(CHAR_ARROW_DOWNFILLED)
-    nameDropdownArrow:SetTextColor(0, 0.8, 0.8, 1)
 
     nameDropdown:SetScript("OnEnter", function(self)
         self:SetBackdropBorderColor(0, 0.8, 0.8, 1)
-        nameDropdownArrow:SetTextColor(0, 1, 1, 1)
+        nameDropdownArrow:SetGlyph(nil, {r = 0, g = 1, b = 1})
     end)
     nameDropdown:SetScript("OnLeave", function(self)
         self:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
-        nameDropdownArrow:SetTextColor(0, 0.8, 0.8, 1)
+        nameDropdownArrow:SetGlyph(nil, {r = 0, g = 0.8, b = 0.8})
     end)
 
     -- Store references
@@ -990,11 +987,8 @@ local function CreateMacroUpdaterWindow()
         dropdownText:SetTextColor(0.8, 0.8, 0.8, 1)
         dropdown.text = dropdownText
 
-        local arrow = dropdown:CreateFontString(nil, "OVERLAY")
-        arrow:SetFont(CHAR_LIGATURESFONT, 11, CHAR_LIGATURESOUTLINE)
+        local arrow = KOL.UIFactory:CreateGlyph(dropdown, CHAR_ARROW_DOWNFILLED, {r = 0, g = 0.8, b = 0.8}, 11)
         arrow:SetPoint("RIGHT", -5, 0)
-        arrow:SetText(CHAR_ARROW_DOWNFILLED)
-        arrow:SetTextColor(0, 0.8, 0.8, 1)
 
         dropdown:SetScript("OnEnter", function(self)
             self:SetBackdropBorderColor(0, 0.6, 0.6, 1)

@@ -725,6 +725,201 @@ function KOL:GetColoredProgressString(instanceId, objectiveId, format)
 end
 
 -- ============================================================================
+-- Speed Functions
+-- ============================================================================
+
+--[[
+    Return player movement speed as percentage above base (100%)
+
+    @return speedIncrease: number - percentage above 100% (e.g., 40 for 140% speed)
+                                    Returns 0 if stationary or at base speed
+                                    Returns negative if slowed
+
+    Example usage:
+        local speed = KOL:ReturnUserSpeed()
+        if speed > 0 then
+            print("Moving " .. speed .. "% faster than base")
+        end
+]]
+function KOL:ReturnUserSpeed()
+    -- Check if player is in a vehicle
+    local unit = UnitInVehicle("player") and "vehicle" or "player"
+
+    -- Get current speed (first return value is actual current speed)
+    local currentSpeed = GetUnitSpeed(unit)
+
+    -- Base run speed in WoW is 7 yards/second
+    local BASE_RUN_SPEED = 7
+
+    -- Handle nil or 0 values (player dead, loading, etc.)
+    if not currentSpeed or currentSpeed == 0 then
+        return 0
+    end
+
+    -- Calculate percentage above base (e.g., if currentSpeed is 9.8, that's 140% of base)
+    local speedPercent = (currentSpeed / BASE_RUN_SPEED) * 100
+    local speedIncrease = math.floor(speedPercent - 100)
+
+    return speedIncrease
+end
+
+--[[
+    Return total movement speed percentage (e.g., 140 for 140% speed)
+    Used for tooltip displays alongside ReturnUserSpeed
+
+    @return speedTotal: number - Total speed percentage (e.g., 140 for 140% speed)
+                                 Returns 100 if stationary or at base speed
+
+    Example usage:
+        local total = KOL:ReturnUserSpeedTotal()  -- 140
+        local over = KOL:ReturnUserSpeed()        -- 40
+]]
+function KOL:ReturnUserSpeedTotal()
+    -- Check if player is in a vehicle
+    local unit = UnitInVehicle("player") and "vehicle" or "player"
+
+    -- Get current speed (first return value is actual current speed)
+    local currentSpeed = GetUnitSpeed(unit)
+
+    -- Base run speed in WoW is 7 yards/second
+    local BASE_RUN_SPEED = 7
+
+    -- If not moving, return 100 (base speed)
+    if not currentSpeed or currentSpeed == 0 then
+        return 100
+    end
+
+    -- Calculate total percentage (e.g., 9.8 y/s = 140%)
+    return math.floor((currentSpeed / BASE_RUN_SPEED) * 100)
+end
+
+--[[
+    Return all speed display data as a table for UI components
+    Used by Watch Frames and other UI that needs separate text/glyph elements
+
+    @return table with:
+        - speedIncrease: number - percentage over base (40 for 140% speed)
+        - speedTotal: number - total percentage (140 for 140% speed)
+        - color: string - hex color code without |cFF (e.g., "00FF00")
+        - glyph: string - the arrow/circle character (↑, ↓, or ○)
+        - glyphName: string - the CHAR key for CreateGlyph ("UP", "DOWN", or nil for circle)
+        - text: string - formatted percentage text ("+40%", "-10%", or "BASE")
+
+    Example usage:
+        local data = KOL:ReturnSpeedData()
+        speedLabel:SetText("SPEED: |cFF" .. data.color .. data.text .. "|r")
+        local arrow = KOL.UIFactory:CreateGlyph(parent, data.glyph, "FFFFFF", fontSize)  -- Glyph is white, not colored
+]]
+-- Debug counter for speed data (disabled by default - was causing spam)
+local speedDataDebugCount = 0
+local speedDataDebugEnabled = false  -- Set to true to debug speed issues
+
+function KOL:ReturnSpeedData()
+    -- Default IDLE state (used if anything fails or player not moving)
+    local dimAmber = "BB9955"
+    local defaultData = {
+        speedIncrease = 0,
+        speedTotal = 100,
+        color = dimAmber,
+        glyph = CHAR_IDLE or "■",
+        glyphName = nil,
+        text = "IDLE",
+        isMoving = false,
+    }
+
+    -- DEBUG: Print first few calls (disabled by default)
+    speedDataDebugCount = speedDataDebugCount + 1
+    local shouldDebug = speedDataDebugEnabled and speedDataDebugCount <= 3
+
+    if shouldDebug then
+        print("|cFFFFFF00[SPEED DEBUG]|r ReturnSpeedData call #" .. speedDataDebugCount)
+        print("|cFFFFFF00[SPEED DEBUG]|r CHAR_IDLE = '" .. tostring(CHAR_IDLE) .. "'")
+        print("|cFFFFFF00[SPEED DEBUG]|r defaultData.glyph = '" .. tostring(defaultData.glyph) .. "'")
+    end
+
+    -- Try to get actual speed data (safely)
+    local speedIncrease = self:ReturnUserSpeed() or 0
+    local speedTotal = self:ReturnUserSpeedTotal() or 100
+
+    -- Check if player is actually moving (need raw speed value)
+    local unit = UnitInVehicle("player") and "vehicle" or "player"
+    local currentSpeed = GetUnitSpeed(unit)
+    local isMoving = currentSpeed and currentSpeed > 0
+
+    -- Colors (dim palette for comfortable viewing)
+    local dimGreen = "77BB77"    -- Dim Green for speed buff
+    local dimRed = "BB6666"      -- Dim Red for speed debuff
+    local dimLavender = "AA88CC" -- Dim Lavender for base speed (moving at 100%)
+
+    local color, glyph, glyphName, text
+
+    if speedIncrease > 0 then
+        -- Moving with speed buff
+        color = dimGreen
+        glyph = CHAR("UP") or "^"  -- ↑ with fallback
+        glyphName = "UP"
+        text = "+" .. speedIncrease .. "%"
+    elseif speedIncrease < 0 then
+        -- Moving with speed debuff
+        color = dimRed
+        glyph = CHAR("DOWN") or "v"  -- ↓ with fallback
+        glyphName = "DOWN"
+        text = speedIncrease .. "%"
+    elseif isMoving then
+        -- Moving at base speed (100%)
+        color = dimLavender
+        glyph = CHAR_BASE or "o"  -- ○ with fallback
+        glyphName = nil
+        text = "BASE"
+    else
+        -- Not moving at all (idle) - return default
+        if shouldDebug then
+            print("|cFFFFFF00[SPEED DEBUG]|r Returning IDLE defaultData")
+            print("|cFFFFFF00[SPEED DEBUG]|r defaultData.text = '" .. tostring(defaultData.text) .. "'")
+        end
+        return defaultData
+    end
+
+    local result = {
+        speedIncrease = speedIncrease,
+        speedTotal = speedTotal,
+        color = color,
+        glyph = glyph,
+        glyphName = glyphName,
+        text = text,
+        isMoving = isMoving,
+    }
+
+    if shouldDebug then
+        print("|cFFFFFF00[SPEED DEBUG]|r Returning moving data: text='" .. tostring(text) .. "', glyph='" .. tostring(glyph) .. "'")
+    end
+
+    return result
+end
+
+--[[
+    Return formatted speed display text with colors and glyphs
+    Wrapper around ReturnSpeedData() for string output
+
+    @param includePrefix: boolean - If true, includes "SPEED: " prefix
+    @return formatted: string - Colored speed text with Unicode glyphs
+                                e.g., "+40% ↑" or "BASE ○" or "IDLE ■"
+
+    Example usage:
+        local speed = KOL:ReturnSpeedText()           -- "+40% ↑"
+        local speed = KOL:ReturnSpeedText(true)       -- "SPEED: +40% ↑"
+]]
+function KOL:ReturnSpeedText(includePrefix)
+    local prefix = includePrefix and "SPEED: " or ""
+    local data = self:ReturnSpeedData()  -- Always returns valid data with IDLE fallback
+
+    -- Build the formatted text
+    local result = prefix .. "|cFF" .. data.color .. data.text .. "|r " .. data.glyph
+
+    return result
+end
+
+-- ============================================================================
 -- Module Loaded
 -- ============================================================================
 

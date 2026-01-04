@@ -34,10 +34,20 @@ CHAR_OBJECTIVE_COMPLETE = "☑" -- 4 usages
 
 -- Status Indicators
 CHAR_LIGHTNING = "⚡"          -- Hardmode indicator (filled/emoji style)
-CHAR_LIGHTNING_HOLLOW = "○"   -- Speed indicator (neutral/base - circle indicates stable)
+CHAR_IDLE = "■"               -- Speed indicator: not moving at all (solid = stopped)
+CHAR_BASE = "○"               -- Speed indicator: moving at base speed (circle = stable/neutral)
 
--- Text Formatting (separator for info displays)
-CHAR_SEPARATOR = "|"          -- Simple pipe separator for text output (universal font support)
+-- Text Formatting (separators for info displays)
+CHAR_SEPARATOR = "|"          -- Default: Simple pipe separator
+CHAR_SEPARATOR_1 = "•"        -- Bullet: clean, classic
+CHAR_SEPARATOR_2 = "◆"        -- Filled Diamond: stylish, bold
+CHAR_SEPARATOR_3 = "◊"        -- Empty Diamond: lighter, elegant
+CHAR_SEPARATOR_4 = "│"        -- Box Light Vertical: prettier pipe
+CHAR_SEPARATOR_5 = "∙"        -- Math Dot: subtle
+CHAR_SEPARATOR_6 = "—"        -- Em Dash: horizontal
+CHAR_SEPARATOR_7 = "·"        -- Middle Dot: very subtle
+CHAR_SEPARATOR_8 = "▪"        -- Small Square: compact
+CHAR_SEPARATOR_9 = "▸"        -- Small Triangle Right: directional
 
 -- ============================================================================
 -- SMART CHARACTER ACCESS FUNCTION

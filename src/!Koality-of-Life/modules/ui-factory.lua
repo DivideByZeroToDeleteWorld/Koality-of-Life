@@ -30,6 +30,218 @@ end
 UIFactory.GetGeneralFont = GetGeneralFont
 
 -- ============================================================================
+-- Glyph / Icon Character Helpers
+-- ============================================================================
+-- These functions ensure CHAR_LIGATURESFONT is always used for special chars
+-- ============================================================================
+
+-- Convert color to hex string
+local function ColorToHex(color)
+    if type(color) == "string" then
+        local cleaned = color
+        -- Only strip |cFF prefix if present (don't strip FF from valid hex like "FFFFFF")
+        if cleaned:match("^|c[Ff][Ff]") then
+            cleaned = cleaned:sub(5)  -- Remove "|cFF" (4 chars)
+        end
+        -- Ensure exactly 6 hex chars (pad or truncate)
+        if #cleaned < 6 then
+            cleaned = cleaned .. string.rep("0", 6 - #cleaned)
+        end
+        return cleaned:sub(1, 6)
+    elseif type(color) == "table" then
+        -- Support both indexed {r, g, b} and named {r=, g=, b=} formats
+        local r, g, b
+        if color[1] ~= nil then
+            r, g, b = color[1], color[2], color[3]
+        elseif color.r ~= nil then
+            r, g, b = color.r, color.g, color.b
+        else
+            return "FFFFFF"
+        end
+        r = math.floor((tonumber(r) or 1) * 255)
+        g = math.floor((tonumber(g) or 1) * 255)
+        b = math.floor((tonumber(b) or 1) * 255)
+        return string.format("%02X%02X%02X", r, g, b)
+    end
+    return "FFFFFF"
+end
+
+--- Format a glyph character with color codes
+-- @param char string - The glyph character (e.g., CHAR_FOLDER)
+-- @param color table|string - Color as {r,g,b}, {1,1,1}, or "RRGGBB" hex (optional, default white)
+-- @return string - Formatted "|cFFrrggbbX|r" string
+function UIFactory:FormatGlyph(char, color)
+    if not char or char == "" then return "" end
+    local hex = color and ColorToHex(color) or "FFFFFF"
+    return "|cFF" .. hex .. char .. "|r"
+end
+
+--- Create a FontString configured for glyph/icon characters
+-- @param parent frame - Parent frame for the fontstring
+-- @param char string - The glyph character (e.g., CHAR_FOLDER)
+-- @param color table|string - Color as {r,g,b} or "RRGGBB" hex (optional, default white)
+-- @param size number - Font size (optional, default 10)
+-- @param drawLayer string - Draw layer within frame: BACKGROUND, BORDER, ARTWORK, OVERLAY, HIGHLIGHT (optional, default "OVERLAY")
+-- @return fontstring - The created and configured FontString
+function UIFactory:CreateGlyph(parent, char, color, size, drawLayer)
+    if not parent then return nil end
+
+    size = size or 10
+    drawLayer = drawLayer or "OVERLAY"
+
+    local fs = parent:CreateFontString(nil, drawLayer)
+    fs:SetFont(CHAR_LIGATURESFONT, size, CHAR_LIGATURESOUTLINE or "OUTLINE")
+
+    if char and char ~= "" then
+        fs:SetText(self:FormatGlyph(char, color))
+    end
+
+    -- Store references for later updates
+    fs.glyphChar = char
+    fs.glyphColor = color
+    fs.glyphSize = size
+
+    -- Helper method to update the glyph
+    fs.SetGlyph = function(self, newChar, newColor)
+        self.glyphChar = newChar or self.glyphChar
+        self.glyphColor = newColor or self.glyphColor
+        self:SetText(UIFactory:FormatGlyph(self.glyphChar, self.glyphColor))
+    end
+
+    return fs
+end
+
+--- Create an interactive FontString with hover effects and animations
+-- @param parent frame - Parent frame for the fontstring (MUST be a mouse-enabled frame for hover to work)
+-- @param char string - The glyph character (e.g., CHAR_FOLDER)
+-- @param options table - Configuration options:
+--   .color        table|string - Primary color (default white)
+--   .hoverColor   table|string - Color on hover (optional)
+--   .size         number - Font size (default 10)
+--   .drawLayer    string - Draw layer (default "OVERLAY")
+--   .animate      string - Animation type: "rainbow", "pulse", "none" (default "none")
+--   .animSpeed    number - Animation speed in seconds per cycle (default 2)
+-- @return fontstring - The created FontString with extended methods
+function UIFactory:CreateInteractiveGlyph(parent, char, options)
+    if not parent then return nil end
+
+    options = options or {}
+    local color = options.color or "FFFFFF"
+    local hoverColor = options.hoverColor
+    local size = options.size or 10
+    local drawLayer = options.drawLayer or "OVERLAY"
+    local animate = options.animate or "none"
+    local animSpeed = options.animSpeed or 2
+
+    local fs = parent:CreateFontString(nil, drawLayer)
+    fs:SetFont(CHAR_LIGATURESFONT, size, CHAR_LIGATURESOUTLINE or "OUTLINE")
+    fs:SetText(self:FormatGlyph(char, color))
+
+    -- Store state
+    fs.glyphChar = char
+    fs.glyphColor = color
+    fs.glyphHoverColor = hoverColor
+    fs.glyphSize = size
+    fs.isHovering = false
+    fs.animationType = animate
+    fs.animSpeed = animSpeed
+    fs.animFrame = nil
+
+    -- SetGlyph method
+    fs.SetGlyph = function(self, newChar, newColor)
+        self.glyphChar = newChar or self.glyphChar
+        self.glyphColor = newColor or self.glyphColor
+        if not self.isHovering or not self.glyphHoverColor then
+            self:SetText(UIFactory:FormatGlyph(self.glyphChar, self.glyphColor))
+        end
+    end
+
+    -- Set hover color
+    fs.SetHoverColor = function(self, newHoverColor)
+        self.glyphHoverColor = newHoverColor
+    end
+
+    -- Start animation
+    fs.StartAnimation = function(self, animType)
+        self.animationType = animType or self.animationType
+        if self.animationType == "none" then return end
+
+        if not self.animFrame then
+            self.animFrame = CreateFrame("Frame", nil, parent)
+        end
+
+        local elapsed = 0
+        self.animFrame:SetScript("OnUpdate", function(frame, delta)
+            elapsed = elapsed + delta
+            local t = (elapsed % self.animSpeed) / self.animSpeed  -- 0 to 1
+
+            if self.animationType == "rainbow" then
+                -- Cycle through rainbow colors
+                local r, g, b
+                local h = t * 6
+                local i = math.floor(h)
+                local f = h - i
+                local q = 1 - f
+                if i == 0 then r, g, b = 1, f, 0
+                elseif i == 1 then r, g, b = q, 1, 0
+                elseif i == 2 then r, g, b = 0, 1, f
+                elseif i == 3 then r, g, b = 0, q, 1
+                elseif i == 4 then r, g, b = f, 0, 1
+                else r, g, b = 1, 0, q end
+                self:SetText(UIFactory:FormatGlyph(self.glyphChar, {r, g, b}))
+
+            elseif self.animationType == "pulse" then
+                -- Pulse between color and white
+                local brightness = 0.5 + 0.5 * math.sin(t * 2 * math.pi)
+                local baseColor = self.glyphColor or "FFFFFF"
+                local hex = ColorToHex(baseColor)
+                local r = tonumber(hex:sub(1,2), 16) / 255
+                local g = tonumber(hex:sub(3,4), 16) / 255
+                local b = tonumber(hex:sub(5,6), 16) / 255
+                r = r + (1 - r) * brightness
+                g = g + (1 - g) * brightness
+                b = b + (1 - b) * brightness
+                self:SetText(UIFactory:FormatGlyph(self.glyphChar, {r, g, b}))
+            end
+        end)
+        self.animFrame:Show()
+    end
+
+    -- Stop animation
+    fs.StopAnimation = function(self)
+        if self.animFrame then
+            self.animFrame:SetScript("OnUpdate", nil)
+            self.animFrame:Hide()
+        end
+        -- Restore base color
+        self:SetText(UIFactory:FormatGlyph(self.glyphChar, self.glyphColor))
+    end
+
+    -- Set up hover if parent supports it and hoverColor is specified
+    if hoverColor then
+        local origEnter = parent:GetScript("OnEnter")
+        local origLeave = parent:GetScript("OnLeave")
+
+        parent:HookScript("OnEnter", function()
+            fs.isHovering = true
+            fs:SetText(UIFactory:FormatGlyph(fs.glyphChar, fs.glyphHoverColor))
+        end)
+
+        parent:HookScript("OnLeave", function()
+            fs.isHovering = false
+            fs:SetText(UIFactory:FormatGlyph(fs.glyphChar, fs.glyphColor))
+        end)
+    end
+
+    -- Start animation if specified
+    if animate ~= "none" then
+        fs:StartAnimation(animate)
+    end
+
+    return fs
+end
+
+-- ============================================================================
 -- Frame Registry & Strata Management
 -- ============================================================================
 -- Intelligent system to manage frame stacking order
@@ -51,77 +263,106 @@ local STRATA_ORDER = {
     ["TOOLTIP"] = 7,
 }
 
--- Default stratas for different frame types
+-- ============================================================================
+-- SMART SLOT MANAGEMENT SYSTEM
+-- ============================================================================
+-- Each frame gets a permanent "home" slot when created
+-- There's one special "active" slot that's always highest
+-- Focused frame moves to active slot; previous active returns to its home
+-- Closed frames release their home slot for reuse
+-- ============================================================================
+
+-- Simple slot-based system: each frame gets a home level, active frame goes high
+-- WoW automatically handles child frame levels - no recursion needed!
+UIFactory.HOME_LEVEL = 100        -- Base level for home slots
+UIFactory.ACTIVE_LEVEL = 500      -- Level for the active (focused) frame
+UIFactory.nextHomeLevel = 100     -- Counter for assigning home levels
+
+UIFactory.frameRegistry = {}      -- Registered frames
+UIFactory.activeFrame = nil       -- Currently focused frame
+
+-- All KOL frames use DIALOG strata for consistent z-ordering
+UIFactory.KOL_STRATA = "DIALOG"
 UIFactory.STRATA = {
-    NORMAL = "HIGH",           -- Normal KOL windows (above game UI)
-    IMPORTANT = "DIALOG",      -- Config panels, important dialogs
-    MODAL = "FULLSCREEN_DIALOG", -- Modal dialogs that block interaction
+    NORMAL = "DIALOG",
+    IMPORTANT = "DIALOG",
+    MODAL = "FULLSCREEN_DIALOG",
 }
 
--- Frame registry
-UIFactory.frameRegistry = {}
-UIFactory.nextFrameLevel = 10  -- Starting level, increments as frames are raised
-
--- Get the next available frame level and increment
-function UIFactory:GetNextFrameLevel()
-    local level = self.nextFrameLevel
-    self.nextFrameLevel = self.nextFrameLevel + 1
-    return level
-end
-
--- Register a frame in the registry
+-- Register a frame (called when frame is created)
 function UIFactory:RegisterFrame(frame, strata)
     if not frame then return end
 
     strata = strata or self.STRATA.NORMAL
-    local level = self:GetNextFrameLevel()
+
+    -- Assign a unique home level (increments by 10 for each frame)
+    local homeLevel = self.nextHomeLevel
+    self.nextHomeLevel = self.nextHomeLevel + 10
 
     frame:SetFrameStrata(strata)
-    frame:SetFrameLevel(level)
-
-    -- Store frame info
+    frame:SetFrameLevel(homeLevel)
     frame.kolStrata = strata
-    frame.kolLevel = level
+    frame.kolHomeLevel = homeLevel
     frame.kolRegistered = true
 
-    -- Add to registry
-    table.insert(self.frameRegistry, frame)
+    -- Store in registry
+    self.frameRegistry[frame] = true
 
-    return level
+    return homeLevel
 end
 
--- Raise a frame above all other KOL frames at the same strata
+-- Unregister a frame (called when frame is closed/destroyed)
+function UIFactory:UnregisterFrame(frame)
+    if not frame or not frame.kolRegistered then return end
+
+    -- If this was the active frame, clear it
+    if self.activeFrame == frame then
+        self.activeFrame = nil
+    end
+
+    self.frameRegistry[frame] = nil
+    frame.kolRegistered = false
+    frame.kolHomeLevel = nil
+end
+
+-- Raise a frame to the active level (called on show/focus)
+-- This is INSTANT - just two SetFrameLevel calls, no recursion!
 function UIFactory:RaiseFrame(frame)
     if not frame or not frame.kolRegistered then return end
 
-    local newLevel = self:GetNextFrameLevel()
-    frame:SetFrameLevel(newLevel)
-    frame.kolLevel = newLevel
+    -- If already the active frame, do nothing
+    if self.activeFrame == frame then
+        return
+    end
 
-    -- Also ensure it's toplevel
+    -- Return the previous active frame to its home level
+    if self.activeFrame and self.activeFrame.kolRegistered and self.activeFrame.kolHomeLevel then
+        self.activeFrame:SetFrameLevel(self.activeFrame.kolHomeLevel)
+    end
+
+    -- Raise this frame to the active level
+    frame:SetFrameLevel(self.ACTIVE_LEVEL)
+    self.activeFrame = frame
+
+    -- Ensure it's toplevel
     if frame.SetToplevel then
         frame:SetToplevel(true)
     end
 end
 
--- Get frame's strata info for child components (like dropdowns)
+-- Get frame's strata info (simplified - no more slot/level complexity)
 function UIFactory:GetFrameStrataInfo(frame)
-    if frame and frame.kolRegistered then
-        return frame.kolStrata, frame.kolLevel
-    end
-    -- Fallback: try to get from frame directly
     if frame then
         return frame:GetFrameStrata(), frame:GetFrameLevel()
     end
     return self.STRATA.NORMAL, 100
 end
 
--- Calculate dropdown strata/level based on parent frame
--- Dropdowns are always at parent strata but MUCH higher level
-local DROPDOWN_LEVEL_OFFSET = 500
+-- Get dropdown strata/level (use TOOLTIP strata for guaranteed visibility)
 function UIFactory:GetDropdownStrataInfo(parentFrame)
-    local strata, level = self:GetFrameStrataInfo(parentFrame)
-    return strata, level + DROPDOWN_LEVEL_OFFSET
+    -- Use TOOLTIP strata to guarantee dropdown lists render above all other frames
+    -- This fixes issues where dropdown text appears behind parent frames
+    return "TOOLTIP", 100
 end
 
 -- Find the root KOL frame for a given child frame
@@ -225,23 +466,37 @@ function UIFactory:CreateStyledFrame(parent, name, width, height, options)
     frame:SetBackdropColor(bgColor.r, bgColor.g, bgColor.b, bgColor.a)
     frame:SetBackdropBorderColor(borderColor.r, borderColor.g, borderColor.b, borderColor.a)
 
+    -- Auto-raise whenever frame is shown (moves to active slot)
+    frame:SetScript("OnShow", function(self)
+        UIFactory:RaiseFrame(self)
+    end)
+
+    -- Return to home level when hidden (releases active level for other frames)
+    frame:SetScript("OnHide", function(self)
+        -- If this was the active frame, return it to home level and clear active
+        if UIFactory.activeFrame == self then
+            UIFactory.activeFrame = nil
+            if self.kolHomeLevel then
+                self:SetFrameLevel(self.kolHomeLevel)
+            end
+        end
+    end)
+
     -- Make movable if requested
     if options.movable then
         frame:EnableMouse(true)
         frame:SetMovable(true)
         frame:RegisterForDrag("LeftButton")
         frame:SetScript("OnDragStart", function(self)
-            -- Auto-raise when starting to drag
-            UIFactory:RaiseFrame(self)
             self:StartMoving()
         end)
         frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-
-        -- Auto-raise on any mouse click
-        frame:SetScript("OnMouseDown", function(self)
-            UIFactory:RaiseFrame(self)
-        end)
     end
+
+    -- Instant click-to-front: raise frame immediately on any mouse click
+    frame:HookScript("OnMouseDown", function(self)
+        UIFactory:RaiseFrame(self)
+    end)
 
     -- Make closable with ESC
     if options.closable and name then
@@ -369,6 +624,229 @@ function UIFactory:CreateTitleBar(parent, height, text, options)
 
     return titleBar, title, closeButton
 end
+
+--[[
+    Creates a styled section header with a colored left accent bar.
+    Useful for visually separating sections in config panels or lists.
+
+    Parameters:
+        parent - Parent frame
+        text - Section title text
+        color - Table with {r, g, b} values (0-1 range) for the accent color
+        width - Width of the header (optional, defaults to parent width)
+
+    Returns: header frame with .text (fontstring) and .accent (texture) references
+
+    Example:
+        local header = UIFactory:CreateSectionHeader(scrollChild, "Combat Settings", {r=0.8, g=0.2, b=0.2}, 300)
+        header:SetPoint("TOPLEFT", 0, -yOffset)
+]]
+function UIFactory:CreateSectionHeader(parent, text, color, width)
+    color = color or {r = 0.6, g = 0.6, b = 0.6}  -- Default gray
+
+    local header = CreateFrame("Frame", nil, parent)
+    header:SetHeight(22)
+
+    -- Width handling: use provided width or stretch to parent
+    if width then
+        header:SetWidth(width)
+    else
+        -- Will need to be anchored with SetPoint to define width
+        header:SetWidth(200)  -- Fallback default
+    end
+
+    -- Background - subtle dark using accent color at 20% intensity
+    local bg = header:CreateTexture(nil, "BACKGROUND")
+    bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+    bg:SetAllPoints()
+    bg:SetVertexColor(color.r * 0.2, color.g * 0.2, color.b * 0.2, 0.8)
+    header.bg = bg
+
+    -- Left accent bar (3px wide)
+    local accent = header:CreateTexture(nil, "ARTWORK")
+    accent:SetTexture("Interface\\Buttons\\WHITE8X8")
+    accent:SetWidth(3)
+    accent:SetPoint("TOPLEFT", 0, 0)
+    accent:SetPoint("BOTTOMLEFT", 0, 0)
+    accent:SetVertexColor(color.r, color.g, color.b, 1)
+    header.accent = accent
+
+    -- Text in accent color
+    local fontPath, fontOutline = GetGeneralFont()
+    local label = header:CreateFontString(nil, "OVERLAY")
+    label:SetFont(fontPath, 11, fontOutline)  -- Slightly larger than normal (10+1)
+    label:SetPoint("LEFT", 10, 0)
+    label:SetTextColor(color.r, color.g, color.b, 1)
+    label:SetText(text)
+    header.text = label
+
+    -- Store color for potential updates
+    header.color = color
+
+    -- Method to update the color dynamically
+    function header:SetAccentColor(newColor)
+        self.color = newColor
+        self.bg:SetVertexColor(newColor.r * 0.2, newColor.g * 0.2, newColor.b * 0.2, 0.8)
+        self.accent:SetVertexColor(newColor.r, newColor.g, newColor.b, 1)
+        self.text:SetTextColor(newColor.r, newColor.g, newColor.b, 1)
+    end
+
+    -- Method to update the text
+    function header:SetText(newText)
+        self.text:SetText(newText)
+    end
+
+    return header
+end
+
+-- ============================================================================
+-- AceGUI Custom Widget: KOL_SectionHeader
+-- ============================================================================
+-- This allows using CreateSectionHeader in AceConfig via dialogControl
+-- Usage in AceConfig options:
+--   fontHeader = {
+--       type = "description",
+--       name = "Fonts|1,0.67,0",  -- Text|R,G,B (color encoded in name)
+--       dialogControl = "KOL_SectionHeader",
+--       width = "full",
+--       order = 3,
+--   },
+-- ============================================================================
+
+local function RegisterAceGUISectionHeader()
+    local AceGUI = LibStub("AceGUI-3.0", true)
+    if not AceGUI then return end
+
+    local Type = "KOL_SectionHeader"
+    local Version = 2  -- Incremented version
+
+    local function Constructor()
+        local frame = CreateFrame("Frame", nil, UIParent)
+        frame:SetHeight(22)
+        frame:Hide()
+
+        -- Background - will be colored based on accent
+        local bg = frame:CreateTexture(nil, "BACKGROUND")
+        bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+        bg:SetAllPoints()
+        bg:SetVertexColor(0.12, 0.12, 0.12, 0.8)  -- Default dark
+        frame.bg = bg
+
+        -- Left accent bar (3px wide)
+        local accent = frame:CreateTexture(nil, "ARTWORK")
+        accent:SetTexture("Interface\\Buttons\\WHITE8X8")
+        accent:SetWidth(3)
+        accent:SetPoint("TOPLEFT", 0, 0)
+        accent:SetPoint("BOTTOMLEFT", 0, 0)
+        accent:SetVertexColor(0.6, 0.6, 0.6, 1)  -- Default gray
+        frame.accent = accent
+
+        -- Text - vertically centered
+        local fontPath, fontOutline = GetGeneralFont()
+        local label = frame:CreateFontString(nil, "OVERLAY")
+        label:SetFont(fontPath, 11, fontOutline)
+        label:SetPoint("LEFT", 10, 0)
+        label:SetPoint("TOP", 0, 0)
+        label:SetPoint("BOTTOM", 0, 0)
+        label:SetJustifyV("MIDDLE")
+        label:SetTextColor(0.6, 0.6, 0.6, 1)  -- Default gray
+        frame.label = label
+
+        -- Widget object
+        local widget = {
+            frame = frame,
+            type = Type,
+            bg = bg,
+            accent = accent,
+            label = label,
+            color = {r = 0.6, g = 0.6, b = 0.6},
+        }
+
+        -- Set the accent color (affects bar, background, and text)
+        function widget:SetColor(color)
+            if not color then return end
+            self.color = color
+            self.bg:SetVertexColor(color.r * 0.2, color.g * 0.2, color.b * 0.2, 0.8)
+            self.accent:SetVertexColor(color.r, color.g, color.b, 1)
+            self.label:SetTextColor(color.r, color.g, color.b, 1)
+        end
+
+        -- AceGUI required methods
+        function widget:OnAcquire()
+            -- Refresh font in case it changed
+            local fontPath, fontOutline = GetGeneralFont()
+            self.label:SetFont(fontPath, 11, fontOutline)
+            self.frame:Show()
+        end
+
+        function widget:OnRelease()
+            self.frame:ClearAllPoints()
+            self.frame:Hide()
+            self.label:SetText("")
+            -- Reset to default color
+            self:SetColor({r = 0.6, g = 0.6, b = 0.6})
+        end
+
+        -- Parse text for color: "Header Text|R,G,B" format
+        function widget:SetText(text)
+            if not text then
+                self.label:SetText("")
+                return
+            end
+
+            -- Check for color encoding: "Text|R,G,B"
+            local displayText, colorStr = text:match("^(.+)|([%d%.]+,[%d%.]+,[%d%.]+)$")
+            if displayText and colorStr then
+                self.label:SetText(displayText)
+                -- Parse color
+                local r, g, b = colorStr:match("([%d%.]+),([%d%.]+),([%d%.]+)")
+                if r and g and b then
+                    self:SetColor({r = tonumber(r), g = tonumber(g), b = tonumber(b)})
+                end
+            else
+                -- No color encoded, just set text
+                self.label:SetText(text)
+            end
+        end
+
+        function widget:SetLabel(text)
+            self:SetText(text)
+        end
+
+        function widget:SetWidth(width)
+            self.frame:SetWidth(width)
+        end
+
+        function widget:SetHeight(height)
+            self.frame:SetHeight(height or 22)
+        end
+
+        -- Disable/Enable (not really applicable for a header)
+        function widget:SetDisabled(disabled) end
+
+        -- AceConfigDialog calls these on description widgets
+        function widget:SetFontObject(font) end
+        function widget:SetJustifyH(justify) end
+        function widget:SetJustifyV(justify) end
+        function widget:SetImageSize(width, height) end
+        function widget:SetImage(path, ...) end
+        function widget:SetFullWidth(isFull) end
+        function widget:SetFullHeight(isFull) end
+
+        function widget:SetCallback(name, func)
+            self.callbacks = self.callbacks or {}
+            self.callbacks[name] = func
+        end
+
+        return AceGUI:RegisterAsWidget(widget)
+    end
+
+    AceGUI:RegisterWidgetType(Type, Constructor, Version)
+    KOL:DebugPrint("Registered AceGUI widget: KOL_SectionHeader", 2)
+end
+
+-- Register the widget when this file loads (after a short delay to ensure AceGUI is ready)
+C_Timer.After(0, RegisterAceGUISectionHeader)
 
 --[[
     Creates a content area background (darker inset area)
@@ -575,11 +1053,7 @@ function KOL:SkinScrollBar(scrollFrame, scrollBarName, colors)
     -- Always update width (allows live resizing)
     scrollBar:SetWidth(scrollbarWidth)
 
-    -- Already skinned (unless it was reset - check if backdrop exists)
-    if scrollBar.kolSkinned and scrollBar.kolBackdrop then return end
-
-    -- Clear flag since we're re-skinning
-    scrollBar.kolSkinned = nil
+    -- Note: We no longer return early even if skinned, to allow color updates
 
     -- Find scroll buttons and thumb (try multiple naming patterns for WoW 3.3.5a)
     -- IMPORTANT: Use the scrollbar's actual name, not the property name passed in
@@ -590,13 +1064,35 @@ function KOL:SkinScrollBar(scrollFrame, scrollBarName, colors)
 
     KOL:DebugPrint("UI: SkinScrollBar - scrollBarRealName: " .. scrollBarRealName .. ", upButton: " .. tostring(upButton) .. ", downButton: " .. tostring(downButton) .. ", thumb: " .. tostring(thumb), 3)
 
-    -- Clear default textures
-    if scrollBar.Background then scrollBar.Background:SetTexture(nil) end
-    if scrollBar.Top then scrollBar.Top:SetTexture(nil) end
-    if scrollBar.Middle then scrollBar.Middle:SetTexture(nil) end
-    if scrollBar.Bottom then scrollBar.Bottom:SetTexture(nil) end
+    -- Clear default textures (named children) - use solid texture set to fully transparent
+    local function HideScrollbarRegion(region)
+        if region then
+            pcall(function()
+                if region.SetTexture then region:SetTexture("Interface\\Buttons\\WHITE8X8") end
+                if region.SetVertexColor then region:SetVertexColor(0, 0, 0, 0) end
+                if region.SetAlpha then region:SetAlpha(0) end
+                region:Hide()
+            end)
+        end
+    end
 
-    -- Create backdrop for scrollbar track
+    HideScrollbarRegion(scrollBar.Background)
+    HideScrollbarRegion(scrollBar.Top)
+    HideScrollbarRegion(scrollBar.Middle)
+    HideScrollbarRegion(scrollBar.Bottom)
+
+    -- In WoW 3.3.5a, also iterate through ALL scrollbar regions to hide any we missed
+    if not scrollBar.kolRegionsHidden then
+        local regions = { scrollBar:GetRegions() }
+        for _, region in ipairs(regions) do
+            if region and region ~= thumb then  -- Don't hide the thumb, we handle it separately
+                HideScrollbarRegion(region)
+            end
+        end
+        scrollBar.kolRegionsHidden = true
+    end
+
+    -- Create backdrop for scrollbar track (or update colors if it exists)
     if not scrollBar.kolBackdrop then
         scrollBar.kolBackdrop = CreateFrame("Frame", nil, scrollBar)
         scrollBar.kolBackdrop:SetAllPoints(scrollBar)
@@ -607,51 +1103,117 @@ function KOL:SkinScrollBar(scrollFrame, scrollBarName, colors)
             edgeSize = 1,
             insets = { left = 0, right = 0, top = 0, bottom = 0 }
         })
-        scrollBar.kolBackdrop:SetBackdropColor(unpack(trackBg))
-        scrollBar.kolBackdrop:SetBackdropBorderColor(unpack(trackBorder))
         scrollBar.kolBackdrop:SetFrameLevel(scrollBar:GetFrameLevel())
     end
+    -- Always update colors (allows theme changes to apply)
+    scrollBar.kolBackdrop:SetBackdropColor(unpack(trackBg))
+    scrollBar.kolBackdrop:SetBackdropBorderColor(unpack(trackBorder))
 
     -- Skin the thumb (draggable part)
     if thumb then
-        -- Try to hide original thumb texture (but don't fail if it errors)
+        -- Aggressively hide original thumb texture - use solid texture set to fully transparent
         pcall(function()
-            thumb:SetTexture(nil)
+            thumb:SetTexture("Interface\\Buttons\\WHITE8X8")
+            thumb:SetVertexColor(0, 0, 0, 0)
+            thumb:SetAlpha(0)
         end)
 
         if not thumb.kolBackdrop then
             thumb.kolBackdrop = CreateFrame("Frame", nil, scrollBar)
-            thumb.kolBackdrop:SetWidth(scrollbarWidth - 2)  -- Slightly narrower than track
-            thumb.kolBackdrop:SetHeight(24)
+            thumb.kolBackdrop:SetWidth(scrollbarWidth)  -- Full width to cover edges
+            thumb.kolBackdrop:SetHeight(26)  -- Slightly taller to cover any edge artifacts
             thumb.kolBackdrop:SetPoint("CENTER", thumb, "CENTER", 0, 0)
-            thumb.kolBackdrop:SetFrameLevel(scrollBar:GetFrameLevel() + 5)
+            thumb.kolBackdrop:SetFrameLevel(scrollBar:GetFrameLevel() + 10)  -- Higher frame level
             thumb.kolBackdrop:SetBackdrop({
                 bgFile = "Interface\\Buttons\\WHITE8X8",
                 edgeFile = "Interface\\Buttons\\WHITE8X8",
                 tile = false,
                 edgeSize = 1,
-                insets = { left = 1, right = 1, top = 1, bottom = 1 }
+                insets = { left = 0, right = 0, top = 0, bottom = 0 }
             })
-            thumb.kolBackdrop:SetBackdropColor(unpack(thumbBg))
-            thumb.kolBackdrop:SetBackdropBorderColor(unpack(thumbBorder))
-        else
-            -- Update existing thumb width if scrollbar width changed
-            thumb.kolBackdrop:SetWidth(scrollbarWidth - 2)
         end
+        -- ALWAYS ensure mouse passes through to actual thumb (fixes drag)
+        thumb.kolBackdrop:EnableMouse(false)
+        -- Always update colors and width (allows theme changes to apply)
+        thumb.kolBackdrop:SetWidth(scrollbarWidth)
+        thumb.kolBackdrop:SetBackdropColor(unpack(thumbBg))
+        thumb.kolBackdrop:SetBackdropBorderColor(unpack(thumbBorder))
     end
 
-    -- Skin up button
-    if upButton then
-        local buttonColors = {bg = buttonBg, border = buttonBorder, arrow = buttonArrow, width = scrollbarWidth}
-        self:SkinScrollButton(upButton, "up", buttonColors)
-        upButton:SetPoint("BOTTOM", scrollBar, "TOP", 0, 1)
-    end
+    -- Skin or hide up/down buttons
+    if colors.hideButtons then
+        -- Hide buttons completely for minimal scrollbar look
+        local function HideButtonCompletely(button)
+            if not button then return end
 
-    -- Skin down button
-    if downButton then
-        local buttonColors = {bg = buttonBg, border = buttonBorder, arrow = buttonArrow, width = scrollbarWidth}
-        self:SkinScrollButton(downButton, "down", buttonColors)
-        downButton:SetPoint("TOP", scrollBar, "BOTTOM", 0, -1)
+            -- Hide the button itself
+            button:Hide()
+            button:SetAlpha(0)
+            button:SetHeight(1)
+            button:SetWidth(1)
+
+            -- Hide any custom backdrop we created
+            if button.kolBackdrop then
+                button.kolBackdrop:Hide()
+                button.kolBackdrop:SetAlpha(0)
+            end
+            if button.kolArrow then
+                button.kolArrow:Hide()
+                button.kolArrow:SetAlpha(0)
+            end
+
+            -- Clear all button textures
+            pcall(function()
+                if button.GetNormalTexture and button:GetNormalTexture() then
+                    button:GetNormalTexture():SetTexture(nil)
+                    button:GetNormalTexture():Hide()
+                end
+                if button.GetPushedTexture and button:GetPushedTexture() then
+                    button:GetPushedTexture():SetTexture(nil)
+                    button:GetPushedTexture():Hide()
+                end
+                if button.GetDisabledTexture and button:GetDisabledTexture() then
+                    button:GetDisabledTexture():SetTexture(nil)
+                    button:GetDisabledTexture():Hide()
+                end
+                if button.GetHighlightTexture and button:GetHighlightTexture() then
+                    button:GetHighlightTexture():SetTexture(nil)
+                    button:GetHighlightTexture():Hide()
+                end
+            end)
+
+            -- Hide all child regions
+            local regions = {button:GetRegions()}
+            for _, region in ipairs(regions) do
+                if region then
+                    pcall(function()
+                        if region.SetTexture then region:SetTexture(nil) end
+                        if region.SetAlpha then region:SetAlpha(0) end
+                        region:Hide()
+                    end)
+                end
+            end
+
+            -- Disable the button so it doesn't respond to clicks
+            button:Disable()
+        end
+
+        HideButtonCompletely(upButton)
+        HideButtonCompletely(downButton)
+    else
+        -- Skin up button
+        if upButton then
+            local buttonColors = {bg = buttonBg, border = buttonBorder, arrow = buttonArrow, width = scrollbarWidth}
+            self:SkinScrollButton(upButton, "up", buttonColors)
+            upButton:SetPoint("BOTTOM", scrollBar, "TOP", 0, 1)
+        end
+
+        -- Skin down button
+        if downButton then
+            local buttonColors = {bg = buttonBg, border = buttonBorder, arrow = buttonArrow, width = scrollbarWidth}
+            self:SkinScrollButton(downButton, "down", buttonColors)
+            downButton:SetPoint("TOP", scrollBar, "BOTTOM", 0, -1)
+        end
     end
 
     scrollBar.kolSkinned = true
@@ -679,35 +1241,77 @@ function KOL:SkinScrollButton(button, direction, colors)
     -- Always update size (allows live resizing)
     button:SetSize(buttonSize, buttonSize)
 
-    -- Already skinned (unless it was reset - check if backdrop exists)
-    if button.kolSkinned and button.kolBackdrop then return end
-    button.kolSkinned = nil
+    -- Note: We no longer return early even if skinned, to allow color updates
 
-    -- Try to clear default textures (wrapped in pcall to avoid errors)
+    -- Aggressively hide ALL original textures
+    -- First try the standard texture getters - use solid texture set to fully transparent
+    local function HideTexture(tex)
+        if tex then
+            tex:SetTexture("Interface\\Buttons\\WHITE8X8")
+            tex:SetVertexColor(0, 0, 0, 0)
+            tex:SetAlpha(0)
+            tex:Hide()
+        end
+    end
+
     pcall(function()
-        if button.GetNormalTexture then
-            local normal = button:GetNormalTexture()
-            if normal then normal:SetTexture(nil) end
+        if button.GetNormalTexture then HideTexture(button:GetNormalTexture()) end
+        if button.GetPushedTexture then HideTexture(button:GetPushedTexture()) end
+        if button.GetDisabledTexture then HideTexture(button:GetDisabledTexture()) end
+        if button.GetHighlightTexture then HideTexture(button:GetHighlightTexture()) end
+    end)
+
+    -- In WoW 3.3.5a, also iterate through ALL regions to catch any we missed
+    if not button.kolRegionsHidden then
+        local regions = { button:GetRegions() }
+        for _, region in ipairs(regions) do
+            if region then
+                pcall(function()
+                    if region.SetTexture then
+                        region:SetTexture("Interface\\Buttons\\WHITE8X8")
+                    end
+                    if region.SetVertexColor then
+                        region:SetVertexColor(0, 0, 0, 0)
+                    end
+                    if region.SetAlpha then
+                        region:SetAlpha(0)
+                    end
+                    region:Hide()
+                end)
+            end
         end
-        if button.GetPushedTexture then
-            local pushed = button:GetPushedTexture()
-            if pushed then pushed:SetTexture(nil) end
-        end
-        if button.GetDisabledTexture then
-            local disabled = button:GetDisabledTexture()
-            if disabled then disabled:SetTexture(nil) end
-        end
-        if button.GetHighlightTexture then
-            local highlight = button:GetHighlightTexture()
-            if highlight then highlight:SetTexture(nil) end
+        button.kolRegionsHidden = true
+    end
+
+    -- Also clear the button's own backdrop if it has one (some templates add backdrops)
+    pcall(function()
+        if button.SetBackdrop then
+            button:SetBackdrop(nil)
         end
     end)
 
-    -- Create backdrop (set high frame level to cover original textures)
+    -- Hide any child frames (not just regions) that might have their own visuals
+    if not button.kolChildrenHidden then
+        local children = { button:GetChildren() }
+        for _, child in ipairs(children) do
+            if child and not child.kolBackdrop then  -- Don't hide our own backdrop
+                pcall(function()
+                    if child.SetBackdrop then child:SetBackdrop(nil) end
+                    -- Don't hide children completely as they might be needed for functionality
+                    -- Just remove their backdrops
+                end)
+            end
+        end
+        button.kolChildrenHidden = true
+    end
+
+    -- Create backdrop (set very high frame level to cover original textures)
+    -- Make it slightly larger than the button to fully cover any edge artifacts
     if not button.kolBackdrop then
         button.kolBackdrop = CreateFrame("Frame", nil, button)
-        button.kolBackdrop:SetAllPoints(button)
-        button.kolBackdrop:SetFrameLevel(button:GetFrameLevel() + 3)
+        button.kolBackdrop:SetPoint("TOPLEFT", button, "TOPLEFT", -1, 1)
+        button.kolBackdrop:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 1, -1)
+        button.kolBackdrop:SetFrameLevel(button:GetFrameLevel() + 10)
         button.kolBackdrop:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8X8",
             edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -715,16 +1319,16 @@ function KOL:SkinScrollButton(button, direction, colors)
             edgeSize = 1,
             insets = { left = 0, right = 0, top = 0, bottom = 0 }
         })
-        button.kolBackdrop:SetBackdropColor(unpack(bg))
-        button.kolBackdrop:SetBackdropBorderColor(unpack(border))
     end
+    -- Always update colors (allows theme changes to apply)
+    button.kolBackdrop:SetBackdropColor(unpack(bg))
+    button.kolBackdrop:SetBackdropBorderColor(unpack(border))
 
     -- Create arrow text on the backdrop (ensures it's above everything)
     if not button.kolArrowText then
         button.kolArrowText = button.kolBackdrop:CreateFontString(nil, "OVERLAY")
         button.kolArrowText:SetFont(CHAR_LIGATURESFONT, 10, CHAR_LIGATURESOUTLINE)
         button.kolArrowText:SetPoint("CENTER", button.kolBackdrop, "CENTER", 0, 0)
-        button.kolArrowText:SetTextColor(unpack(arrow))
 
         if direction == "up" then
             button.kolArrowText:SetText(CHAR_ARROW_UPFILLED)
@@ -736,16 +1340,18 @@ function KOL:SkinScrollButton(button, direction, colors)
             button.kolArrowText:SetText(CHAR_ARROW_RIGHTFILLED)
         end
     end
+    -- Always update arrow color (allows theme changes to apply)
+    button.kolArrowText:SetTextColor(unpack(arrow))
 
     -- Store colors for hover effects
     button.kolColors = {bg = bg, border = border, arrow = arrow}
 
-    -- Hover effect
+    -- Hover effect (keep gray by adding equally to all channels)
     button:SetScript("OnEnter", function(self)
         if not self.kolColors then return end
-        local hoverBg = {self.kolColors.bg[1] + 0.05, self.kolColors.bg[2] + 0.05, self.kolColors.bg[3] + 0.05, 1}
-        local hoverBorder = {self.kolColors.border[1], self.kolColors.border[2] + 0.2, self.kolColors.border[3] + 0.2, 1}
-        local hoverArrow = {self.kolColors.arrow[1], self.kolColors.arrow[2] + 0.2, self.kolColors.arrow[3] + 0.2, 1}
+        local hoverBg = {self.kolColors.bg[1] + 0.1, self.kolColors.bg[2] + 0.1, self.kolColors.bg[3] + 0.1, 1}
+        local hoverBorder = {self.kolColors.border[1] + 0.15, self.kolColors.border[2] + 0.15, self.kolColors.border[3] + 0.15, 1}
+        local hoverArrow = {self.kolColors.arrow[1] + 0.2, self.kolColors.arrow[2] + 0.2, self.kolColors.arrow[3] + 0.2, 1}
 
         if self.kolBackdrop then
             self.kolBackdrop:SetBackdropColor(unpack(hoverBg))
@@ -798,6 +1404,187 @@ function KOL:SkinUIPanelScrollFrame(scrollFrame, colors)
         self:DebugPrint("UI: Could not find scrollbar for " .. (frameName or "unknown"), 1)
     end
 end
+
+-- ============================================================================
+-- Scrollbar Registration System (for Synastria UI skinning)
+-- ============================================================================
+-- Ultra-performant registration system for skinning scrollbars across the UI.
+-- Frames register their scrollbar patterns, and SkinRegisteredScrollBars is
+-- called from the batch system to apply skins efficiently.
+
+-- Registry of frames to skin: { frameBaseName = { patterns = {...}, lastSkinned = time } }
+UIFactory.scrollbarRegistry = UIFactory.scrollbarRegistry or {}
+
+--[[
+    Register a frame's scrollbars for skinning
+
+    Parameters:
+        frameBaseName - Base name of the frame (e.g., "PerkMgrFrame")
+        patterns - Table of scrollbar patterns to skin:
+            {
+                { slider = "PerkMgrFrame-Slider%d", upButton = "PerkMgrFrame-Slider%dScrollUpButton",
+                  downButton = "PerkMgrFrame-Slider%d-ScrollDownButton", maxIndex = 5 },
+            }
+]]
+function UIFactory:RegisterScrollBars(frameBaseName, patterns)
+    self.scrollbarRegistry[frameBaseName] = {
+        patterns = patterns,
+        lastSkinned = 0,
+    }
+    KOL:DebugPrint("UIFactory: Registered scrollbars for " .. frameBaseName, 2)
+end
+
+--[[
+    Skin all registered scrollbars (called from batch system)
+    Extremely performant - only checks if frames exist and skins if needed
+
+    Parameters:
+        forceReskin - If true, re-skin even already-skinned scrollbars (for live settings updates)
+]]
+function UIFactory:SkinRegisteredScrollBars(forceReskin)
+    -- Check if scrollbar skinning is enabled
+    if not KOL.db or not KOL.db.profile.tweaks or not KOL.db.profile.tweaks.synastria then
+        return
+    end
+    if not KOL.db.profile.tweaks.synastria.scrollbarSkinning then
+        return
+    end
+
+    -- Get global scrollbar settings
+    local scrollbarSettings = KOL.db.profile.tweaks.synastria.scrollbar or {}
+    local isHidden = scrollbarSettings.hidden
+    local hideUpButton = scrollbarSettings.hideUpButton
+    local hideDownButton = scrollbarSettings.hideDownButton
+    local width = scrollbarSettings.width or 16
+
+    -- Build colors table from settings
+    local colors = {
+        width = width,
+        track = {
+            bg = scrollbarSettings.trackBg and {scrollbarSettings.trackBg.r, scrollbarSettings.trackBg.g, scrollbarSettings.trackBg.b, scrollbarSettings.trackBg.a},
+            border = scrollbarSettings.trackBorder and {scrollbarSettings.trackBorder.r, scrollbarSettings.trackBorder.g, scrollbarSettings.trackBorder.b, scrollbarSettings.trackBorder.a},
+        },
+        thumb = {
+            bg = scrollbarSettings.thumbBg and {scrollbarSettings.thumbBg.r, scrollbarSettings.thumbBg.g, scrollbarSettings.thumbBg.b, scrollbarSettings.thumbBg.a},
+            border = scrollbarSettings.thumbBorder and {scrollbarSettings.thumbBorder.r, scrollbarSettings.thumbBorder.g, scrollbarSettings.thumbBorder.b, scrollbarSettings.thumbBorder.a},
+        },
+        button = {
+            bg = scrollbarSettings.buttonBg and {scrollbarSettings.buttonBg.r, scrollbarSettings.buttonBg.g, scrollbarSettings.buttonBg.b, scrollbarSettings.buttonBg.a},
+            border = scrollbarSettings.buttonBorder and {scrollbarSettings.buttonBorder.r, scrollbarSettings.buttonBorder.g, scrollbarSettings.buttonBorder.b, scrollbarSettings.buttonBorder.a},
+            arrow = scrollbarSettings.buttonArrow and {scrollbarSettings.buttonArrow.r, scrollbarSettings.buttonArrow.g, scrollbarSettings.buttonArrow.b, scrollbarSettings.buttonArrow.a},
+        },
+    }
+
+    local skinCount = 0
+
+    for frameBaseName, regData in pairs(self.scrollbarRegistry) do
+        -- Check if the base frame exists
+        local baseFrame = _G[frameBaseName]
+        if baseFrame then
+            -- Hook OnShow to trigger skinning when the frame is shown (once per frame)
+            if not regData.hooked then
+                baseFrame:HookScript("OnShow", function()
+                    -- Delay slightly to ensure children are created
+                    C_Timer.After(0.1, function()
+                        if KOL.UIFactory and KOL.UIFactory.SkinRegisteredScrollBars then
+                            KOL.UIFactory:SkinRegisteredScrollBars()
+                        end
+                    end)
+                end)
+                regData.hooked = true
+                KOL:DebugPrint("UIFactory: Hooked OnShow for " .. frameBaseName, 2)
+            end
+        end
+
+        if baseFrame and baseFrame:IsVisible() then
+            -- Process each pattern set
+            for _, patternSet in ipairs(regData.patterns) do
+                local maxIdx = patternSet.maxIndex or 10
+
+                for i = 1, maxIdx do
+                    -- Build the actual frame names from patterns
+                    local sliderName = patternSet.slider and string.format(patternSet.slider, i)
+                    local slider = sliderName and _G[sliderName]
+
+                    if slider and (forceReskin or not slider.kolSkinned) then
+                        -- Clear skinned flag if forcing reskin
+                        if forceReskin then
+                            slider.kolSkinned = nil
+                        end
+
+                        -- Found a slider to skin
+                        local upBtnName = patternSet.upButton and string.format(patternSet.upButton, i)
+                        local downBtnName = patternSet.downButton and string.format(patternSet.downButton, i)
+
+                        -- Handle visibility
+                        if isHidden then
+                            slider:SetAlpha(0)
+                            slider:EnableMouse(false)  -- Allow click-through
+                        else
+                            slider:SetAlpha(1)
+                            slider:EnableMouse(true)
+
+                            -- Create a mock parent with the scrollbar for SkinScrollBar
+                            local mockParent = {}
+                            mockParent[sliderName] = slider
+
+                            -- Skin it using global colors
+                            KOL:SkinScrollBar(mockParent, sliderName, colors)
+                        end
+
+                        -- Handle buttons
+                        local upBtn = upBtnName and _G[upBtnName]
+                        local downBtn = downBtnName and _G[downBtnName]
+
+                        if upBtn then
+                            if isHidden or hideUpButton then
+                                upBtn:SetAlpha(0)
+                                upBtn:EnableMouse(false)
+                            else
+                                upBtn:SetAlpha(1)
+                                upBtn:EnableMouse(true)
+                                KOL:SkinScrollButton(upBtn, "up", colors.button)
+                            end
+                        end
+                        if downBtn then
+                            if isHidden or hideDownButton then
+                                downBtn:SetAlpha(0)
+                                downBtn:EnableMouse(false)
+                            else
+                                downBtn:SetAlpha(1)
+                                downBtn:EnableMouse(true)
+                                KOL:SkinScrollButton(downBtn, "down", colors.button)
+                            end
+                        end
+
+                        -- Apply position offset if specified (fixes scrollbars that get pushed too far)
+                        if patternSet.xOffset and not slider.kolOffsetApplied then
+                            local point, relativeTo, relativePoint, xOfs, yOfs = slider:GetPoint(1)
+                            if point then
+                                slider:ClearAllPoints()
+                                slider:SetPoint(point, relativeTo, relativePoint, (xOfs or 0) + patternSet.xOffset, yOfs or 0)
+                                slider.kolOffsetApplied = true
+                            end
+                        end
+
+                        skinCount = skinCount + 1
+                        KOL:DebugPrint("UIFactory: Skinned " .. sliderName, 3)
+                    end
+                end
+            end
+
+            regData.lastSkinned = GetTime()
+        end
+    end
+
+    if skinCount > 0 then
+        KOL:DebugPrint("UIFactory: Skinned " .. skinCount .. " scrollbars", 2)
+    end
+end
+
+-- NOTE: External frame scrollbar skinning (like PerkMgrFrame) was removed
+-- because it's too fragile - those frames have their own parent/anchor logic
+-- that conflicts with our skinning. We only skin our own KOL scrollbars now.
 
 -- ============================================================================
 -- Button Creation
@@ -909,30 +1696,37 @@ end
 -- ============================================================================
 
 --[[
-    Creates a scrollable content area with invisible scrollbar
-    
+    Creates a scrollable content area with skinned scrollbar
+
     Parameters:
         parent - Parent frame
         options - Table with optional settings:
             - inset: {top, bottom, left, right} insets from parent
             - showScrollbar: boolean (default: true)
             - scrollbarColor: {bg, border, thumb} colors
-    
+            - scrollbarWidth: number (default: 16) - width of scrollbar in pixels
+            - hideButtons: boolean (default: false) - hide up/down buttons for minimal look
+            - scrollbarInside: boolean (default: true) - position scrollbar inside content area
+
     Returns: contentFrame, scrollFrame
 ]]
 function UIFactory:CreateScrollableContent(parent, options)
     options = options or {}
     local inset = options.inset or {top = 8, bottom = 8, left = 8, right = 8}
+    local scrollbarWidth = options.scrollbarWidth or 16
+    local scrollbarInside = options.scrollbarInside ~= false  -- Default true
 
     -- Create scroll frame (needs unique name for UIPanelScrollFrameTemplate in 3.3.5a)
     local scrollFrameName = "KOL_ScrollFrame_" .. tostring(math.random(100000, 999999))
     local scrollFrame = CreateFrame("ScrollFrame", scrollFrameName, parent, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", inset.left, -inset.top)
-    scrollFrame:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -inset.right, inset.bottom)
+    -- Reserve space for scrollbar on the right if inside
+    local rightInset = scrollbarInside and (inset.right + scrollbarWidth + 2) or inset.right
+    scrollFrame:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -rightInset, inset.bottom)
 
     -- Create content child
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-    scrollChild:SetWidth(scrollFrame:GetWidth() - 10)
+    scrollChild:SetWidth(scrollFrame:GetWidth())
     scrollChild:SetHeight(1)
     scrollFrame:SetScrollChild(scrollChild)
 
@@ -944,7 +1738,7 @@ function UIFactory:CreateScrollableContent(parent, options)
             -- Use provided colors
             scrollbarColors = options.scrollbarColor
         elseif KOL.Themes and KOL.Themes.GetUIThemeColor then
-            -- Pull from Theme system (gray fallbacks matching Nuclear Zero theme)
+            -- Pull from Theme system (gray fallbacks matching Furwin theme)
             local trackBG = KOL.Themes:GetUIThemeColor("ScrollbarTrackBG", {r = 0.05, g = 0.05, b = 0.05, a = 0.9})
             local trackBorder = KOL.Themes:GetUIThemeColor("ScrollbarTrackBorder", {r = 0.2, g = 0.2, b = 0.2, a = 1})
             local thumbBG = KOL.Themes:GetUIThemeColor("ScrollbarThumbBG", {r = 0.3, g = 0.3, b = 0.3, a = 1})
@@ -959,13 +1753,17 @@ function UIFactory:CreateScrollableContent(parent, options)
                 button = {bg = {buttonBG.r, buttonBG.g, buttonBG.b, buttonBG.a or 0.9}, border = {buttonBorder.r, buttonBorder.g, buttonBorder.b, buttonBorder.a or 1}, arrow = {buttonArrow.r, buttonArrow.g, buttonArrow.b, buttonArrow.a or 1}}
             }
         else
-            -- Fallback to hardcoded defaults (gray, matching Nuclear Zero theme)
+            -- Fallback to hardcoded defaults (gray, matching Furwin theme)
             scrollbarColors = {
                 track = {bg = {0.05, 0.05, 0.05, 0.9}, border = {0.2, 0.2, 0.2, 1}},
                 thumb = {bg = {0.3, 0.3, 0.3, 1}, border = {0.4, 0.4, 0.4, 1}},
                 button = {bg = {0.15, 0.15, 0.15, 0.9}, border = {0.25, 0.25, 0.25, 1}, arrow = {0.6, 0.6, 0.6, 1}}
             }
         end
+
+        -- Add width and hideButtons options to colors
+        scrollbarColors.width = scrollbarWidth
+        scrollbarColors.hideButtons = options.hideButtons
 
         KOL:SkinUIPanelScrollFrame(scrollFrame, scrollbarColors)
     end
@@ -2184,16 +2982,17 @@ function UIFactory:CreateDropdown(parent, width, options)
             self.isOpen = false
             self.arrow:SetText(CHAR_ARROW_DOWNFILLED)
         else
+            -- Dynamically update strata before showing (parent may have been raised)
+            local rootFrame = UIFactory:FindRootFrame(self)
+            local dropStrata, dropLevel = UIFactory:GetDropdownStrataInfo(rootFrame or self:GetParent())
+            self.list:SetFrameStrata(dropStrata)
+            self.list:SetFrameLevel(dropLevel)
+
             PopulateList()
             self.list:Show()
             self.isOpen = true
             self.arrow:SetText(CHAR_ARROW_UPFILLED)
         end
-    end)
-
-    -- Close when clicking elsewhere
-    list:SetScript("OnShow", function()
-        -- We'll handle this with a global mouse handler if needed
     end)
 
     -- Hover effect on main button
@@ -2453,8 +3252,7 @@ function UIFactory:CreateActionApprovalFrame(parent, frameId, options)
     local frame = self:CreateStyledFrame(parent, frameId, 340, baseHeight, {
         closable = true,
         movable = true,
-        strata = "TOOLTIP",
-        level = 200,
+        -- Uses default DIALOG strata - focus system brings it to front when shown
     })
     frame:SetPoint("CENTER")
     frame:Hide()
@@ -2711,11 +3509,15 @@ function UIFactory:CreateScrollableDropdown(parent, width, options)
     local scrollFrame = CreateFrame("ScrollFrame", nil, list)
     scrollFrame:SetPoint("TOPLEFT", 2, -2)
     scrollFrame:SetPoint("BOTTOMRIGHT", -2, 2)
+    scrollFrame:SetFrameStrata(dropStrata)
+    scrollFrame:SetFrameLevel(dropLevel + 1)
     dropdown.scrollFrame = scrollFrame
 
     -- Create scroll child
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
     scrollChild:SetWidth(width - 4)
+    scrollChild:SetFrameStrata(dropStrata)
+    scrollChild:SetFrameLevel(dropLevel + 2)
     scrollFrame:SetScrollChild(scrollChild)
     dropdown.scrollChild = scrollChild
 
@@ -2833,7 +3635,8 @@ function UIFactory:CreateScrollableDropdown(parent, width, options)
             end
 
             local itemBtn = CreateFrame("Button", nil, scrollChild)
-            itemBtn:SetFrameLevel(listLevel + 1)  -- Ensure buttons are above list backdrop
+            itemBtn:SetFrameStrata(list:GetFrameStrata())  -- Explicit strata for TOOLTIP visibility
+            itemBtn:SetFrameLevel(listLevel + 3)  -- Ensure buttons are above all list elements
             itemBtn:SetSize(width - (needsScroll and 16 or 8), itemHeight)
             itemBtn:SetPoint("TOPLEFT", 2, -((i - 1) * itemHeight))
 
@@ -2940,6 +3743,12 @@ function UIFactory:CreateScrollableDropdown(parent, width, options)
             list:Hide()
             self.isOpen = false
         else
+            -- Dynamically update strata before showing (parent may have been raised)
+            local rootFrame = UIFactory:FindRootFrame(self)
+            local dropStrata, dropLevel = UIFactory:GetDropdownStrataInfo(rootFrame or self:GetParent())
+            list:SetFrameStrata(dropStrata)
+            list:SetFrameLevel(dropLevel)
+
             PopulateList()
             list:Show()
             self.isOpen = true
@@ -3129,11 +3938,15 @@ function UIFactory:CreateFontChoiceDropdown(parent, name, label, width, callback
     local scrollFrame = CreateFrame("ScrollFrame", name and (name .. "ScrollFrame") or nil, list)
     scrollFrame:SetPoint("TOPLEFT", 2, -2)
     scrollFrame:SetPoint("BOTTOMRIGHT", -2, 2)
+    scrollFrame:SetFrameStrata(dropStrata)
+    scrollFrame:SetFrameLevel(dropLevel + 1)
     dropdown.scrollFrame = scrollFrame
 
     -- Create scroll child (content holder)
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
     scrollChild:SetWidth(width - 4)
+    scrollChild:SetFrameStrata(dropStrata)
+    scrollChild:SetFrameLevel(dropLevel + 2)
     scrollFrame:SetScrollChild(scrollChild)
     dropdown.scrollChild = scrollChild
 
@@ -3221,7 +4034,8 @@ function UIFactory:CreateFontChoiceDropdown(parent, name, label, width, callback
         -- Create item buttons
         for i, fontName in ipairs(fonts) do
             local itemBtn = CreateFrame("Button", nil, scrollChild)
-            itemBtn:SetFrameLevel(listLevel + 1)  -- Ensure buttons are above list backdrop
+            itemBtn:SetFrameStrata(list:GetFrameStrata())  -- Explicit strata for TOOLTIP visibility
+            itemBtn:SetFrameLevel(listLevel + 3)  -- Ensure buttons are above all list elements
             itemBtn:SetSize(width - (needsScroll and 16 or 8), itemHeight)
             itemBtn:SetPoint("TOPLEFT", 2, -((i - 1) * itemHeight))
 
@@ -3365,6 +4179,12 @@ function UIFactory:CreateFontChoiceDropdown(parent, name, label, width, callback
             self.isOpen = false
             self.arrow:SetText(CHAR_ARROW_DOWNFILLED)
         else
+            -- Dynamically update strata before showing (parent may have been raised)
+            local rootFrame = UIFactory:FindRootFrame(self)
+            local dropStrata, dropLevel = UIFactory:GetDropdownStrataInfo(rootFrame or self:GetParent())
+            list:SetFrameStrata(dropStrata)
+            list:SetFrameLevel(dropLevel)
+
             PopulateList()
 
             -- Smart positioning: check if list would go off-screen
@@ -4734,6 +5554,514 @@ function UIFactory:HideUIShowcase()
     if uiShowcaseFrame then
         uiShowcaseFrame:Hide()
     end
+end
+
+-- ============================================================================
+-- Font Outline Dropdown
+-- ============================================================================
+--[[
+    Creates a styled dropdown specifically for font outline/style selection.
+    Shows all valid WoW font flags with preview text in each style.
+
+    Parameters:
+        parent - Parent frame
+        width - Dropdown width (default 150)
+        options - Table with:
+            - selectedValue: Currently selected outline value
+            - onSelect: Callback function(value, label)
+            - fontSize: Font size for dropdown text (default 11)
+            - showPreview: Show outline preview in dropdown items (default true)
+
+    Returns: dropdown with :GetValue(), :SetValue(value), :SetItems() methods
+
+    Available outline values:
+        "" - None (no outline)
+        "OUTLINE" - Thin outline
+        "THICKOUTLINE" - Thick outline
+        "MONOCHROME" - Sharp (no antialiasing)
+        "OUTLINE, MONOCHROME" - Thin outline + sharp
+        "THICKOUTLINE, MONOCHROME" - Thick outline + sharp
+]]
+function UIFactory:CreateFontOutlineDropdown(parent, width, options)
+    options = options or {}
+    width = width or 150
+    local height = 22
+    local fontSize = options.fontSize or 11
+    local showPreview = options.showPreview ~= false  -- Default true
+
+    local fontPath, _ = GetGeneralFont()  -- Get font path but we'll use our own outline
+
+    -- Get theme colors
+    local bgColor, borderColor, hoverBorderColor
+    if KOL.Themes and KOL.Themes.GetUIThemeColor then
+        bgColor = KOL.Themes:GetUIThemeColor("ContentAreaBG", {r = 0.08, g = 0.08, b = 0.08, a = 1})
+        borderColor = KOL.Themes:GetUIThemeColor("ContentAreaBorder", {r = 0.3, g = 0.3, b = 0.3, a = 1})
+        hoverBorderColor = KOL.Themes:GetUIThemeColor("ButtonHoverBorder", {r = 0, g = 0.6, b = 0.6, a = 1})
+    else
+        bgColor = {r = 0.08, g = 0.08, b = 0.08, a = 1}
+        borderColor = {r = 0.3, g = 0.3, b = 0.3, a = 1}
+        hoverBorderColor = {r = 0, g = 0.6, b = 0.6, a = 1}
+    end
+
+    -- Define all valid font outline options
+    local outlineOptions = {
+        { value = "", label = "NONE" },
+        { value = "OUTLINE", label = "OUTLINE" },
+        { value = "THICKOUTLINE", label = "THICKOUTLINE" },
+        { value = "MONOCHROME", label = "MONOCHROME" },
+        { value = "OUTLINE, MONOCHROME", label = "OUTLINE + MONO" },
+        { value = "THICKOUTLINE, MONOCHROME", label = "THICKOUTLINE + MONO" },
+    }
+
+    -- Create main dropdown button
+    local dropdown = CreateFrame("Button", nil, parent)
+    dropdown:SetSize(width, height)
+    dropdown:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        tile = false, tileSize = 1, edgeSize = 1,
+        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    })
+    dropdown:SetBackdropColor(bgColor.r, bgColor.g, bgColor.b, bgColor.a or 1)
+    dropdown:SetBackdropBorderColor(borderColor.r, borderColor.g, borderColor.b, borderColor.a or 1)
+
+    -- Selected text display
+    local selectedText = dropdown:CreateFontString(nil, "OVERLAY")
+    selectedText:SetFont(fontPath, fontSize, options.selectedValue or "OUTLINE")
+    selectedText:SetPoint("LEFT", 6, 0)
+    selectedText:SetPoint("RIGHT", -18, 0)
+    selectedText:SetJustifyH("LEFT")
+    selectedText:SetText("Select Style...")
+    selectedText:SetTextColor(0.9, 0.9, 0.9, 1)
+    dropdown.text = selectedText
+    dropdown.selectedText = selectedText
+
+    -- Arrow indicator
+    local arrow = dropdown:CreateFontString(nil, "OVERLAY")
+    arrow:SetFont(CHAR_LIGATURESFONT, fontSize, CHAR_LIGATURESOUTLINE)
+    arrow:SetPoint("RIGHT", -5, 0)
+    arrow:SetText(CHAR_ARROW_DOWNFILLED)
+    arrow:SetTextColor(0.5, 0.5, 0.5, 1)
+    dropdown.arrow = arrow
+
+    -- State
+    dropdown.selectedValue = options.selectedValue
+    dropdown.items = outlineOptions
+    dropdown.onSelect = options.onSelect
+    dropdown.bgColor = bgColor
+    dropdown.borderColor = borderColor
+    dropdown.hoverBorderColor = hoverBorderColor
+    dropdown.fontPath = fontPath
+    dropdown.fontSize = fontSize
+    dropdown.showPreview = showPreview
+
+    -- Set initial display text
+    if dropdown.selectedValue then
+        for _, item in ipairs(outlineOptions) do
+            if item.value == dropdown.selectedValue then
+                selectedText:SetText(item.label)
+                if showPreview then
+                    selectedText:SetFont(fontPath, fontSize, item.value)
+                end
+                break
+            end
+        end
+    end
+
+    -- Hover effect
+    dropdown:SetScript("OnEnter", function(self)
+        self:SetBackdropBorderColor(self.hoverBorderColor.r, self.hoverBorderColor.g, self.hoverBorderColor.b, 1)
+        self.arrow:SetTextColor(0.8, 0.8, 0.8, 1)
+    end)
+    dropdown:SetScript("OnLeave", function(self)
+        self:SetBackdropBorderColor(self.borderColor.r, self.borderColor.g, self.borderColor.b, 1)
+        self.arrow:SetTextColor(0.5, 0.5, 0.5, 1)
+    end)
+
+    -- Create dropdown list (parented to UIParent for proper layering)
+    local list = CreateFrame("Frame", nil, UIParent)
+    list:SetWidth(width)
+    list:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        tile = false, tileSize = 1, edgeSize = 1,
+        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    })
+    list:SetBackdropColor(0.05, 0.05, 0.05, 0.98)
+    list:SetBackdropBorderColor(borderColor.r, borderColor.g, borderColor.b, 1)
+    list:SetFrameStrata("TOOLTIP")
+    list:SetFrameLevel(100)
+    list:Hide()
+    dropdown.list = list
+
+    -- Position list below dropdown
+    local function PositionList()
+        list:ClearAllPoints()
+        list:SetPoint("TOPLEFT", dropdown, "BOTTOMLEFT", 0, -2)
+    end
+
+    dropdown.itemButtons = {}
+
+    -- Function to populate list items
+    local function PopulateList()
+        local itemHeight = 22
+        local items = dropdown.items
+
+        -- Clear existing buttons
+        for _, btn in ipairs(dropdown.itemButtons) do
+            btn:Hide()
+            btn:SetParent(nil)
+        end
+        dropdown.itemButtons = {}
+
+        local listHeight = (#items * itemHeight) + 4
+        list:SetHeight(listHeight)
+
+        for i, item in ipairs(items) do
+            local itemBtn = CreateFrame("Button", nil, list)
+            itemBtn:SetSize(width - 4, itemHeight)
+            itemBtn:SetPoint("TOPLEFT", 2, -((i - 1) * itemHeight) - 2)
+
+            local itemText = itemBtn:CreateFontString(nil, "OVERLAY")
+            -- Show preview of the outline style if enabled
+            if dropdown.showPreview then
+                itemText:SetFont(dropdown.fontPath, dropdown.fontSize, item.value)
+            else
+                itemText:SetFont(dropdown.fontPath, dropdown.fontSize, "OUTLINE")
+            end
+            itemText:SetPoint("LEFT", 6, 0)
+            itemText:SetText(item.label)
+            itemText:SetTextColor(0.9, 0.9, 0.9, 1)
+
+            itemBtn.value = item.value
+            itemBtn.label = item.label
+            itemBtn.itemText = itemText
+
+            -- Hover effect
+            itemBtn:SetScript("OnEnter", function(self)
+                self:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8X8"})
+                self:SetBackdropColor(0.2, 0.2, 0.2, 1)
+                self.itemText:SetTextColor(0.2, 1, 0.8, 1)
+            end)
+
+            itemBtn:SetScript("OnLeave", function(self)
+                self:SetBackdrop(nil)
+                self.itemText:SetTextColor(0.9, 0.9, 0.9, 1)
+            end)
+
+            -- Click to select
+            itemBtn:SetScript("OnClick", function(self)
+                dropdown.selectedValue = self.value
+                dropdown.selectedText:SetText(self.label)
+                if dropdown.showPreview then
+                    dropdown.selectedText:SetFont(dropdown.fontPath, dropdown.fontSize, self.value)
+                end
+                list:Hide()
+                dropdown.isOpen = false
+                dropdown.arrow:SetText(CHAR_ARROW_DOWNFILLED)
+
+                if dropdown.onSelect then
+                    dropdown.onSelect(self.value, self.label)
+                end
+            end)
+
+            table.insert(dropdown.itemButtons, itemBtn)
+        end
+    end
+
+    -- Toggle dropdown
+    dropdown:SetScript("OnClick", function(self)
+        if self.isOpen then
+            self.list:Hide()
+            self.isOpen = false
+            self.arrow:SetText(CHAR_ARROW_DOWNFILLED)
+        else
+            -- Dynamically update strata before showing (parent may have been raised)
+            local rootFrame = UIFactory:FindRootFrame(self)
+            local dropStrata, dropLevel = UIFactory:GetDropdownStrataInfo(rootFrame or self:GetParent())
+            self.list:SetFrameStrata(dropStrata)
+            self.list:SetFrameLevel(dropLevel)
+
+            PositionList()
+            PopulateList()
+            self.list:Show()
+            self.isOpen = true
+            self.arrow:SetText(CHAR_ARROW_UPFILLED)
+        end
+    end)
+
+    -- Close when clicking elsewhere
+    list:SetScript("OnUpdate", function(self)
+        if dropdown.isOpen and not self:IsMouseOver() and not dropdown:IsMouseOver() then
+            if IsMouseButtonDown("LeftButton") then
+                self:Hide()
+                dropdown.isOpen = false
+                dropdown.arrow:SetText(CHAR_ARROW_DOWNFILLED)
+            end
+        end
+    end)
+
+    -- Helper methods
+    function dropdown:GetValue()
+        return self.selectedValue
+    end
+
+    function dropdown:SetValue(value)
+        self.selectedValue = value
+        for _, item in ipairs(self.items) do
+            if item.value == value then
+                self.selectedText:SetText(item.label)
+                if self.showPreview then
+                    self.selectedText:SetFont(self.fontPath, self.fontSize, value)
+                end
+                return
+            end
+        end
+        -- If value not found, show as-is
+        self.selectedText:SetText(value == "" and "NONE" or value)
+    end
+
+    function dropdown:Close()
+        if self.isOpen then
+            self.list:Hide()
+            self.isOpen = false
+            self.arrow:SetText(CHAR_ARROW_DOWNFILLED)
+        end
+    end
+
+    return dropdown
+end
+
+-- ============================================================================
+-- AceConfig Tree Panel Helpers
+-- ============================================================================
+-- These functions make it easy to create tree-style config panels
+-- (like ElvUI's nested selector panels) using AceConfig's childGroups = "tree"
+--
+-- Usage:
+--   -- Create a tree panel
+--   local treePanel = UIFactory:CreateTreePanel({
+--       name = "|cFF00CCFFSynastria|r",
+--       order = 0.5,
+--   })
+--
+--   -- Add sections to it
+--   UIFactory:AddTreeSection(treePanel.args, "changes", {
+--       name = "CHANGES",
+--       headerColor = "1,0.3,0.3",  -- RGB for styled header
+--       desc = "Server-specific changes and tweaks",
+--       order = 1,
+--   })
+--
+--   -- Then add options to the section
+--   treePanel.args.changes.args.myOption = { type = "toggle", ... }
+-- ============================================================================
+
+--[[
+    Creates a tree-style config panel structure for AceConfig
+
+    Parameters:
+        config.name - Display name (can include color codes)
+        config.order - Order in parent (default: 1)
+        config.desc - Optional description
+
+    Returns:
+        AceConfig group table with childGroups = "tree"
+]]
+function UIFactory:CreateTreePanel(config)
+    config = config or {}
+
+    return {
+        type = "group",
+        name = config.name or "Tree Panel",
+        order = config.order or 1,
+        desc = config.desc,
+        childGroups = "tree",
+        args = {}
+    }
+end
+
+--[[
+    Adds a section to a tree panel with a styled header
+
+    Parameters:
+        treeArgs - The .args table of the tree panel
+        sectionKey - Unique key for this section (e.g., "changes", "uiFactory")
+        config.name - Section name (will be used for tree item AND styled header)
+        config.headerColor - RGB string for styled header (e.g., "1,0.3,0.3")
+        config.desc - Optional description shown below header
+        config.order - Order in tree (default: 1)
+        config.args - Optional pre-defined args to include
+
+    Returns:
+        The created section group (for chaining or further modification)
+]]
+function UIFactory:AddTreeSection(treeArgs, sectionKey, config)
+    config = config or {}
+
+    local sectionName = config.name or sectionKey
+    local headerColor = config.headerColor or "0.8,0.8,0.8"
+
+    -- Create the section group
+    local section = {
+        type = "group",
+        name = sectionName,
+        order = config.order or 1,
+        args = {}
+    }
+
+    -- Add styled header at the top
+    section.args.header = {
+        type = "description",
+        name = sectionName:upper() .. "|" .. headerColor,
+        dialogControl = "KOL_SectionHeader",
+        width = "full",
+        order = 0,
+    }
+
+    -- Add description if provided
+    if config.desc then
+        section.args.desc = {
+            type = "description",
+            name = "|cFFAAAAAA" .. config.desc .. "|r\n",
+            fontSize = "small",
+            width = "full",
+            order = 0.1,
+        }
+    end
+
+    -- Copy any pre-defined args
+    if config.args then
+        for key, value in pairs(config.args) do
+            section.args[key] = value
+        end
+    end
+
+    -- Add to tree
+    treeArgs[sectionKey] = section
+
+    return section
+end
+
+--[[
+    Helper to add a toggle option to a section
+
+    Parameters:
+        sectionArgs - The .args table of the section
+        key - Option key
+        config.name - Display name
+        config.desc - Tooltip description
+        config.order - Order (default: 10)
+        config.width - Width (default: "full")
+        config.get - Getter function
+        config.set - Setter function
+]]
+function UIFactory:AddTreeToggle(sectionArgs, key, config)
+    config = config or {}
+
+    sectionArgs[key] = {
+        type = "toggle",
+        name = config.name or key,
+        desc = config.desc,
+        order = config.order or 10,
+        width = config.width or "full",
+        get = config.get,
+        set = config.set,
+        hidden = config.hidden,
+        disabled = config.disabled,
+    }
+end
+
+--[[
+    Helper to add a range/slider option to a section
+
+    Parameters:
+        sectionArgs - The .args table of the section
+        key - Option key
+        config.name - Display name
+        config.desc - Tooltip description
+        config.min, config.max, config.step - Range settings
+        config.order - Order (default: 10)
+        config.width - Width (default: 1.2)
+        config.get - Getter function
+        config.set - Setter function
+]]
+function UIFactory:AddTreeRange(sectionArgs, key, config)
+    config = config or {}
+
+    sectionArgs[key] = {
+        type = "range",
+        name = config.name or key,
+        desc = config.desc,
+        min = config.min or 0,
+        max = config.max or 100,
+        step = config.step or 1,
+        order = config.order or 10,
+        width = config.width or 1.2,
+        get = config.get,
+        set = config.set,
+        hidden = config.hidden,
+        disabled = config.disabled,
+    }
+end
+
+--[[
+    Helper to add a color picker option to a section
+
+    Parameters:
+        sectionArgs - The .args table of the section
+        key - Option key
+        config.name - Display name
+        config.desc - Tooltip description
+        config.hasAlpha - Include alpha channel (default: true)
+        config.order - Order (default: 10)
+        config.width - Width (default: 0.6)
+        config.get - Getter function (should return r,g,b,a)
+        config.set - Setter function (receives _, r,g,b,a)
+]]
+function UIFactory:AddTreeColor(sectionArgs, key, config)
+    config = config or {}
+
+    sectionArgs[key] = {
+        type = "color",
+        name = config.name or key,
+        desc = config.desc,
+        hasAlpha = config.hasAlpha ~= false,  -- default true
+        order = config.order or 10,
+        width = config.width or 0.6,
+        get = config.get,
+        set = config.set,
+        hidden = config.hidden,
+        disabled = config.disabled,
+    }
+end
+
+--[[
+    Helper to add an inline group (for grouping related options)
+
+    Parameters:
+        sectionArgs - The .args table of the section
+        key - Group key
+        config.name - Group title
+        config.order - Order (default: 10)
+        config.hidden - Hidden function
+
+    Returns:
+        The args table of the new group (add options to this)
+]]
+function UIFactory:AddTreeGroup(sectionArgs, key, config)
+    config = config or {}
+
+    sectionArgs[key] = {
+        type = "group",
+        name = config.name or key,
+        inline = true,
+        order = config.order or 10,
+        hidden = config.hidden,
+        args = {},
+    }
+
+    return sectionArgs[key].args
 end
 
 KOL:DebugPrint("UI Factory loaded with enhanced components", 1)

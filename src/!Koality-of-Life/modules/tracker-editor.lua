@@ -233,13 +233,10 @@ local function RenderEntryRow(container, editor, entry, i, yOffset, containerWid
     -- DOWN button
     local downBtn = CreateFrame("Button", nil, row)
     downBtn:SetSize(16, 16)
-    local downText = downBtn:CreateFontString(nil, "OVERLAY")
-    downText:SetFont(CHAR_LIGATURESFONT, 10, CHAR_LIGATURESOUTLINE)
+    local downText = KOL.UIFactory:CreateGlyph(downBtn, CHAR_ARROW_DOWNFILLED, {r = 0.7, g = 0.7, b = 0.7}, 10)
     downText:SetPoint("CENTER")
-    downText:SetText(CHAR_ARROW_DOWNFILLED)
-    downText:SetTextColor(0.7, 0.7, 0.7, 1)
-    downBtn:SetScript("OnEnter", function() downText:SetTextColor(1, 1, 1, 1) end)
-    downBtn:SetScript("OnLeave", function() downText:SetTextColor(0.7, 0.7, 0.7, 1) end)
+    downBtn:SetScript("OnEnter", function() downText:SetGlyph(nil, {r = 1, g = 1, b = 1}) end)
+    downBtn:SetScript("OnLeave", function() downText:SetGlyph(nil, {r = 0.7, g = 0.7, b = 0.7}) end)
     downBtn:SetScript("OnClick", function()
         if i < #editor.entries then
             local targetEntry = editor.entries[i + 1]
@@ -263,13 +260,10 @@ local function RenderEntryRow(container, editor, entry, i, yOffset, containerWid
     -- UP button
     local upBtn = CreateFrame("Button", nil, row)
     upBtn:SetSize(16, 16)
-    local upText = upBtn:CreateFontString(nil, "OVERLAY")
-    upText:SetFont(CHAR_LIGATURESFONT, 10, CHAR_LIGATURESOUTLINE)
+    local upText = KOL.UIFactory:CreateGlyph(upBtn, CHAR_ARROW_UPFILLED, {r = 0.7, g = 0.7, b = 0.7}, 10)
     upText:SetPoint("CENTER")
-    upText:SetText(CHAR_ARROW_UPFILLED)
-    upText:SetTextColor(0.7, 0.7, 0.7, 1)
-    upBtn:SetScript("OnEnter", function() upText:SetTextColor(1, 1, 1, 1) end)
-    upBtn:SetScript("OnLeave", function() upText:SetTextColor(0.7, 0.7, 0.7, 1) end)
+    upBtn:SetScript("OnEnter", function() upText:SetGlyph(nil, {r = 1, g = 1, b = 1}) end)
+    upBtn:SetScript("OnLeave", function() upText:SetGlyph(nil, {r = 0.7, g = 0.7, b = 0.7}) end)
     upBtn:SetScript("OnClick", function()
         if i > 1 then
             local targetEntry = editor.entries[i - 1]
@@ -419,10 +413,8 @@ RenderEntriesList = function(editor)
         headerRow:SetPoint("TOPLEFT", container, "TOPLEFT", 0, yOffset)
 
         -- Group header - arrow icon (needs ligatures font)
-        local arrowIcon = headerRow:CreateFontString(nil, "OVERLAY")
-        arrowIcon:SetFont(CHAR_LIGATURESFONT, 10, CHAR_LIGATURESOUTLINE)
+        local arrowIcon = KOL.UIFactory:CreateGlyph(headerRow, CHAR_ARROW_RIGHTFILLED, {r = 0.67, g = 1, b = 0.67}, 10)
         arrowIcon:SetPoint("LEFT", headerRow, "LEFT", 4, 0)
-        arrowIcon:SetText("|cFFAAFFAA" .. CHAR_ARROW_RIGHTFILLED .. "|r")
 
         -- Group header - text (uses general font)
         local header = headerRow:CreateFontString(nil, "OVERLAY")
@@ -467,13 +459,10 @@ RenderEntriesList = function(editor)
         -- DOWN button for group
         local downBtn = CreateFrame("Button", nil, headerRow)
         downBtn:SetSize(16, 16)
-        local downText = downBtn:CreateFontString(nil, "OVERLAY")
-        downText:SetFont(CHAR_LIGATURESFONT, 10, CHAR_LIGATURESOUTLINE)
+        local downText = KOL.UIFactory:CreateGlyph(downBtn, CHAR_ARROW_DOWNFILLED, {r = 0.7, g = 0.7, b = 0.7}, 10)
         downText:SetPoint("CENTER")
-        downText:SetText(CHAR_ARROW_DOWNFILLED)
-        downText:SetTextColor(0.7, 0.7, 0.7, 1)
-        downBtn:SetScript("OnEnter", function() downText:SetTextColor(1, 1, 1, 1) end)
-        downBtn:SetScript("OnLeave", function() downText:SetTextColor(0.7, 0.7, 0.7, 1) end)
+        downBtn:SetScript("OnEnter", function() downText:SetGlyph(nil, {r = 1, g = 1, b = 1}) end)
+        downBtn:SetScript("OnLeave", function() downText:SetGlyph(nil, {r = 0.7, g = 0.7, b = 0.7}) end)
         downBtn:SetScript("OnClick", function()
             if actualGroupIdx and actualGroupIdx < #editor.groups then
                 editor.groups[actualGroupIdx], editor.groups[actualGroupIdx + 1] = editor.groups[actualGroupIdx + 1], editor.groups[actualGroupIdx]
@@ -487,13 +476,10 @@ RenderEntriesList = function(editor)
         -- UP button for group
         local upBtn = CreateFrame("Button", nil, headerRow)
         upBtn:SetSize(16, 16)
-        local upText = upBtn:CreateFontString(nil, "OVERLAY")
-        upText:SetFont(CHAR_LIGATURESFONT, 10, CHAR_LIGATURESOUTLINE)
+        local upText = KOL.UIFactory:CreateGlyph(upBtn, CHAR_ARROW_UPFILLED, {r = 0.7, g = 0.7, b = 0.7}, 10)
         upText:SetPoint("CENTER")
-        upText:SetText(CHAR_ARROW_UPFILLED)
-        upText:SetTextColor(0.7, 0.7, 0.7, 1)
-        upBtn:SetScript("OnEnter", function() upText:SetTextColor(1, 1, 1, 1) end)
-        upBtn:SetScript("OnLeave", function() upText:SetTextColor(0.7, 0.7, 0.7, 1) end)
+        upBtn:SetScript("OnEnter", function() upText:SetGlyph(nil, {r = 1, g = 1, b = 1}) end)
+        upBtn:SetScript("OnLeave", function() upText:SetGlyph(nil, {r = 0.7, g = 0.7, b = 0.7}) end)
         upBtn:SetScript("OnClick", function()
             if actualGroupIdx and actualGroupIdx > 1 then
                 editor.groups[actualGroupIdx], editor.groups[actualGroupIdx - 1] = editor.groups[actualGroupIdx - 1], editor.groups[actualGroupIdx]
@@ -557,10 +543,9 @@ local function CreateTrackerManager()
     local frame = UIFactory:CreateStyledFrame(UIParent, "KOL_CustomPanelEditor", 520, 450, {
         movable = true,
         closable = true,
-        strata = "TOOLTIP",  -- Highest strata to ensure it's above config dialog
-        level = 100,  -- High frame level
+        -- Uses default DIALOG strata for proper z-ordering with other KOL frames
+        -- Focus system handles bringing clicked frames to front
     })
-    frame:SetToplevel(true)  -- Ensure it stays on top when clicked
     frame:SetPoint("CENTER", UIParent, "CENTER", 200, 0)  -- Offset to the right
 
     local fontPath, fontOutline = UIFactory.GetGeneralFont()
@@ -1040,11 +1025,12 @@ local function CreateTrackerManager()
     scrollContainer:SetBackdropBorderColor(0.25, 0.25, 0.25, 1)
 
     -- Create scrollable content using UIFactory (uses Theme colors automatically)
-    -- Use larger right inset to keep scrollbar inside the container
+    -- Use minimal scrollbar (thumb only, no buttons) positioned tight to the right edge
     local entriesContainer, scrollFrame = UIFactory:CreateScrollableContent(scrollContainer, {
-        inset = {top = 4, bottom = 4, left = 4, right = 24},  -- Right inset for scrollbar
+        inset = {top = 4, bottom = 4, left = 4, right = 12},  -- Smaller right inset for thin scrollbar
         showScrollbar = true,
-        -- scrollbarColor not specified = use Theme system colors
+        scrollbarWidth = 8,  -- Thin scrollbar
+        hideButtons = true,  -- Just the thumb bar, no up/down buttons
     })
     entriesContainer:SetWidth(455)  -- Scroll content width (adjusted for scrollbar)
     frame.entriesContainer = entriesContainer
@@ -1171,7 +1157,8 @@ local function CreateTrackerManager()
         checkColor = {r = 0.4, g = 0.8, b = 1, a = 1},  -- Cyan check
         checked = false,
     })
-    showSpeedCheck:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 12, 14)
+    -- Align on same row as Cancel/Save buttons (buttons are at y=12 from bottom)
+    showSpeedCheck:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 12, 12)
     frame.showSpeedCheck = showSpeedCheck
 
     -- Tooltip for Show Speed checkbox

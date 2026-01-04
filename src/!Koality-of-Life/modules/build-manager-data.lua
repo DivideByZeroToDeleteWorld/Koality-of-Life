@@ -186,7 +186,10 @@ KOL.BuildManagerData.PERK_BOUNDARY_ID = 1042
 KOL.BuildManagerData.QUEUE_DELAY_CLICK = 0.1
 KOL.BuildManagerData.QUEUE_DELAY_TOGGLE = 0.15
 
--- Image paths for Build Manager button
-KOL.BuildManagerData.BUTTON_IMAGE_NORMAL = "Interface\\AddOns\\!Koality-of-Life\\media\\images\\BM_1"
-KOL.BuildManagerData.BUTTON_IMAGE_HOVER = "Interface\\AddOns\\!Koality-of-Life\\media\\images\\BM_2"
-KOL.BuildManagerData.BUTTON_IMAGE_PRESSED = "Interface\\AddOns\\!Koality-of-Life\\media\\images\\BM_3"
+-- Image path for Build Manager button (single image with vertex coloring)
+KOL.BuildManagerData.BUTTON_IMAGE = "Interface\\AddOns\\!Koality-of-Life\\media\\images\\stevefurwin_buildmanager"
+
+-- Vertex colors for button states
+KOL.BuildManagerData.BUTTON_COLOR_NORMAL = { r = 0.7, g = 0.7, b = 0.7 }   -- Slightly dimmed
+KOL.BuildManagerData.BUTTON_COLOR_HOVER = { r = 1.0, g = 1.0, b = 0.85 }   -- Bright with warm tint
+KOL.BuildManagerData.BUTTON_COLOR_PRESSED = { r = 0.5, g = 0.5, b = 0.5 }  -- Darkened

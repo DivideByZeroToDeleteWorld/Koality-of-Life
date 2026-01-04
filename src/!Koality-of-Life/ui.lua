@@ -18,13 +18,34 @@ local rainbowColors = {
 }
 
 -- ============================================================================
+-- Static Popup Dialogs
+-- ============================================================================
+
+-- LDB Plugin disable warning - requires reload
+StaticPopupDialogs["KOL_LDB_RELOAD_REQUIRED"] = {
+    text = "|cFFFF0000WARNING|r\n\nDisabling the LDB Plugin requires a UI reload to take effect.\n\nLDB (LibDataBroker) does not support unregistering plugins - the only way to hide it from display addons is to reload.\n\n|cFFFFFF00Reload UI now?|r",
+    button1 = "Reload Now",
+    button2 = "Later",
+    OnAccept = function()
+        ReloadUI()
+    end,
+    OnCancel = function()
+        KoalityOfLife:PrintTag("LDB Plugin will be hidden after your next reload or /rl")
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
+
+-- ============================================================================
 -- Rainbow Text Helper
 -- ============================================================================
 
 local function RainbowText(text)
     local result = ""
     local colorIndex = 1
-    
+
     for i = 1, #text do
         local char = text:sub(i, i)
         result = result .. "|cFF" .. rainbowColors[colorIndex] .. char
@@ -33,7 +54,7 @@ local function RainbowText(text)
             colorIndex = 1
         end
     end
-    
+
     return result .. "|r"
 end
 
@@ -116,51 +137,156 @@ function KOL:InitializeUI()
                         name = "|cFFFFDD00Main|r",
                         order = 1,
                         args = {
+                            -- ============================================================
+                            -- TOGGLES Section
+                            -- ============================================================
+                            togglesHeader = {
+                                type = "description",
+                                name = "TOGGLES|0.6,0.8,1",  -- Light blue accent
+                                dialogControl = "KOL_SectionHeader",
+                                width = "full",
+                                order = 1,
+                            },
                             enabled = {
-                        type = "toggle",
-                        name = "Enable Addon",
-                        desc = "Enable or disable Koality of Life",
-                        get = function() return self.db.profile.enabled end,
-                        set = function(_, value) self.db.profile.enabled = value end,
-                        width = "full",
-                        order = 1,
-                    },
-                    showSplash = {
-                        type = "toggle",
-                        name = "Show Splash Screen",
-                        desc = "Show the Koality of Life splash image on login",
-                        get = function() return self.db.profile.showSplash end,
-                        set = function(_, value) self.db.profile.showSplash = value end,
-                        width = "full",
-                        order = 1.5,
-                    },
-                    spacer1 = {
-                        type = "description",
-                        name = " ",
-                        order = 2,
-                    },
-                    fontHeader = {
-                        type = "header",
-                        name = "General UI Fonts",
-                        order = 3,
-                    },
+                                type = "toggle",
+                                name = "Enable Addon",
+                                desc = "Enable or disable Koality of Life",
+                                get = function() return self.db.profile.enabled end,
+                                set = function(_, value) self.db.profile.enabled = value end,
+                                width = 1.0,
+                                order = 1.1,
+                            },
+                            showSplash = {
+                                type = "toggle",
+                                name = "Show Splash Screen",
+                                desc = "Show the Koality of Life splash image on login",
+                                get = function() return self.db.profile.showSplash end,
+                                set = function(_, value) self.db.profile.showSplash = value end,
+                                width = 1.0,
+                                order = 1.2,
+                            },
+                            spacer1 = {
+                                type = "description",
+                                name = "\n",
+                                order = 2,
+                            },
+                            -- ============================================================
+                            -- LDB / MINIMAP Section
+                            -- ============================================================
+                            ldbHeader = {
+                                type = "description",
+                                name = "LDB / MINIMAP|0.4,0.9,0.6",  -- Green accent
+                                dialogControl = "KOL_SectionHeader",
+                                width = "full",
+                                order = 3,
+                            },
+                            enableMinimap = {
+                                type = "toggle",
+                                name = "Enable Minimap",
+                                desc = "Show the Koality of Life button on the minimap",
+                                get = function() return self.db.profile.showMinimapButton ~= false end,
+                                set = function(_, value)
+                                    self.db.profile.showMinimapButton = value
+                                    if self.LDB and self.LDB.UpdateMinimapVisibility then
+                                        self.LDB:UpdateMinimapVisibility()
+                                    end
+                                end,
+                                width = 1.0,
+                                order = 3.1,
+                            },
+                            enableLDB = {
+                                type = "toggle",
+                                name = "Enable LDB",
+                                desc = "Show the Koality of Life data broker plugin (for LDB display addons like ChocolateBar, Bazooka, etc.).\n\n|cFF00FF00ChocolateBar:|r Works instantly - no reload needed!\n|cFFFFFF00Other addons:|r May require /rl to take effect.",
+                                get = function() return self.db.profile.showLDBPlugin ~= false end,
+                                set = function(_, value)
+                                    self.db.profile.showLDBPlugin = value
+                                    if self.LDB and self.LDB.UpdateLDBVisibility then
+                                        self.LDB:UpdateLDBVisibility()
+                                    end
+                                    -- Only show reload popup if disabling and ChocolateBar isn't loaded
+                                    if not value and not ChocolateBar then
+                                        StaticPopup_Show("KOL_LDB_RELOAD_REQUIRED")
+                                    end
+                                end,
+                                width = 1.0,
+                                order = 3.2,
+                            },
+                            ldbText = {
+                                type = "select",
+                                name = "LDB Text",
+                                desc = "What to display as the LDB text on data broker bars.\n\n|cFF00FF00None:|r Shows 'KoL' (default)\n|cFF00FF00Speed:|r Shows current movement speed with colors and glyph",
+                                values = {
+                                    ["none"] = "-- None --",
+                                    ["speed"] = "Speed",
+                                },
+                                get = function()
+                                    return self.db.profile.ldbTextMode or "none"
+                                end,
+                                set = function(_, value)
+                                    self.db.profile.ldbTextMode = value
+                                    if self.LDB and self.LDB.UpdateLDBText then
+                                        self.LDB:UpdateLDBText()
+                                    end
+                                    local displayName = value == "speed" and "Speed" or "None"
+                                    self:PrintTag("LDB Text set to: " .. PASTEL_YELLOW(displayName))
+                                end,
+                                width = 1.0,
+                                order = 3.3,
+                            },
+                            ldbSpeedPrefix = {
+                                type = "toggle",
+                                name = "Show SPEED: Text",
+                                desc = "When enabled, the LDB speed display will include 'SPEED: ' prefix.\n\n|cFF00FF00ON:|r SPEED: +40% ↑\n|cFFFF6666OFF:|r +40% ↑",
+                                get = function()
+                                    return self.db.profile.ldbSpeedPrefix or false
+                                end,
+                                set = function(_, value)
+                                    self.db.profile.ldbSpeedPrefix = value
+                                    if self.LDB and self.LDB.UpdateLDBText then
+                                        self.LDB:UpdateLDBText()
+                                    end
+                                end,
+                                width = 1.0,
+                                order = 3.4,
+                                hidden = function()
+                                    return (self.db.profile.ldbTextMode or "none") ~= "speed"
+                                end,
+                            },
+                            spacer2 = {
+                                type = "description",
+                                name = "\n",
+                                order = 4,
+                            },
+                            -- ============================================================
+                            -- Fonts Section
+                            -- ============================================================
+                            fontHeader = {
+                                type = "description",
+                                name = "FONTS|1,0.67,0",  -- Text|R,G,B (orange accent)
+                                dialogControl = "KOL_SectionHeader",
+                                width = "full",
+                                order = 5,
+                            },
                     generalFont = {
                         type = "select",
                         name = "Font",
-                        desc = "Font used for custom UI elements (like Batch Queue Viewer and Debug Console)",
+                        desc = "Font used for custom UI elements (like Batch Queue Viewer and Debug Console). Changes apply immediately to the config panel.",
                         dialogControl = "LSM30_Font",
                         values = LibStub("LibSharedMedia-3.0"):HashTable("font"),
-                        order = 4,
+                        order = 5.1,
                         get = function() return self.db.profile.generalFont or "Friz Quadrata TT" end,
                         set = function(_, value)
                             self.db.profile.generalFont = value
                             self:PrintTag("General font set to: " .. PASTEL_YELLOW(value))
+                            -- Refresh the config dialog to apply the new font
+                            LibStub("AceConfigRegistry-3.0"):NotifyChange("KoalityOfLife")
                         end,
                     },
                     generalFontOutline = {
                         type = "select",
                         name = "Font Outline",
-                        desc = "Outline style for general UI fonts",
+                        desc = "Outline style for general UI fonts. Changes apply immediately to the config panel.",
                         values = {
                             ["NONE"] = "None",
                             ["OUTLINE"] = "Outline",
@@ -169,28 +295,35 @@ function KOL:InitializeUI()
                             ["OUTLINE, MONOCHROME"] = "Outline + Monochrome",
                             ["THICKOUTLINE, MONOCHROME"] = "Thick Outline + Monochrome",
                         },
-                        order = 5,
+                        order = 5.2,
                         get = function() return self.db.profile.generalFontOutline or "THICKOUTLINE" end,
                         set = function(_, value)
                             self.db.profile.generalFontOutline = value
                             self:PrintTag("General font outline set to: " .. PASTEL_YELLOW(value))
+                            -- Refresh the config dialog to apply the new font
+                            LibStub("AceConfigRegistry-3.0"):NotifyChange("KoalityOfLife")
                         end,
                     },
-                    spacer2 = {
+                    spacer3 = {
                         type = "description",
-                        name = " ",
-                        order = 10,
+                        name = "\n",
+                        order = 6,
                     },
+                    -- ============================================================
+                    -- Performance Section
+                    -- ============================================================
                     statsHeader = {
-                        type = "header",
-                        name = "Performance Stats",
-                        order = 11,
+                        type = "description",
+                        name = "PERFORMANCE|0.53,0.8,1",  -- Text|R,G,B (light blue accent)
+                        dialogControl = "KOL_SectionHeader",
+                        width = "full",
+                        order = 7,
                     },
                     statsDesc = {
                         type = "description",
                         name = "|cFFAAAAAALive performance metrics for Koality of Life|r",
                         fontSize = "small",
-                        order = 12,
+                        order = 7.1,
                     },
                     stats = {
                         type = "description",
@@ -268,13 +401,13 @@ function KOL:InitializeUI()
                             return KOL.cachedStats.text
                         end,
                         fontSize = "medium",
-                        order = 13,
+                        order = 7.2,
                     },
                     refreshNote = {
                         type = "description",
                         name = "Running |cFF88DDFFRefresh Stats|r will |cFFFFAA00Collect Garbage|r before |cFF88DDFFRefreshing Stats|r.",
                         fontSize = "small",
-                        order = 13.5,
+                        order = 7.3,
                     },
                     refreshStats = {
                         type = "execute",
@@ -312,7 +445,13 @@ function KOL:InitializeUI()
                             LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
                         end,
                         width = "normal",
-                        order = 14,
+                        order = 7.4,
+                    },
+                    -- Bottom padding to prevent cutoff in scroll frames
+                    bottomSpacer = {
+                        type = "description",
+                        name = " ",
+                        order = 99,
                     },
                         }
                     },
@@ -599,6 +738,136 @@ function KOL:InitializeUI()
                         name = "|cFFFFFFFFTweaks & Quality of Life Features|r\n|cFFAAAAAAVarious tweaks to improve your gameplay experience.|r\n",
                         fontSize = "medium",
                         order = 0,
+                    },
+                    synastria = {
+                        type = "group",
+                        name = "|cFF00CCFFSynastria|r",
+                        order = 0.5,  -- First sub-tab
+                        childGroups = "tree",  -- Tree-style nested panel (like ElvUI)
+                        args = {
+                            -- ============================================================
+                            -- CHANGES Section
+                            -- ============================================================
+                            changes = {
+                                type = "group",
+                                name = "Changes",
+                                order = 1,
+                                args = {
+                                    header = {
+                                        type = "description",
+                                        name = "CHANGES|1,0.3,0.3",  -- Red accent
+                                        dialogControl = "KOL_SectionHeader",
+                                        width = "full",
+                                        order = 0,
+                                    },
+                                    desc = {
+                                        type = "description",
+                                        name = "|cFFAAAAAAServer-specific changes and perk toggles.|r\n",
+                                        fontSize = "small",
+                                        width = "full",
+                                        order = 0.1,
+                                    },
+                                    limitDamage = {
+                                        type = "toggle",
+                                        name = "Limit Damage",
+                                        desc = "Toggle the Limit Damage perk option.\n\n|cFFFFFF00Note:|r This uses the Chromie server's ChangePerkOption function.",
+                                        get = function() return self.db.profile.limitDamage end,
+                                        set = function(_, value)
+                                            self.db.profile.limitDamage = value
+                                            -- Block the server's response message
+                                            self:BlockNextChatMessage("^Changed Misc Options: Limit damage")
+                                            if ChangePerkOption then
+                                                ChangePerkOption("Misc Options", "Limit damage", value, true)
+                                            end
+                                            -- Use formatted output: [Koality-of-Life] Changed [Limit Damage] to [YES/NO]
+                                            print(self.Colors:FormatSettingChange("Limit Damage", value))
+                                        end,
+                                        width = "full",
+                                        order = 1,
+                                    },
+                                    racialHeader = {
+                                        type = "header",
+                                        name = "Racial Swap",
+                                        order = 2,
+                                    },
+                                    racialDesc = {
+                                        type = "description",
+                                        name = "|cFFAAAAAAQuickly swap between two saved racials. Use /krs to toggle.|r\n",
+                                        fontSize = "small",
+                                        width = "full",
+                                        order = 2.1,
+                                    },
+                                    racialPrimary = {
+                                        type = "select",
+                                        name = "Primary Racial",
+                                        desc = "The first racial in the toggle pair.",
+                                        values = function()
+                                            local values = {}
+                                            local validRaces = self:GetValidRacials()
+                                            for _, race in ipairs(validRaces) do
+                                                values[race] = race
+                                            end
+                                            return values
+                                        end,
+                                        get = function()
+                                            self:InitializeRacialDefaults()
+                                            return self.db.profile.racialPrimary
+                                        end,
+                                        set = function(_, value)
+                                            self.db.profile.racialPrimary = value
+                                        end,
+                                        width = 1,
+                                        order = 3,
+                                    },
+                                    racialSecondary = {
+                                        type = "select",
+                                        name = "Secondary Racial",
+                                        desc = "The second racial in the toggle pair.",
+                                        values = function()
+                                            local values = {}
+                                            local validRaces = self:GetValidRacials()
+                                            for _, race in ipairs(validRaces) do
+                                                values[race] = race
+                                            end
+                                            return values
+                                        end,
+                                        get = function()
+                                            self:InitializeRacialDefaults()
+                                            return self.db.profile.racialSecondary
+                                        end,
+                                        set = function(_, value)
+                                            self.db.profile.racialSecondary = value
+                                        end,
+                                        width = 1,
+                                        order = 4,
+                                    },
+                                    racialToggle = {
+                                        type = "execute",
+                                        name = "Toggle Racial (/krs)",
+                                        desc = "Switch between Primary and Secondary racial.",
+                                        func = function()
+                                            self:ToggleRacial()
+                                        end,
+                                        width = 1,
+                                        order = 5,
+                                    },
+                                    racialCurrent = {
+                                        type = "description",
+                                        name = function()
+                                            local current = self:GetCurrentRacial()
+                                            return "\n|cFFFFFF00Current:|r " .. current
+                                        end,
+                                        fontSize = "medium",
+                                        width = "full",
+                                        order = 6,
+                                    },
+                                },
+                            },
+                            -- NOTE: UI FACTORY section was removed - external scrollbar skinning
+                            -- proved too fragile with Chromie's frame implementations
+                            -- ITEM TRACKER section (order 2) added by tweaks.lua
+                            -- FISHING section (order 4) added by fishing.lua
+                        }
                     },
                     vendors = {
                         type = "group",
@@ -1367,6 +1636,7 @@ function KOL:InitializeUI()
                                 filterGroup = {
                                     type = "group",
                                     name = "Filters",
+                                    inline = true,
                                     order = 1,
                                     args = {
                                         filterExpansion = {
@@ -1495,6 +1765,7 @@ function KOL:InitializeUI()
                                 filterGroup = {
                                     type = "group",
                                     name = "Filters",
+                                    inline = true,
                                     order = 1,
                                     args = {
                                         filterExpansion = {
@@ -1738,6 +2009,16 @@ function KOL:InitializeUI()
     -- Initialize Fishing config UI (if fishing.lua is loaded)
     if self.fishing and self.fishing.InitializeConfig then
         self.fishing:InitializeConfig()
+    end
+
+    -- Initialize Scoots config UI (if scoots.lua is loaded)
+    if self.Scoots and self.Scoots.Initialize then
+        self.Scoots:Initialize()
+    end
+
+    -- Initialize Notify config UI (if notify.lua is loaded)
+    if self.NotifyModule and self.NotifyModule.Initialize then
+        self.NotifyModule:Initialize()
     end
 
     -- Initialize Changes config UI (if changes.lua is loaded)
@@ -2466,11 +2747,11 @@ function KOL:PopulateTrackerConfigUI()
                                         SetInstanceSetting(instanceId, "globalFont", value)
                                     end,
                                     order = 21,
-                                    width = "double",
+                                    width = 1.0,
                                 },
                                 fontScale = {
                                     type = "range",
-                                    name = "Font Scale",
+                                    name = "Scale",
                                     desc = "Scale multiplier for ALL fonts",
                                     min = 0.5,
                                     max = 2.0,
@@ -2480,21 +2761,23 @@ function KOL:PopulateTrackerConfigUI()
                                         SetInstanceSetting(instanceId, "fontScale", value)
                                     end,
                                     order = 22,
+                                    width = 0.5,
                                 },
                                 globalFontOutline = {
                                     type = "select",
-                                    name = "Global Outline",
+                                    name = "Outline",
                                     desc = "Default outline style for all text",
                                     values = {
                                         ["NONE"] = "None",
                                         ["OUTLINE"] = "Outline",
-                                        ["THICKOUTLINE"] = "Thick Outline",
+                                        ["THICKOUTLINE"] = "Thick",
                                     },
                                     get = function() return GetInstanceSetting(instanceId, "globalFontOutline", "OUTLINE") end,
                                     set = function(_, value)
                                         SetInstanceSetting(instanceId, "globalFontOutline", value)
                                     end,
                                     order = 23,
+                                    width = 0.5,
                                 },
                                 titleFont = {
                                     type = "select",

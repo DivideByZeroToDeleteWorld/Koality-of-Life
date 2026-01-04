@@ -14,13 +14,13 @@ KOL.Themes = {}
 local Themes = KOL.Themes
 
 -- ============================================================================
--- Default Theme: Nuclear Zero
+-- Default Theme: Furwin
 -- ============================================================================
 
 local defaultTheme = {
-    name = "Nuclear Zero",
+    name = "Furwin",
     author = "Zero",
-    description = "Default Nuclear theme with vibrant colors",
+    description = "Default Furwin theme with vibrant colors",
     version = "1.0",
     colors = {
         -- GLOBAL FALLBACK COLORS
@@ -60,7 +60,7 @@ local defaultTheme = {
         CloseButtonHoverBorder = "FF8080",
         CloseButtonHoverText = "FF9999",
 
-        -- SCROLLBAR COLORS (matching Nuclear Zero dark theme)
+        -- SCROLLBAR COLORS (matching Furwin dark theme)
         ScrollbarTrackBG = "0D0D0D",
         ScrollbarTrackBorder = "333333",
         ScrollbarThumbBG = "4D4D4D",
@@ -133,7 +133,7 @@ local function InitializeThemeDatabase()
     
     if not KOL.db.profile.themes then
         KOL.db.profile.themes = {
-            active = "Nuclear Zero",
+            active = "Furwin",
             themes = {}
         }
     end
@@ -185,7 +185,7 @@ end
 -- Get active theme name
 function Themes:GetActiveTheme()
     if not InitializeThemeDatabase() then
-        return "Nuclear Zero"
+        return "Furwin"
     end
     return KOL.db.profile.themes.active
 end
@@ -193,7 +193,7 @@ end
 -- Get list of available themes
 function Themes:GetThemeList()
     if not InitializeThemeDatabase() then
-        return {["Nuclear Zero"] = "Nuclear Zero"}
+        return {["Furwin"] = "Furwin"}
     end
     
     local themeList = {}
@@ -333,13 +333,13 @@ end
 -- Initialize module
 function Themes:Initialize()
     -- Register default theme if not exists
-    if not KOL.db.profile.themes.themes["Nuclear Zero"] then
+    if not KOL.db.profile.themes.themes["Furwin"] then
         self:RegisterTheme(defaultTheme)
     end
     
     -- Ensure active theme exists
     if not KOL.db.profile.themes.themes[KOL.db.profile.themes.active] then
-        KOL.db.profile.themes.active = "Nuclear Zero"
+        KOL.db.profile.themes.active = "Furwin"
     end
 end
 

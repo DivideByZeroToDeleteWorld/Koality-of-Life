@@ -111,15 +111,34 @@ function Colors:Wrap(hexColor, text)
     return "|cFF" .. hexColor .. tostring(text) .. "|r"
 end
 
--- Convert RGB array to hex color code
--- @param color: RGB array {r, g, b} with values 0-1
+-- Convert RGB to hex color code
+-- @param color: RGB as indexed {r, g, b} or named {r=, g=, b=} with values 0-1
 -- @return: Hex color string (e.g., "FF6B6B")
 function Colors:ToHex(color)
-    if type(color) ~= "table" or #color < 3 then
-        KOL:DebugPrint("Colors: Invalid color array for ToHex: " .. tostring(color), 1)
+    if type(color) ~= "table" then
+        KOL:DebugPrint("Colors: Invalid color for ToHex: " .. tostring(color), 1)
         return "FFFFFF"  -- Default to white
     end
-    return string.format("%02X%02X%02X", color[1] * 255, color[2] * 255, color[3] * 255)
+
+    -- Support both indexed {r, g, b} and named {r=, g=, b=} formats
+    local r, g, b
+    if color[1] ~= nil then
+        -- Indexed array: {0.5, 0.6, 0.7}
+        r, g, b = color[1], color[2], color[3]
+    elseif color.r ~= nil then
+        -- Named table: {r = 0.5, g = 0.6, b = 0.7}
+        r, g, b = color.r, color.g, color.b
+    else
+        KOL:DebugPrint("Colors: Invalid color format for ToHex (no r/g/b or [1]/[2]/[3])", 1)
+        return "FFFFFF"
+    end
+
+    -- Ensure values are numbers and in 0-1 range
+    r = tonumber(r) or 1
+    g = tonumber(g) or 1
+    b = tonumber(b) or 1
+
+    return string.format("%02X%02X%02X", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255))
 end
 
 -- Convert hex to RGB array
@@ -233,6 +252,111 @@ function Colors:ResetAll()
 end
 
 -- ============================================================================
+-- Rainbow and Formatted Text Functions
+-- ============================================================================
+
+-- Rainbow color gradient for text
+-- Each character gets a different color cycling through the rainbow
+-- @param text: Text to colorize
+-- @return: Rainbow-colored text string
+function Colors:RainbowText(text)
+    if not text or text == "" then return "" end
+
+    -- Rainbow gradient colors (smooth transition)
+    local rainbowColors = {
+        "FF6600", -- Red-orange
+        "FF8800", -- Orange
+        "FFAA00", -- Yellow-orange
+        "FFCC00", -- Gold
+        "FFEE00", -- Yellow
+        "DDFF00", -- Yellow-green
+        "BBFF00", -- Lime
+        "99FF00", -- Light green
+        "77FF00", -- Green
+        "55FF00", -- Bright green
+        "33FF00", -- Green-cyan
+        "00FF33", -- Cyan-green
+        "00FF66", -- Teal
+        "00FF99", -- Aqua
+        "00FFCC", -- Cyan
+        "00CCFF", -- Sky blue
+        "0099FF", -- Light blue
+        "0066FF", -- Blue
+    }
+
+    local result = ""
+    local colorIndex = 1
+    local colorCount = #rainbowColors
+
+    for i = 1, #text do
+        local char = string.sub(text, i, i)
+        -- Skip spaces for coloring but keep them
+        if char == " " then
+            result = result .. char
+        else
+            result = result .. "|cFF" .. rainbowColors[colorIndex] .. char .. "|r"
+            colorIndex = colorIndex + 1
+            if colorIndex > colorCount then
+                colorIndex = 1
+            end
+        end
+    end
+
+    return result
+end
+
+-- Color text with a named color or hex code
+-- @param text: Text to colorize
+-- @param colorNameOrHex: Color name (e.g., "RED", "GREEN", "SKY") or hex code (e.g., "FF0000")
+-- @return: Colored text string
+function Colors:ColorText(text, colorNameOrHex)
+    if not text then return "" end
+    if not colorNameOrHex then return tostring(text) end
+
+    local hexColor = colorNameOrHex
+
+    -- If it's not a 6-character hex string, try to look it up as a color name
+    if not (type(colorNameOrHex) == "string" and string.match(colorNameOrHex, "^%x%x%x%x%x%x$")) then
+        local lookedUpColor = self:GetColor(colorNameOrHex)
+        if lookedUpColor then
+            hexColor = lookedUpColor
+        else
+            -- Fallback to white if color not found
+            hexColor = "FFFFFF"
+        end
+    end
+
+    return "|cFF" .. hexColor .. tostring(text) .. "|r"
+end
+
+-- Format a settings change message with consistent styling
+-- Example: "[Koality-of-Life] Changed [Limit Damage] to [YES]"
+-- @param optionName: Name of the option being changed
+-- @param newValue: New value (will be colored GREEN for true/YES, RED for false/NO)
+-- @param useShortTag: If true, use "KoL" instead of "Koality-of-Life"
+-- @return: Formatted message string
+function Colors:FormatSettingChange(optionName, newValue, useShortTag)
+    local tagText = useShortTag and "KoL" or "Koality-of-Life"
+    local rainbowTag = self:RainbowText(tagText)
+
+    -- Determine value text and color
+    local valueText, valueColor
+    if type(newValue) == "boolean" then
+        valueText = newValue and "YES" or "NO"
+        valueColor = newValue and "00FF00" or "FF0000"  -- Green for YES, Red for NO
+    else
+        valueText = tostring(newValue)
+        valueColor = "FFCC00"  -- Gold for other values
+    end
+
+    -- Build the formatted message
+    -- [Rainbow Tag] Changed [Option Name] to [Value]
+    return "|cFFFFFFFF[|r" .. rainbowTag .. "|cFFFFFFFF]|r " ..
+           "Changed |cFFFFFFFF[|r" .. self:ColorText(optionName, "SKY") .. "|cFFFFFFFF]|r " ..
+           "to |cFFFFFFFF[|r" .. "|cFF" .. valueColor .. valueText .. "|r" .. "|cFFFFFFFF]|r"
+end
+
+-- ============================================================================
 -- Global Color Functions
 -- ============================================================================
 -- These are GLOBAL so they can be used anywhere (modules, macros, etc.)
@@ -258,6 +382,17 @@ GRAY = CreateColorFunction("GRAY")
 PASTEL_RED = CreateColorFunction("PASTEL_RED")
 PASTEL_PINK = CreateColorFunction("PASTEL_PINK")
 PASTEL_YELLOW = CreateColorFunction("PASTEL_YELLOW")
+
+-- Global text formatting functions
+-- Usage: RainbowText("KoL") returns rainbow-colored "KoL"
+-- Usage: ColorText("YES", "GREEN") returns green "YES"
+function RainbowText(text)
+    return KOL.Colors:RainbowText(text)
+end
+
+function ColorText(text, colorNameOrHex)
+    return KOL.Colors:ColorText(text, colorNameOrHex)
+end
 
 -- Unified color lookup function
 -- Searches all palettes (STANDARD, PASTEL, NUCLEAR) for a color by name

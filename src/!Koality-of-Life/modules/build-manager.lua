@@ -112,27 +112,64 @@ end
 function BuildManager:AddButtonToPerkFrame()
     local perkFrame = _G["PerkMgrFrame"]
     if not perkFrame or perkFrame.kolBuildManagerButton then return end
-    if not KOL.UIFactory then return end
 
-    -- Create image button using UI-Factory
-    local button = KOL.UIFactory:CreateImageButton(perkFrame, 32, 32, {
-        normalTexture = Data.BUTTON_IMAGE_NORMAL,
-        hoverTexture = Data.BUTTON_IMAGE_HOVER,
-        pressedTexture = Data.BUTTON_IMAGE_PRESSED,
-        onClick = function()
-            BuildManager:ToggleMainFrame()
-        end,
-    })
+    -- Create button with explicit high strata
+    local button = CreateFrame("Button", "KOL_BuildManagerButton", perkFrame)
+    button:SetFrameStrata("HIGH")
+    button:SetFrameLevel(perkFrame:GetFrameLevel() + 10)
+    button:SetSize(24, 24)
+    button:EnableMouse(true)
+
+    -- Create texture with explicit high draw layer
+    local texture = button:CreateTexture(nil, "OVERLAY")
+    texture:SetAllPoints(button)
+    texture:SetTexture(Data.BUTTON_IMAGE)
+    texture:Show()
+    button.texture = texture
+
+    -- Colors for states
+    local normalColor = Data.BUTTON_COLOR_NORMAL
+    local hoverColor = Data.BUTTON_COLOR_HOVER
+    local pressedColor = Data.BUTTON_COLOR_PRESSED
+
+    texture:SetVertexColor(normalColor.r, normalColor.g, normalColor.b)
+
+    -- Hover effect
+    button:SetScript("OnEnter", function(self)
+        self.texture:SetVertexColor(hoverColor.r, hoverColor.g, hoverColor.b)
+    end)
+
+    button:SetScript("OnLeave", function(self)
+        self.texture:SetVertexColor(normalColor.r, normalColor.g, normalColor.b)
+    end)
+
+    -- Pressed effect
+    button:SetScript("OnMouseDown", function(self)
+        self.texture:SetVertexColor(pressedColor.r, pressedColor.g, pressedColor.b)
+    end)
+
+    button:SetScript("OnMouseUp", function(self)
+        if self:IsMouseOver() then
+            self.texture:SetVertexColor(hoverColor.r, hoverColor.g, hoverColor.b)
+        else
+            self.texture:SetVertexColor(normalColor.r, normalColor.g, normalColor.b)
+        end
+    end)
+
+    -- Click handler
+    button:SetScript("OnClick", function()
+        BuildManager:ToggleMainFrame()
+    end)
 
     -- Position to the right of the help button
     local helpButton = _G["PerkMgrFrame-HelpButton"]
     if helpButton then
-        -- Anchor LEFT to RIGHT with Y offset to position correctly
         button:SetPoint("LEFT", helpButton, "RIGHT", 5, -20)
     else
-        -- Fallback position if help button not found
         button:SetPoint("TOPRIGHT", perkFrame, "TOPRIGHT", -70, -20)
     end
+
+    button:Show()
 
     -- Store reference
     perkFrame.kolBuildManagerButton = button
@@ -163,13 +200,13 @@ function BuildManager:QueueAction(actionType, data, delay)
     })
 end
 
-function BuildManager:StartQueue()
+function BuildManager:StartQueue(message)
     if #actionQueue == 0 then return end
 
     queueProcessing = true
     queueDelay = 0
     queueFrame:Show()
-    self:Print("Processing build import...")
+    self:Print(message or "Processing build import...")
 end
 
 function BuildManager:StopQueue()
@@ -204,8 +241,14 @@ function BuildManager:ProcessQueue(elapsed)
         self:ExecuteClickPerk(action.data)
     elseif action.type == "click_toggle" then
         self:ExecuteClickToggle()
+    elseif action.type == "change_perk_option" then
+        self:ExecuteChangePerkOption(action.data)
     elseif action.type == "complete" then
         self:Print("Build import complete!")
+        self:StopQueue()
+    elseif action.type == "complete_misc" then
+        local count = action.data and action.data.changeCount or 0
+        self:Print("Misc Perks applied! " .. count .. " perk toggles changed, " .. #MISC_SUB_OPTIONS .. " sub-options set.")
         self:StopQueue()
     end
 end
@@ -221,6 +264,12 @@ function BuildManager:ExecuteClickToggle()
     local toggleBtn = _G["PerkMgrFrame-Toggle"]
     if toggleBtn and toggleBtn:IsVisible() then
         toggleBtn:Click()
+    end
+end
+
+function BuildManager:ExecuteChangePerkOption(data)
+    if ChangePerkOption and data then
+        ChangePerkOption(data.category, data.option, data.value, true)  -- silent = true
     end
 end
 
@@ -378,6 +427,654 @@ function BuildManager:ImportPerks(perkString)
     end
 
     return totalChanges
+end
+
+--------------------------------------------------------------------------------
+-- Misc Perks System
+--------------------------------------------------------------------------------
+
+-- Complete list of all known Misc perks and their sub-options
+-- Structure: { name = "Perk Name", id = perkId, defaultOn = bool, subOptions = {...} }
+-- defaultOn = the recommended default state (true = enabled by default)
+-- User preferences are stored in KOL.db.global.buildManager.miscPerksDisabled
+local MISC_PERKS_DATA = {
+    {
+        name = "Automatic Bank",
+        id = 1042,
+        defaultOn = true,
+        subOptions = {
+            { name = "Primary bank tab", defaultOn = true },
+            { name = "First bank bag", defaultOn = true },
+            { name = "Second bank bag", defaultOn = true },
+            { name = "Third bank bag", defaultOn = true },
+            { name = "Fourth bank bag", defaultOn = true },
+            { name = "Fifth bank bag", defaultOn = true },
+            { name = "Sixth bank bag", defaultOn = true },
+            { name = "Seventh bank bag", defaultOn = true },
+        },
+    },
+    {
+        name = "Automatic Buffs",
+        id = 1172,
+        defaultOn = true,
+        subOptions = {
+            { name = "DK: Horn of Winter", defaultOn = true },
+            { name = "Druid: Mark of the Wild", defaultOn = true },
+            { name = "Druid: Thorns", defaultOn = true },
+            { name = "Mage: Arcane Intellect", defaultOn = true },
+            { name = "Paladin: Blessing of Kings", defaultOn = true },
+            { name = "Paladin: Blessing of Might", defaultOn = false },
+            { name = "Paladin: Blessing of Wisdom", defaultOn = false },
+            { name = "Priest: Divine Spirit", defaultOn = true },
+            { name = "Priest: Fortitude", defaultOn = true },
+            { name = "Priest: Shadow Protection", defaultOn = true },
+            { name = "Shaman: Water Breathing", defaultOn = true },
+            { name = "Shaman: Water Walking", defaultOn = true },
+            { name = "Warlock: Detect Invisibility", defaultOn = true },
+            { name = "Warrior: Battle Shout", defaultOn = true },
+            { name = "Warrior: Commanding Shout", defaultOn = false },
+            { name = "Priest: Inner Fire", defaultOn = true },
+            { name = "Priest: Vampiric Embrace", defaultOn = true },
+        },
+    },
+    {
+        name = "Automatic Fishing",
+        id = 855,
+        defaultOn = true,
+    },
+    {
+        name = "Automatic Mount",
+        id = 1277,
+        defaultOn = true,
+        subOptions = {
+            { name = "Disabled", defaultOn = false },
+            { name = "Randomize", defaultOn = true },
+            { name = "Ignore Shapeshift", defaultOn = false },
+        },
+    },
+    {
+        name = "Automatic Next Melee",
+        id = 996,
+        defaultOn = true,
+    },
+    {
+        name = "Balance:",  -- Class-specific, matches prefix
+        id = nil,  -- ID varies by class
+        defaultOn = true,
+        isPrefix = true,
+    },
+    {
+        name = "Disable Item Attune",
+        id = 947,
+        defaultOn = false,
+    },
+    {
+        name = "Disable Item Refund",
+        id = 1157,
+        defaultOn = false,
+    },
+    {
+        name = "Dungeon Event Speedup",
+        id = 909,
+        defaultOn = true,
+    },
+    {
+        name = "Extra Racial Skill",
+        id = 1141,
+        defaultOn = true,
+        -- Sub-options not configured - user sets manually
+    },
+    {
+        name = "Instant Windrider",
+        id = 806,
+        defaultOn = true,
+    },
+    {
+        name = "Less Annoying Buffs",
+        id = 778,
+        defaultOn = true,
+    },
+    {
+        name = "Minimum Class Perk Level",
+        id = 800,
+        defaultOn = true,
+    },
+    {
+        name = "Minimum Defensive Perk Level",
+        id = 797,
+        defaultOn = true,
+    },
+    {
+        name = "Minimum Offensive Perk Level",
+        id = 796,
+        defaultOn = true,
+    },
+    {
+        name = "Minimum Support Perk Level",
+        id = 798,
+        defaultOn = true,
+    },
+    {
+        name = "Minimum Utility Perk Level",
+        id = 799,
+        defaultOn = true,
+    },
+    {
+        name = "Misc Options",
+        id = 1112,
+        defaultOn = true,
+        subOptions = {
+            { name = "AH Attunable", defaultOn = true },
+            { name = "Notify WG", defaultOn = true },
+            { name = "AH Better Affix", defaultOn = true },
+            { name = "Always Show Affix", defaultOn = true },
+            { name = "Notify Leaderboard Update", defaultOn = true },
+            { name = "Stop crafting if Forged", defaultOn = true },
+            { name = "Notify on Forged", defaultOn = true },
+            { name = "Disable Bulk Craft", defaultOn = false },
+            { name = "Don't show attune bars", defaultOn = false },
+            { name = "Don't allow destroy favorited", defaultOn = true },
+            -- "Limit Damage" skipped - controlled by KoL Tweaks > Misc
+            { name = "No pet display", defaultOn = false },
+            { name = "Hide AH without buyout", defaultOn = true },
+            { name = "AH hide attuned", defaultOn = true },
+            { name = "Don't show bounty icon", defaultOn = false },
+            { name = "Show account attune bar", defaultOn = true },
+        },
+    },
+    {
+        name = "Mythic Penalty",
+        id = 1383,
+        defaultOn = false,
+    },
+    {
+        name = "No Exalted Lock",
+        id = 1276,
+        defaultOn = false,
+    },
+    {
+        name = "Scan for Rare Enemy",
+        id = 758,
+        defaultOn = true,
+    },
+    {
+        name = "Tracking",
+        id = 759,
+        defaultOn = true,
+        subOptions = {
+            { name = "Only in Northrend", defaultOn = false },
+            { name = "Minerals", defaultOn = true },
+            { name = "Herbs", defaultOn = true },
+        },
+    },
+    {
+        name = "Weapon Enchant Durations",
+        id = 816,
+        defaultOn = true,
+    },
+}
+
+-- Config frame reference
+local miscConfigFrame = nil
+
+-- Helper: Check if a perk should be enabled based on user config
+function BuildManager:ShouldPerkBeEnabled(perkName)
+    -- Check user's disabled list (global)
+    if KOL.db and KOL.db.global and KOL.db.global.buildManager then
+        if KOL.db.global.buildManager.miscPerksDisabled[perkName] then
+            return false  -- User explicitly disabled this
+        end
+    end
+    -- Default to enabled (default-ON approach)
+    return true
+end
+
+-- Helper: Check if a sub-option should be enabled based on user config
+function BuildManager:ShouldSubOptionBeEnabled(perkName, optionName)
+    local key = perkName .. ":" .. optionName
+    -- Check user's disabled list (global)
+    if KOL.db and KOL.db.global and KOL.db.global.buildManager then
+        if KOL.db.global.buildManager.miscSubOptionsDisabled[key] then
+            return false  -- User explicitly disabled this
+        end
+    end
+    -- Find the default from MISC_PERKS_DATA
+    for _, perk in ipairs(MISC_PERKS_DATA) do
+        if perk.name == perkName and perk.subOptions then
+            for _, opt in ipairs(perk.subOptions) do
+                if opt.name == optionName then
+                    return opt.defaultOn
+                end
+            end
+        end
+    end
+    return true  -- Default to enabled
+end
+
+-- Toggle perk in user config
+function BuildManager:ToggleMiscPerkConfig(perkName, enabled)
+    if not KOL.db.global.buildManager then
+        KOL.db.global.buildManager = { miscPerksDisabled = {}, miscSubOptionsDisabled = {} }
+    end
+    if enabled then
+        KOL.db.global.buildManager.miscPerksDisabled[perkName] = nil
+    else
+        KOL.db.global.buildManager.miscPerksDisabled[perkName] = true
+    end
+end
+
+-- Toggle sub-option in user config
+function BuildManager:ToggleMiscSubOptionConfig(perkName, optionName, enabled)
+    if not KOL.db.global.buildManager then
+        KOL.db.global.buildManager = { miscPerksDisabled = {}, miscSubOptionsDisabled = {} }
+    end
+    local key = perkName .. ":" .. optionName
+    if enabled then
+        KOL.db.global.buildManager.miscSubOptionsDisabled[key] = nil
+    else
+        KOL.db.global.buildManager.miscSubOptionsDisabled[key] = true
+    end
+end
+
+-- Export MISC PERKS config to a shareable string
+function BuildManager:ExportMiscPerksConfig()
+    if not KOL.db.global.buildManager then
+        KOL.db.global.buildManager = { miscPerksDisabled = {}, miscSubOptionsDisabled = {} }
+    end
+
+    local perkParts = {}
+    local subParts = {}
+
+    -- Export ALL perks and subs using compact ID.index format
+    for perkIdx, perkData in ipairs(MISC_PERKS_DATA) do
+        local isEnabled = self:ShouldPerkBeEnabled(perkData.name)
+        local state = isEnabled and 1 or 0
+
+        -- Use ID if available, otherwise use index (pN)
+        local perkKey = perkData.id and tostring(perkData.id) or ("p" .. perkIdx)
+        table.insert(perkParts, perkKey .. "=" .. state)
+
+        -- Export sub-options using perkId.subIndex=state format
+        if perkData.subOptions then
+            for subIdx, subOpt in ipairs(perkData.subOptions) do
+                local subEnabled = self:ShouldSubOptionBeEnabled(perkData.name, subOpt.name)
+                local subState = subEnabled and 1 or 0
+                table.insert(subParts, perkKey .. "." .. subIdx .. "=" .. subState)
+            end
+        end
+    end
+
+    local perksStr = table.concat(perkParts, ",")
+    local subsStr = table.concat(subParts, ",")
+
+    -- Format: KMP:perks:subs
+    return "KMP:" .. perksStr .. ":" .. subsStr
+end
+
+-- Import MISC PERKS config from a string
+function BuildManager:ImportMiscPerksConfig(importStr)
+    if not importStr or importStr == "" then
+        return false, "Empty import string"
+    end
+
+    -- Check for our prefix (KMP: for new format)
+    if not importStr:match("^KMP:") then
+        return false, "Not a MISC PERKS config string"
+    end
+
+    -- Initialize if needed
+    if not KOL.db.global.buildManager then
+        KOL.db.global.buildManager = { miscPerksDisabled = {}, miscSubOptionsDisabled = {} }
+    end
+
+    -- Format: KMP:perkId=state,...:perkId.subIdx=state,...
+    local perksStr, subsStr = importStr:match("^KMP:([^:]*):(.*)$")
+
+    if not perksStr then
+        return false, "Invalid MISC PERKS config format"
+    end
+
+    -- Clear existing config (start from defaults)
+    KOL.db.global.buildManager.miscPerksDisabled = {}
+    KOL.db.global.buildManager.miscSubOptionsDisabled = {}
+
+    -- Build lookup tables
+    local idToPerkData = {}
+    local idxToPerkData = {}
+    for idx, perkData in ipairs(MISC_PERKS_DATA) do
+        if perkData.id then
+            idToPerkData[tostring(perkData.id)] = perkData
+        end
+        idxToPerkData[idx] = perkData
+    end
+
+    -- Parse perks (id=state or pN=state where N is index)
+    if perksStr and perksStr ~= "" then
+        for entry in perksStr:gmatch("[^,]+") do
+            local key, stateStr = entry:match("^(.+)=(%d)$")
+            if key and stateStr then
+                local state = tonumber(stateStr)
+                local perkData
+
+                -- Check if it's an index reference (pN) or ID
+                local perkIdx = key:match("^p(%d+)$")
+                if perkIdx then
+                    perkData = idxToPerkData[tonumber(perkIdx)]
+                else
+                    perkData = idToPerkData[key]
+                end
+
+                if perkData then
+                    -- State in export is the DESIRED state, not default
+                    -- If desired state differs from default, mark in disabled table
+                    local wantEnabled = (state == 1)
+                    if wantEnabled ~= perkData.defaultOn then
+                        KOL.db.global.buildManager.miscPerksDisabled[perkData.name] = true
+                    end
+                end
+            end
+        end
+    end
+
+    -- Parse sub-options (perkId.subIdx=state or pN.subIdx=state)
+    if subsStr and subsStr ~= "" then
+        for entry in subsStr:gmatch("[^,]+") do
+            local perkKey, subIdxStr, stateStr = entry:match("^(.+)%.(%d+)=(%d)$")
+            if perkKey and subIdxStr and stateStr then
+                local subIdx = tonumber(subIdxStr)
+                local state = tonumber(stateStr)
+                local perkData
+
+                -- Check if it's an index reference (pN) or ID
+                local perkIdx = perkKey:match("^p(%d+)$")
+                if perkIdx then
+                    perkData = idxToPerkData[tonumber(perkIdx)]
+                else
+                    perkData = idToPerkData[perkKey]
+                end
+
+                if perkData and perkData.subOptions and perkData.subOptions[subIdx] then
+                    local subOpt = perkData.subOptions[subIdx]
+                    local key = perkData.name .. ":" .. subOpt.name
+
+                    -- State in export is the DESIRED state
+                    local wantEnabled = (state == 1)
+                    if wantEnabled ~= subOpt.defaultOn then
+                        KOL.db.global.buildManager.miscSubOptionsDisabled[key] = true
+                    end
+                end
+            end
+        end
+    end
+
+    return true, "MISC PERKS config imported successfully"
+end
+
+-- Show Misc Perks Config Frame
+function BuildManager:ShowMiscPerksConfig()
+    if not miscConfigFrame then
+        self:CreateMiscPerksConfigFrame()
+    end
+    self:RefreshMiscPerksConfig()
+    miscConfigFrame:Show()  -- OnShow auto-raises via UIFactory
+end
+
+-- Create the Misc Perks Config Frame
+function BuildManager:CreateMiscPerksConfigFrame()
+    miscConfigFrame = KOL.UIFactory:CreateStyledFrame(nil, "KOL_MiscPerksConfigFrame", 400, 450, {
+        closable = true,
+        movable = true,
+        -- Auto-raise system handles strata/level when clicked
+    })
+    miscConfigFrame:SetPoint("CENTER", 0, 50)
+    miscConfigFrame:Hide()
+
+    -- Header using CreateSectionHeader (colored bar with thumb)
+    local header = KOL.UIFactory:CreateSectionHeader(miscConfigFrame, "Configure Misc Perks", {r = 1, g = 0.8, b = 0.3}, 380)
+    header:SetPoint("TOPLEFT", miscConfigFrame, "TOPLEFT", 10, -12)
+
+    -- Info text
+    local infoText = miscConfigFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    infoText:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -5)
+    infoText:SetText("|cFF888888Checked = ENABLED when you click SET MISC PERKS|r")
+
+    -- Scroll frame container
+    local scrollContainer = CreateFrame("Frame", nil, miscConfigFrame)
+    scrollContainer:SetPoint("TOPLEFT", miscConfigFrame, "TOPLEFT", 10, -55)
+    scrollContainer:SetPoint("BOTTOMRIGHT", miscConfigFrame, "BOTTOMRIGHT", -10, 40)
+
+    -- Create scrollable content using UIFactory (auto-skins scrollbar)
+    -- Use slim 10px scrollbar without buttons for a clean look
+    local scrollChild, scrollFrame = KOL.UIFactory:CreateScrollableContent(scrollContainer, {
+        inset = {top = 0, bottom = 0, left = 0, right = 0},
+        scrollbarWidth = 10,
+        hideButtons = true,
+    })
+    scrollChild:SetWidth(358)  -- Full width now that scrollbar is inside and slim
+
+    miscConfigFrame.scrollChild = scrollChild
+    miscConfigFrame.checkboxes = {}
+
+    -- Close button at bottom
+    local closeBtn = KOL.UIFactory:CreateButton(miscConfigFrame, "CLOSE", {
+        type = "text",
+        onClick = function()
+            miscConfigFrame:Hide()
+        end,
+    })
+    closeBtn:SetPoint("BOTTOM", miscConfigFrame, "BOTTOM", 0, 10)
+end
+
+-- Refresh/populate the config frame
+function BuildManager:RefreshMiscPerksConfig()
+    local scrollChild = miscConfigFrame.scrollChild
+
+    -- Clear existing checkboxes
+    for _, cb in ipairs(miscConfigFrame.checkboxes) do
+        cb:Hide()
+        cb:SetParent(nil)
+    end
+    miscConfigFrame.checkboxes = {}
+
+    local yOffset = -5
+    local rowHeight = 20
+
+    for _, perkData in ipairs(MISC_PERKS_DATA) do
+        -- Skip prefix-based perks (like Balance:) in config for now
+        if not perkData.isPrefix then
+            -- Main perk checkbox
+            local perkEnabled = self:ShouldPerkBeEnabled(perkData.name)
+
+            local cb = CreateFrame("CheckButton", nil, scrollChild, "UICheckButtonTemplate")
+            cb:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 5, yOffset)
+            cb:SetSize(24, 24)
+            cb:SetChecked(perkEnabled)
+
+            local label = cb:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            label:SetPoint("LEFT", cb, "RIGHT", 5, 0)
+            label:SetText("|cFFFFCC00" .. perkData.name .. "|r")
+
+            cb:SetScript("OnClick", function(self)
+                BuildManager:ToggleMiscPerkConfig(perkData.name, self:GetChecked())
+            end)
+
+            table.insert(miscConfigFrame.checkboxes, cb)
+            yOffset = yOffset - rowHeight
+
+            -- Sub-options (indented)
+            if perkData.subOptions then
+                for _, subOpt in ipairs(perkData.subOptions) do
+                    local subEnabled = self:ShouldSubOptionBeEnabled(perkData.name, subOpt.name)
+
+                    local subCb = CreateFrame("CheckButton", nil, scrollChild, "UICheckButtonTemplate")
+                    subCb:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 30, yOffset)
+                    subCb:SetSize(20, 20)
+                    subCb:SetChecked(subEnabled)
+
+                    local subLabel = subCb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    subLabel:SetPoint("LEFT", subCb, "RIGHT", 5, 0)
+                    subLabel:SetText("|cFFCCCCCC" .. subOpt.name .. "|r")
+
+                    subCb:SetScript("OnClick", function(self)
+                        BuildManager:ToggleMiscSubOptionConfig(perkData.name, subOpt.name, self:GetChecked())
+                    end)
+
+                    table.insert(miscConfigFrame.checkboxes, subCb)
+                    yOffset = yOffset - (rowHeight - 2)
+                end
+            end
+
+            yOffset = yOffset - 5  -- Extra spacing between main perks
+        end
+    end
+
+    -- Set scroll child height
+    scrollChild:SetHeight(math.abs(yOffset) + 20)
+end
+
+-- Apply all Misc Perk settings with one click (default-ON approach)
+-- Uses user's config from KOL.db.global.buildManager
+function BuildManager:ApplyMiscPerks()
+    -- Check if PerkMgrFrame exists
+    if not _G["PerkMgrFrame"] then
+        self:Print("Please open the Perk Manager first (press P or use /perks)")
+        return
+    end
+
+    -- Expand all categories and show all perks
+    local filterBtn = _G["PerkMgrFrame-FilterButton"]
+    if filterBtn then
+        filterBtn:Click()
+        local dropdownBtn = _G["DropDownList1Button1"]
+        if dropdownBtn then
+            dropdownBtn:Click()
+        end
+    end
+
+    local cats = {"Off", "Def", "Sup", "Uti", "Cla", "Clb", "Mis"}
+    for _, cat in ipairs(cats) do
+        local catFrame = _G["PerkMgrFrame-Cat" .. cat]
+        if catFrame and catFrame.isCollapsed then
+            catFrame:Click()
+        end
+    end
+
+    -- Get perk list container
+    local perkList = _G["PerkMgrFrame-Content1"]
+    if not perkList then
+        self:Print("Error: Could not find perk list")
+        return
+    end
+
+    local children = {perkList:GetChildren()}
+
+    -- Find starting index (PerkMgrFrame-PerkLine-1)
+    local startIndex = nil
+    for i = 1, #children do
+        local child = children[i]
+        if child and child:GetName() == "PerkMgrFrame-PerkLine-1" then
+            startIndex = i
+            break
+        end
+    end
+
+    if not startIndex then
+        self:Print("Error: Could not find perk lines")
+        return
+    end
+
+    -- Build current state table from UI (scan ALL perks)
+    local currentState = {}
+    local balancePerkData = nil
+
+    for i = startIndex, #children do
+        local perkFrame = children[i]
+        if perkFrame and perkFrame.perk and perkFrame.perk.id then
+            local perkId = perkFrame.perk.id
+            local perkName = perkFrame.perk.name or ""
+            local isActive = GetPerkActive and GetPerkActive(perkId) or false
+            local position = i - startIndex + 1
+
+            currentState[perkId] = {
+                name = perkName,
+                active = isActive,
+                position = position,
+            }
+
+            -- Check for Balance perk (class-specific, starts with "Balance:")
+            if perkName:sub(1, 8) == "Balance:" then
+                balancePerkData = {
+                    id = perkId,
+                    name = perkName,
+                    active = isActive,
+                    position = position,
+                }
+            end
+        end
+    end
+
+    -- Build list of perks that need to change using user config
+    local toChange = {}
+
+    for _, perkData in ipairs(MISC_PERKS_DATA) do
+        -- Skip prefix-based perks (handled separately)
+        if not perkData.isPrefix and perkData.id then
+            local desiredState = self:ShouldPerkBeEnabled(perkData.name)
+            local current = currentState[perkData.id]
+            if current and current.active ~= desiredState then
+                table.insert(toChange, {
+                    id = perkData.id,
+                    name = current.name,
+                    position = current.position,
+                })
+            end
+        end
+    end
+
+    -- Check Balance perk (use user config or default ON)
+    local balanceEnabled = self:ShouldPerkBeEnabled("Balance:")
+    if balancePerkData and balancePerkData.active ~= balanceEnabled then
+        table.insert(toChange, {
+            id = balancePerkData.id,
+            name = balancePerkData.name,
+            position = balancePerkData.position,
+        })
+    end
+
+    -- Clear any existing queue
+    self:StopQueue()
+
+    -- Queue the perk toggles
+    for _, perk in ipairs(toChange) do
+        self:QueueAction("click_perk", perk.position, 0.05)
+        self:QueueAction("click_toggle", nil, 0.05)
+    end
+
+    -- Queue sub-option changes via ChangePerkOption (using user config)
+    if ChangePerkOption then
+        for _, perkData in ipairs(MISC_PERKS_DATA) do
+            if perkData.subOptions then
+                for _, subOpt in ipairs(perkData.subOptions) do
+                    local value = self:ShouldSubOptionBeEnabled(perkData.name, subOpt.name)
+                    self:QueueAction("change_perk_option", {
+                        category = perkData.name,
+                        option = subOpt.name,
+                        value = value,
+                    }, 0.02)
+                end
+            end
+        end
+    end
+
+    -- Queue completion message
+    self:QueueAction("complete_misc", {changeCount = #toChange}, 0)
+
+    -- Start processing
+    if #actionQueue > 0 then
+        self:StartQueue("Setting Default State for MISC Perks...")
+    else
+        self:Print("Misc Perks already configured correctly!")
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -775,66 +1472,160 @@ function BuildManager:ShowMainFrame()
     end
 
     self:RefreshBuildList()
-    mainFrame:Show()
+    mainFrame:Show()  -- OnShow auto-raises via UIFactory
+end
+
+function BuildManager:HideMainFrame()
+    if mainFrame then
+        mainFrame:Hide()
+    end
 end
 
 function BuildManager:CreateMainFrame()
-    mainFrame = KOL.UIFactory:CreateStyledFrame(nil, "KOL_BuildManagerFrame", 520, 215, {
+    mainFrame = KOL.UIFactory:CreateStyledFrame(nil, "KOL_BuildManagerFrame", 600, 230, {
         closable = true,
         movable = true,
     })
     mainFrame:SetPoint("CENTER")
     mainFrame:Hide()
 
-    -- Add title bar with close button
-    local titleBar, title, closeButton = KOL.UIFactory:CreateTitleBar(mainFrame, 24, "Build Manager", {
-        showCloseButton = true
-    })
-
-    -- Content area below title bar
+    -- Content area (no title bar)
     local content = CreateFrame("Frame", nil, mainFrame)
-    content:SetPoint("TOPLEFT", titleBar, "BOTTOMLEFT", 0, 0)
+    content:SetPoint("TOPLEFT", mainFrame, "TOPLEFT", 0, 0)
     content:SetPoint("BOTTOMRIGHT", mainFrame, "BOTTOMRIGHT", 0, 0)
     mainFrame.content = content
 
-    -- Left Panel: Import/Export
+    -- Left Panel
     local leftPanel = CreateFrame("Frame", nil, content)
     leftPanel:SetPoint("TOPLEFT", content, "TOPLEFT", 10, -10)
-    leftPanel:SetPoint("BOTTOMLEFT", content, "BOTTOMLEFT", 10, 50)
-    leftPanel:SetWidth(230)
+    leftPanel:SetPoint("BOTTOMLEFT", content, "BOTTOMLEFT", 10, 15)
+    leftPanel:SetWidth(310)
 
-    local leftHeader = leftPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    leftHeader:SetPoint("TOPLEFT", leftPanel, "TOPLEFT", 0, 0)
-    leftHeader:SetText("IMPORT / EXPORT")
-    leftHeader:SetTextColor(0.7, 0.7, 0.7)
+    -- === MISC PERKS Section ===
+    local miscPerksHeader = KOL.UIFactory:CreateSectionHeader(leftPanel, "MISC PERKS", {r = 1, g = 0.75, b = 0.3}, 300)
+    miscPerksHeader:SetPoint("TOPLEFT", leftPanel, "TOPLEFT", 0, 0)
+
+    -- MISC PERKS button row
+    local miscButtonRow = CreateFrame("Frame", nil, leftPanel)
+    miscButtonRow:SetPoint("TOPLEFT", miscPerksHeader, "BOTTOMLEFT", 0, -6)
+    miscButtonRow:SetSize(300, 25)
+
+    local setMiscBtn = KOL.UIFactory:CreateButton(miscButtonRow, "SET", {
+        type = "text",
+        onClick = function()
+            BuildManager:ApplyMiscPerks()
+        end,
+    })
+    setMiscBtn:SetPoint("LEFT", miscButtonRow, "LEFT", 5, 0)
+
+    local configMiscBtn = KOL.UIFactory:CreateButton(miscButtonRow, "CONFIG", {
+        type = "text",
+        onClick = function()
+            BuildManager:ShowMiscPerksConfig()
+        end,
+    })
+    configMiscBtn:SetPoint("LEFT", setMiscBtn, "RIGHT", 10, 0)
+
+    local exportMiscBtn = KOL.UIFactory:CreateButton(miscButtonRow, "EXPORT", {
+        type = "text",
+        onClick = function()
+            local exportStr = BuildManager:ExportMiscPerksConfig()
+            mainFrame.editBox:SetText(exportStr)
+            mainFrame.editBox:HighlightText()
+            mainFrame.editBox:SetFocus()
+            BuildManager:Print("MISC PERKS config exported - copied to text box")
+        end,
+    })
+    exportMiscBtn:SetPoint("LEFT", configMiscBtn, "RIGHT", 10, 0)
+
+    -- === IMPORT/EXPORT Section ===
+    local importExportHeader = KOL.UIFactory:CreateSectionHeader(leftPanel, "IMPORT / EXPORT", {r = 0.5, g = 0.8, b = 1}, 300)
+    importExportHeader:SetPoint("TOPLEFT", miscButtonRow, "BOTTOMLEFT", 0, -10)
 
     -- Multi-line edit box for build string
-    local editBox = KOL.UIFactory:CreateMultiLineEditBox(leftPanel, 220, 120, {
+    local editBox = KOL.UIFactory:CreateMultiLineEditBox(leftPanel, 300, 80, {
         placeholder = "Paste build string here...",
     })
-    editBox:SetPoint("TOPLEFT", leftHeader, "BOTTOMLEFT", 0, -10)
+    editBox:SetPoint("TOPLEFT", importExportHeader, "BOTTOMLEFT", 0, -6)
     mainFrame.editBox = editBox
 
-    -- Import/Export buttons
-    local buttonRow = CreateFrame("Frame", nil, leftPanel)
-    buttonRow:SetPoint("TOPLEFT", editBox, "BOTTOMLEFT", 0, -10)
-    buttonRow:SetSize(220, 25)
+    -- Import/Export button row
+    local importExportRow = CreateFrame("Frame", nil, leftPanel)
+    importExportRow:SetPoint("TOPLEFT", editBox, "BOTTOMLEFT", 0, -6)
+    importExportRow:SetSize(300, 25)
 
-    local importBtn = KOL.UIFactory:CreateButton(buttonRow, "IMPORT", {
-        type = "animated",
+    local importBtn = KOL.UIFactory:CreateButton(importExportRow, "IMPORT", {
+        type = "text",
         onClick = function()
             local text = editBox:GetText()
-            if text and text ~= "" then
+            if not text or text == "" then
+                BuildManager:Print("Please paste a build string first")
+                return
+            end
+
+            -- Check for KMP string anywhere in the text (extract the KMP line)
+            local kmpString = nil
+            local remainingLines = {}
+
+            for line in text:gmatch("[^\r\n]+") do
+                if line:match("^KMP:") then
+                    kmpString = line
+                else
+                    table.insert(remainingLines, line)
+                end
+            end
+
+            local remainingText = table.concat(remainingLines, "\n")
+
+            -- Check if remaining text looks like a Synastria build
+            -- (has lines with only numbers/commas OR lines starting with UPPERCASE:)
+            local hasSynBuild = false
+            for _, line in ipairs(remainingLines) do
+                if line:match("^[%d,]+$") or line:match("^%u+:") then
+                    hasSynBuild = true
+                    break
+                end
+            end
+
+            -- Import based on what we found
+            if hasSynBuild and kmpString then
+                -- Both found - import Synastria first, then KMP after delay
+                BuildManager:Print("Importing Synastria build + MISC PERKS config...")
+                BuildManager:ImportFullBuild(remainingText)
+                C_Timer.After(0.5, function()
+                    local success, msg = BuildManager:ImportMiscPerksConfig(kmpString)
+                    if success then
+                        BuildManager:Print(msg)
+                        if miscPerksFrame and miscPerksFrame:IsShown() then
+                            BuildManager:RefreshMiscPerksConfig()
+                        end
+                    else
+                        BuildManager:Print("|cFFFF0000KMP Import failed:|r " .. msg)
+                    end
+                end)
+            elseif kmpString then
+                -- Only KMP found
+                local success, msg = BuildManager:ImportMiscPerksConfig(kmpString)
+                if success then
+                    BuildManager:Print(msg)
+                    if miscPerksFrame and miscPerksFrame:IsShown() then
+                        BuildManager:RefreshMiscPerksConfig()
+                    end
+                else
+                    BuildManager:Print("|cFFFF0000Import failed:|r " .. msg)
+                end
+            elseif hasSynBuild then
+                -- Only Synastria build found
                 BuildManager:ImportFullBuild(text)
             else
-                BuildManager:Print("Please paste a build string first")
+                BuildManager:Print("|cFFFF6600Unrecognized import format|r")
             end
         end,
     })
-    importBtn:SetPoint("LEFT", buttonRow, "LEFT", 40, 0)
+    importBtn:SetPoint("LEFT", importExportRow, "LEFT", 5, 0)
 
-    local exportBtn = KOL.UIFactory:CreateButton(buttonRow, "EXPORT", {
-        type = "animated",
+    local exportBtn = KOL.UIFactory:CreateButton(importExportRow, "EXPORT", {
+        type = "text",
         onClick = function()
             local buildStr = BuildManager:ExportFullBuild()
             editBox:SetText(buildStr)
@@ -843,23 +1634,29 @@ function BuildManager:CreateMainFrame()
             BuildManager:Print("Build exported - copied to text box")
         end,
     })
-    exportBtn:SetPoint("LEFT", importBtn, "RIGHT", 40, 0)
+    exportBtn:SetPoint("LEFT", importBtn, "RIGHT", 10, 0)
 
-    -- Right Panel: Saved Builds
+    local closeBtn = KOL.UIFactory:CreateButton(importExportRow, "CLOSE", {
+        type = "text",
+        onClick = function()
+            mainFrame:Hide()
+        end,
+    })
+    closeBtn:SetPoint("LEFT", exportBtn, "RIGHT", 10, 0)
+
+    -- === Right Panel: Saved Builds ===
     local rightPanel = CreateFrame("Frame", nil, content)
     rightPanel:SetPoint("TOPLEFT", leftPanel, "TOPRIGHT", 20, 0)
-    rightPanel:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -10, 50)
+    rightPanel:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -10, 15)
 
-    local rightHeader = rightPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    rightHeader:SetPoint("TOPLEFT", rightPanel, "TOPLEFT", 0, 0)
-    rightHeader:SetText("SAVED BUILDS")
-    rightHeader:SetTextColor(0.7, 0.7, 0.7)
+    local savedHeader = KOL.UIFactory:CreateSectionHeader(rightPanel, "SAVED", {r = 0.6, g = 1, b = 0.6}, 240)
+    savedHeader:SetPoint("TOPLEFT", rightPanel, "TOPLEFT", 0, 0)
 
-    -- Scrollable build list (same height as edit box: 120px)
+    -- Scrollable build list (height calculated to align button rows)
     local listContainer = CreateFrame("Frame", nil, rightPanel)
-    listContainer:SetPoint("TOPLEFT", rightHeader, "BOTTOMLEFT", 0, -10)
+    listContainer:SetPoint("TOPLEFT", savedHeader, "BOTTOMLEFT", 0, -6)
     listContainer:SetPoint("RIGHT", rightPanel, "RIGHT", 0, 0)
-    listContainer:SetHeight(120)
+    listContainer:SetHeight(143)
 
     -- Create scroll frame (no template - custom scrollbar)
     local scrollFrame = CreateFrame("ScrollFrame", "KOL_BuildManagerScrollFrame", listContainer)
@@ -976,11 +1773,11 @@ function BuildManager:CreateMainFrame()
 
     -- Build list action buttons (below list container)
     local actionRow = CreateFrame("Frame", nil, rightPanel)
-    actionRow:SetPoint("TOPLEFT", listContainer, "BOTTOMLEFT", 0, -10)
+    actionRow:SetPoint("TOPLEFT", listContainer, "BOTTOMLEFT", 0, -6)
     actionRow:SetSize(240, 25)
 
     local createBtn = KOL.UIFactory:CreateButton(actionRow, "CREATE", {
-        type = "animated",
+        type = "text",
         onClick = function()
             BuildManager:ShowCreateFrame()
         end,
@@ -988,7 +1785,7 @@ function BuildManager:CreateMainFrame()
     createBtn:SetPoint("LEFT", actionRow, "LEFT", 0, 0)
 
     local editBtn = KOL.UIFactory:CreateButton(actionRow, "EDIT", {
-        type = "animated",
+        type = "text",
         onClick = function()
             if selectedBuildId then
                 BuildManager:ShowCreateFrame(selectedBuildId)
@@ -1000,7 +1797,7 @@ function BuildManager:CreateMainFrame()
     editBtn:SetPoint("LEFT", createBtn, "RIGHT", 20, 0)
 
     local deleteBtn = KOL.UIFactory:CreateButton(actionRow, "DELETE", {
-        type = "animated",
+        type = "text",
         onClick = function()
             if selectedBuildId then
                 BuildManager:ShowDeleteFrame(selectedBuildId)
@@ -1012,7 +1809,7 @@ function BuildManager:CreateMainFrame()
     deleteBtn:SetPoint("LEFT", editBtn, "RIGHT", 20, 0)
 
     local restoreBtn = KOL.UIFactory:CreateButton(actionRow, "RESTORE", {
-        type = "animated",
+        type = "text",
         onClick = function()
             BuildManager:ShowRecoverFrame()
         end,
@@ -1175,7 +1972,7 @@ function BuildManager:CreateCreateFrame()
     createFrame = KOL.UIFactory:CreateStyledFrame(UIParent, "KOL_BuildManagerCreateFrame", 320, 320, {
         closable = true,
         movable = true,
-        strata = "TOOLTIP",
+        -- Uses default DIALOG strata for proper z-ordering with other KOL frames
     })
     createFrame:SetPoint("CENTER")
     createFrame:Hide()
@@ -1327,7 +2124,7 @@ function BuildManager:CreateDeleteFrame()
     deleteFrame = KOL.UIFactory:CreateStyledFrame(UIParent, "KOL_BuildManagerDeleteFrame", 370, 90, {
         closable = true,
         movable = true,
-        strata = "TOOLTIP",
+        -- Uses default DIALOG strata for proper z-ordering with other KOL frames
     })
     deleteFrame:SetPoint("CENTER")
     deleteFrame:Hide()
@@ -1408,7 +2205,7 @@ function BuildManager:CreateRecoverFrame()
     recoverFrame = KOL.UIFactory:CreateStyledFrame(UIParent, "KOL_BuildManagerRecoverFrame", 320, 200, {
         closable = true,
         movable = true,
-        strata = "TOOLTIP",
+        -- Uses default DIALOG strata for proper z-ordering with other KOL frames
     })
     recoverFrame:SetPoint("CENTER")
     recoverFrame:Hide()

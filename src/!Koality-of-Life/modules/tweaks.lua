@@ -160,13 +160,94 @@ function Tweaks:Initialize()
         end
     end
 
+    -- Initialize Synastria defaults
+    if not KOL.db.profile.tweaks.synastria then
+        KOL.db.profile.tweaks.synastria = {
+            scrollbarSkinning = true,  -- Default ON
+        }
+    end
+
+    -- Initialize global scrollbar settings (ensure all fields exist)
+    local scrollbarDefaults = {
+        width = 16,
+        hidden = false,
+        hideUpButton = false,
+        hideDownButton = false,
+        trackBg = {r = 0.1, g = 0.1, b = 0.1, a = 0.8},
+        trackBorder = {r = 0.3, g = 0.3, b = 0.3, a = 1},
+        thumbBg = {r = 0.3, g = 0.3, b = 0.3, a = 1},
+        thumbBorder = {r = 0.5, g = 0.5, b = 0.5, a = 1},
+        buttonBg = {r = 0.2, g = 0.2, b = 0.2, a = 1},
+        buttonBorder = {r = 0.4, g = 0.4, b = 0.4, a = 1},
+        buttonArrow = {r = 0.8, g = 0.8, b = 0.8, a = 1},
+    }
+    if not KOL.db.profile.tweaks.synastria.scrollbar then
+        KOL.db.profile.tweaks.synastria.scrollbar = scrollbarDefaults
+    else
+        -- Ensure all fields exist (for upgrades)
+        for k, v in pairs(scrollbarDefaults) do
+            if KOL.db.profile.tweaks.synastria.scrollbar[k] == nil then
+                KOL.db.profile.tweaks.synastria.scrollbar[k] = v
+            end
+        end
+    end
+
     -- Setup config UI
     self:SetupConfigUI()
 
     -- Start ItemTracker batch system
     self:StartItemHuntBatch()
 
+    -- Suppress annoying QuestHelper error popups
+    self:SetupQuestHelperSuppressor()
+
     KOL:DebugPrint("Tweaks: Module initialized", 1)
+end
+
+-- ============================================================================
+-- QuestHelper Error Popup Suppressor
+-- ============================================================================
+-- Automatically closes the annoying "QuestHelper has broke" popup
+
+function Tweaks:SetupQuestHelperSuppressor()
+    -- Hook StaticPopup_Show to intercept QuestHelper error popups
+    if not self.questHelperHooked then
+        -- Also monitor StaticPopup frames directly for text changes
+        local function CheckAndHideQHPopup(popup)
+            if not popup or not popup:IsVisible() then return end
+
+            local textWidget = popup.text or _G[popup:GetName() .. "Text"]
+            if textWidget then
+                local text = textWidget:GetText()
+                if text and string.find(text, "QuestHelper has broken") then
+                    popup:Hide()
+                    KOL:DebugPrint("Tweaks: Suppressed QuestHelper error popup", 1)
+                    return true
+                end
+            end
+            return false
+        end
+
+        -- Check all static popups periodically via OnUpdate (very lightweight)
+        local suppressorFrame = CreateFrame("Frame")
+        suppressorFrame.elapsed = 0
+        suppressorFrame:SetScript("OnUpdate", function(self, elapsed)
+            self.elapsed = self.elapsed + elapsed
+            if self.elapsed < 0.1 then return end  -- Check every 0.1 seconds
+            self.elapsed = 0
+
+            -- Check StaticPopup1 through StaticPopup4
+            for i = 1, 4 do
+                local popup = _G["StaticPopup" .. i]
+                if popup and popup:IsVisible() then
+                    CheckAndHideQHPopup(popup)
+                end
+            end
+        end)
+
+        self.questHelperHooked = true
+        KOL:DebugPrint("Tweaks: QuestHelper popup suppressor active", 2)
+    end
 end
 
 -- ============================================================================
@@ -351,6 +432,10 @@ function Tweaks:StartItemHuntBatch()
         Tweaks:ScanAndApplyItemHuntFonts()
         -- Also ensure scrollbar is skinned (won't re-skin if already done)
         Tweaks:ApplyItemTrackerScrollbar()
+        -- Skin registered Synastria scrollbars (PerkMgrFrame, etc.)
+        if KOL.UIFactory and KOL.UIFactory.SkinRegisteredScrollBars then
+            KOL.UIFactory:SkinRegisteredScrollBars()
+        end
     end, 3)
 
     -- Start the batch
@@ -588,396 +673,402 @@ function Tweaks:SetupConfigUI()
     end
 
     -- ========================================================================
-    -- ITEMTRACKER SUB-TAB
+    -- ITEMTRACKER OPTIONS (in Synastria sub-tab as tree section)
     -- ========================================================================
 
-    if not KOL.configOptions.args.tweaks.args.itemtracker_tab then
-        KOL.configOptions.args.tweaks.args.itemtracker_tab = {
-            type = "group",
-            name = "ItemTracker",
-            order = 3,
-            args = {}
-        }
-    end
-    local itemtrackerTab = KOL.configOptions.args.tweaks.args.itemtracker_tab.args
+    -- Get reference to synastria tab args
+    local synastriaTab = KOL.configOptions.args.tweaks.args.synastria.args
 
-    -- Header
-    itemtrackerTab.header = {
-        type = "description",
-        name = "|cFFFFFFFFItemTracker Font Customization|r\n|cFFAAAAAACustomize fonts for different ItemHunt elements (zones, NPCs, items, limits).|r\n",
-        fontSize = "medium",
-        order = 1,
-    }
-
-    -- Enable toggle
-    itemtrackerTab.enabled = {
-        type = "toggle",
-        name = "Enable ItemTracker Font Changes",
-        desc = "Enable custom font settings for ItemTracker",
-        order = 2,
-        get = function()
-            return KOL.db.profile.tweaks.itemTracker.enabled
-        end,
-        set = function(_, value)
-            KOL.db.profile.tweaks.itemTracker.enabled = value
-            Tweaks:ApplyItemTrackerFont()
-            KOL:PrintTag("ItemTracker font changes " .. (value and "|cFF00FF00enabled|r" or "|cFFFF0000disabled|r"))
-        end,
-    }
-
-    -- Zone Headers Group
-    itemtrackerTab.zone = {
+    -- ITEM TRACKER tree section (order 3)
+    synastriaTab.itemTracker = {
         type = "group",
-        name = "Zone Headers",
-        inline = true,
+        name = "Item Tracker",
         order = 3,
         args = {
-            font = {
-                type = "select",
-                name = "Font",
-                desc = "Font for zone headers",
-                dialogControl = "LSM30_Font",
-                values = LSM:HashTable("font"),
+            -- Section Header (orange accent)
+            header = {
+                type = "description",
+                name = "ITEM TRACKER|1,0.6,0.2",  -- Orange accent
+                dialogControl = "KOL_SectionHeader",
+                width = "full",
+                order = 0,
+            },
+            desc = {
+                type = "description",
+                name = "|cFFAAAAAACustomize fonts for different ItemHunt elements (zones, NPCs, items, limits).|r\n",
+                fontSize = "small",
+                order = 0.1,
+            },
+
+            -- Enable toggle
+            enabled = {
+                type = "toggle",
+                name = "Enable ItemTracker Font Changes",
+                desc = "Enable custom font settings for ItemTracker",
                 order = 1,
-                get = function() return KOL.db.profile.tweaks.itemTracker.zoneFont end,
-                set = function(_, value)
-                    KOL.db.profile.tweaks.itemTracker.zoneFont = value
-                    Tweaks:ApplyItemTrackerFont()
-                end,
-            },
-            fontSize = {
-                type = "range",
-                name = "Size",
-                min = 6, max = 32, step = 1,
-                order = 2,
-                get = function() return KOL.db.profile.tweaks.itemTracker.zoneFontSize end,
-                set = function(_, value)
-                    KOL.db.profile.tweaks.itemTracker.zoneFontSize = value
-                    Tweaks:ApplyItemTrackerFont()
-                end,
-            },
-            fontOutline = {
-                type = "select",
-                name = "Outline",
-                values = fontOutlineOptions,
-                order = 3,
-                get = function() return KOL.db.profile.tweaks.itemTracker.zoneFontOutline end,
-                set = function(_, value)
-                    KOL.db.profile.tweaks.itemTracker.zoneFontOutline = value
-                    Tweaks:ApplyItemTrackerFont()
-                end,
-            },
-        }
-    }
-
-    -- NPCs/Mobs Group
-    itemtrackerTab.npc = {
-        type = "group",
-        name = "NPCs/Mobs",
-        inline = true,
-        order = 4,
-        args = {
-            font = {
-                type = "select",
-                name = "Font",
-                dialogControl = "LSM30_Font",
-                values = LSM:HashTable("font"),
-                order = 1,
-                get = function() return KOL.db.profile.tweaks.itemTracker.npcFont end,
-                set = function(_, value)
-                    KOL.db.profile.tweaks.itemTracker.npcFont = value
-                    Tweaks:ApplyItemTrackerFont()
-                end,
-            },
-            fontSize = {
-                type = "range",
-                name = "Size",
-                min = 6, max = 32, step = 1,
-                order = 2,
-                get = function() return KOL.db.profile.tweaks.itemTracker.npcFontSize end,
-                set = function(_, value)
-                    KOL.db.profile.tweaks.itemTracker.npcFontSize = value
-                    Tweaks:ApplyItemTrackerFont()
-                end,
-            },
-            fontOutline = {
-                type = "select",
-                name = "Outline",
-                values = fontOutlineOptions,
-                order = 3,
-                get = function() return KOL.db.profile.tweaks.itemTracker.npcFontOutline end,
-                set = function(_, value)
-                    KOL.db.profile.tweaks.itemTracker.npcFontOutline = value
-                    Tweaks:ApplyItemTrackerFont()
-                end,
-            },
-        }
-    }
-
-    -- Items/Loot Group
-    itemtrackerTab.item = {
-        type = "group",
-        name = "Items/Loot",
-        inline = true,
-        order = 5,
-        args = {
-            font = {
-                type = "select",
-                name = "Font",
-                dialogControl = "LSM30_Font",
-                values = LSM:HashTable("font"),
-                order = 1,
-                get = function() return KOL.db.profile.tweaks.itemTracker.itemFont end,
-                set = function(_, value)
-                    KOL.db.profile.tweaks.itemTracker.itemFont = value
-                    Tweaks:ApplyItemTrackerFont()
-                end,
-            },
-            fontSize = {
-                type = "range",
-                name = "Size",
-                min = 6, max = 32, step = 1,
-                order = 2,
-                get = function() return KOL.db.profile.tweaks.itemTracker.itemFontSize end,
-                set = function(_, value)
-                    KOL.db.profile.tweaks.itemTracker.itemFontSize = value
-                    Tweaks:ApplyItemTrackerFont()
-                end,
-            },
-            fontOutline = {
-                type = "select",
-                name = "Outline",
-                values = fontOutlineOptions,
-                order = 3,
-                get = function() return KOL.db.profile.tweaks.itemTracker.itemFontOutline end,
-                set = function(_, value)
-                    KOL.db.profile.tweaks.itemTracker.itemFontOutline = value
-                    Tweaks:ApplyItemTrackerFont()
-                end,
-            },
-        }
-    }
-
-    -- Limit Indicators Group
-    itemtrackerTab.limit = {
-        type = "group",
-        name = "Limit Indicators",
-        inline = true,
-        order = 6,
-        args = {
-            font = {
-                type = "select",
-                name = "Font",
-                dialogControl = "LSM30_Font",
-                values = LSM:HashTable("font"),
-                order = 1,
-                get = function() return KOL.db.profile.tweaks.itemTracker.limitFont end,
-                set = function(_, value)
-                    KOL.db.profile.tweaks.itemTracker.limitFont = value
-                    Tweaks:ApplyItemTrackerFont()
-                end,
-            },
-            fontSize = {
-                type = "range",
-                name = "Size",
-                min = 6, max = 32, step = 1,
-                order = 2,
-                get = function() return KOL.db.profile.tweaks.itemTracker.limitFontSize end,
-                set = function(_, value)
-                    KOL.db.profile.tweaks.itemTracker.limitFontSize = value
-                    Tweaks:ApplyItemTrackerFont()
-                end,
-            },
-            fontOutline = {
-                type = "select",
-                name = "Outline",
-                values = fontOutlineOptions,
-                order = 3,
-                get = function() return KOL.db.profile.tweaks.itemTracker.limitFontOutline end,
-                set = function(_, value)
-                    KOL.db.profile.tweaks.itemTracker.limitFontOutline = value
-                    Tweaks:ApplyItemTrackerFont()
-                end,
-            },
-        }
-    }
-
-    -- ========================================================================
-    -- Scrollbar Skinning Group
-    -- ========================================================================
-    itemtrackerTab.scrollbarHeader = {
-        type = "header",
-        name = "Scrollbar Skinning",
-        order = 50,
-    }
-
-    itemtrackerTab.scrollbarEnabled = {
-        type = "toggle",
-        name = "Enable Scrollbar Skinning",
-        desc = "Skin the ItemHuntFrame scrollbar to match KoL's dark theme",
-        get = function() return KOL.db.profile.tweaks.itemTracker.scrollbarEnabled end,
-        set = function(_, value)
-            KOL.db.profile.tweaks.itemTracker.scrollbarEnabled = value
-            if value then
-                Tweaks:ApplyItemTrackerScrollbar()
-                KOL:PrintTag("ItemTracker scrollbar skinning |cFF00FF00enabled|r")
-            else
-                KOL:PrintTag("ItemTracker scrollbar skinning |cFFFF0000disabled|r |cFFFFAAAA(requires /reload)|r")
-            end
-        end,
-        width = "full",
-        order = 51,
-    }
-
-    itemtrackerTab.scrollbarHidden = {
-        type = "toggle",
-        name = "Hide Scrollbar",
-        desc = "Completely hide the ItemHuntFrame scrollbar (you can still scroll with mouse wheel)",
-        get = function() return KOL.db.profile.tweaks.itemTracker.scrollbarHidden end,
-        set = function(_, value)
-            KOL.db.profile.tweaks.itemTracker.scrollbarHidden = value
-            Tweaks:ApplyItemTrackerScrollbar()
-            if value then
-                KOL:PrintTag("ItemTracker scrollbar |cFFFF8800hidden|r")
-            else
-                KOL:PrintTag("ItemTracker scrollbar |cFF00FF00visible|r")
-            end
-        end,
-        width = "full",
-        order = 51.5,
-    }
-
-    itemtrackerTab.scrollbarWidth = {
-        type = "range",
-        name = "Scrollbar Width",
-        desc = "Width of the scrollbar track and buttons (8-32 pixels)",
-        min = 8,
-        max = 32,
-        step = 1,
-        get = function() return KOL.db.profile.tweaks.itemTracker.scrollbarWidth or 16 end,
-        set = function(_, value)
-            KOL.db.profile.tweaks.itemTracker.scrollbarWidth = value
-            Tweaks:ResetItemTrackerScrollbar()
-        end,
-        hidden = function()
-            return not KOL.db.profile.tweaks.itemTracker.scrollbarEnabled or
-                   KOL.db.profile.tweaks.itemTracker.scrollbarHidden
-        end,
-        width = "full",
-        order = 51.7,
-    }
-
-    itemtrackerTab.scrollbarColors = {
-        type = "group",
-        name = "Scrollbar Colors",
-        inline = true,
-        order = 52,
-        hidden = function() return not KOL.db.profile.tweaks.itemTracker.scrollbarEnabled end,
-        args = {
-            trackBg = {
-                type = "color",
-                name = "Track Background",
-                hasAlpha = true,
-                order = 1,
-                width = 0.8,
                 get = function()
-                    local c = KOL.db.profile.tweaks.itemTracker.scrollbarTrackBg
-                    return c.r, c.g, c.b, c.a
+                    return KOL.db.profile.tweaks.itemTracker.enabled
                 end,
-                set = function(_, r, g, b, a)
-                    KOL.db.profile.tweaks.itemTracker.scrollbarTrackBg = {r=r, g=g, b=b, a=a}
-                    Tweaks:ResetItemTrackerScrollbar()
+                set = function(_, value)
+                    KOL.db.profile.tweaks.itemTracker.enabled = value
+                    Tweaks:ApplyItemTrackerFont()
+                    KOL:PrintTag("ItemTracker font changes " .. (value and "|cFF00FF00enabled|r" or "|cFFFF0000disabled|r"))
                 end,
             },
-            trackBorder = {
-                type = "color",
-                name = "Track Border",
-                hasAlpha = true,
+
+            -- Zone Headers Group
+            zone = {
+                type = "group",
+                name = "Zone Headers",
+                inline = true,
                 order = 2,
-                width = 0.8,
-                get = function()
-                    local c = KOL.db.profile.tweaks.itemTracker.scrollbarTrackBorder
-                    return c.r, c.g, c.b, c.a
-                end,
-                set = function(_, r, g, b, a)
-                    KOL.db.profile.tweaks.itemTracker.scrollbarTrackBorder = {r=r, g=g, b=b, a=a}
-                    Tweaks:ResetItemTrackerScrollbar()
-                end,
+                args = {
+                    font = {
+                        type = "select",
+                        name = "Font",
+                        desc = "Font for zone headers",
+                        dialogControl = "LSM30_Font",
+                        values = LSM:HashTable("font"),
+                        order = 1,
+                        get = function() return KOL.db.profile.tweaks.itemTracker.zoneFont end,
+                        set = function(_, value)
+                            KOL.db.profile.tweaks.itemTracker.zoneFont = value
+                            Tweaks:ApplyItemTrackerFont()
+                        end,
+                    },
+                    fontSize = {
+                        type = "range",
+                        name = "Size",
+                        min = 6, max = 32, step = 1,
+                        order = 2,
+                        get = function() return KOL.db.profile.tweaks.itemTracker.zoneFontSize end,
+                        set = function(_, value)
+                            KOL.db.profile.tweaks.itemTracker.zoneFontSize = value
+                            Tweaks:ApplyItemTrackerFont()
+                        end,
+                    },
+                    fontOutline = {
+                        type = "select",
+                        name = "Outline",
+                        values = fontOutlineOptions,
+                        order = 3,
+                        get = function() return KOL.db.profile.tweaks.itemTracker.zoneFontOutline end,
+                        set = function(_, value)
+                            KOL.db.profile.tweaks.itemTracker.zoneFontOutline = value
+                            Tweaks:ApplyItemTrackerFont()
+                        end,
+                    },
+                }
             },
-            thumbBg = {
-                type = "color",
-                name = "Thumb Background",
-                hasAlpha = true,
+
+            -- NPCs/Mobs Group
+            npc = {
+                type = "group",
+                name = "NPCs/Mobs",
+                inline = true,
                 order = 3,
-                width = 0.8,
-                get = function()
-                    local c = KOL.db.profile.tweaks.itemTracker.scrollbarThumbBg
-                    return c.r, c.g, c.b, c.a
-                end,
-                set = function(_, r, g, b, a)
-                    KOL.db.profile.tweaks.itemTracker.scrollbarThumbBg = {r=r, g=g, b=b, a=a}
-                    Tweaks:ResetItemTrackerScrollbar()
-                end,
+                args = {
+                    font = {
+                        type = "select",
+                        name = "Font",
+                        dialogControl = "LSM30_Font",
+                        values = LSM:HashTable("font"),
+                        order = 1,
+                        get = function() return KOL.db.profile.tweaks.itemTracker.npcFont end,
+                        set = function(_, value)
+                            KOL.db.profile.tweaks.itemTracker.npcFont = value
+                            Tweaks:ApplyItemTrackerFont()
+                        end,
+                    },
+                    fontSize = {
+                        type = "range",
+                        name = "Size",
+                        min = 6, max = 32, step = 1,
+                        order = 2,
+                        get = function() return KOL.db.profile.tweaks.itemTracker.npcFontSize end,
+                        set = function(_, value)
+                            KOL.db.profile.tweaks.itemTracker.npcFontSize = value
+                            Tweaks:ApplyItemTrackerFont()
+                        end,
+                    },
+                    fontOutline = {
+                        type = "select",
+                        name = "Outline",
+                        values = fontOutlineOptions,
+                        order = 3,
+                        get = function() return KOL.db.profile.tweaks.itemTracker.npcFontOutline end,
+                        set = function(_, value)
+                            KOL.db.profile.tweaks.itemTracker.npcFontOutline = value
+                            Tweaks:ApplyItemTrackerFont()
+                        end,
+                    },
+                }
             },
-            thumbBorder = {
-                type = "color",
-                name = "Thumb Border",
-                hasAlpha = true,
+
+            -- Items/Loot Group
+            item = {
+                type = "group",
+                name = "Items/Loot",
+                inline = true,
                 order = 4,
-                width = 0.8,
-                get = function()
-                    local c = KOL.db.profile.tweaks.itemTracker.scrollbarThumbBorder
-                    return c.r, c.g, c.b, c.a
-                end,
-                set = function(_, r, g, b, a)
-                    KOL.db.profile.tweaks.itemTracker.scrollbarThumbBorder = {r=r, g=g, b=b, a=a}
-                    Tweaks:ResetItemTrackerScrollbar()
-                end,
+                args = {
+                    font = {
+                        type = "select",
+                        name = "Font",
+                        dialogControl = "LSM30_Font",
+                        values = LSM:HashTable("font"),
+                        order = 1,
+                        get = function() return KOL.db.profile.tweaks.itemTracker.itemFont end,
+                        set = function(_, value)
+                            KOL.db.profile.tweaks.itemTracker.itemFont = value
+                            Tweaks:ApplyItemTrackerFont()
+                        end,
+                    },
+                    fontSize = {
+                        type = "range",
+                        name = "Size",
+                        min = 6, max = 32, step = 1,
+                        order = 2,
+                        get = function() return KOL.db.profile.tweaks.itemTracker.itemFontSize end,
+                        set = function(_, value)
+                            KOL.db.profile.tweaks.itemTracker.itemFontSize = value
+                            Tweaks:ApplyItemTrackerFont()
+                        end,
+                    },
+                    fontOutline = {
+                        type = "select",
+                        name = "Outline",
+                        values = fontOutlineOptions,
+                        order = 3,
+                        get = function() return KOL.db.profile.tweaks.itemTracker.itemFontOutline end,
+                        set = function(_, value)
+                            KOL.db.profile.tweaks.itemTracker.itemFontOutline = value
+                            Tweaks:ApplyItemTrackerFont()
+                        end,
+                    },
+                }
             },
-            buttonBg = {
-                type = "color",
-                name = "Button Background",
-                hasAlpha = true,
+
+            -- Limit Indicators Group
+            limit = {
+                type = "group",
+                name = "Limit Indicators",
+                inline = true,
                 order = 5,
-                width = 0.8,
-                get = function()
-                    local c = KOL.db.profile.tweaks.itemTracker.scrollbarButtonBg
-                    return c.r, c.g, c.b, c.a
-                end,
-                set = function(_, r, g, b, a)
-                    KOL.db.profile.tweaks.itemTracker.scrollbarButtonBg = {r=r, g=g, b=b, a=a}
-                    Tweaks:ResetItemTrackerScrollbar()
-                end,
+                args = {
+                    font = {
+                        type = "select",
+                        name = "Font",
+                        dialogControl = "LSM30_Font",
+                        values = LSM:HashTable("font"),
+                        order = 1,
+                        get = function() return KOL.db.profile.tweaks.itemTracker.limitFont end,
+                        set = function(_, value)
+                            KOL.db.profile.tweaks.itemTracker.limitFont = value
+                            Tweaks:ApplyItemTrackerFont()
+                        end,
+                    },
+                    fontSize = {
+                        type = "range",
+                        name = "Size",
+                        min = 6, max = 32, step = 1,
+                        order = 2,
+                        get = function() return KOL.db.profile.tweaks.itemTracker.limitFontSize end,
+                        set = function(_, value)
+                            KOL.db.profile.tweaks.itemTracker.limitFontSize = value
+                            Tweaks:ApplyItemTrackerFont()
+                        end,
+                    },
+                    fontOutline = {
+                        type = "select",
+                        name = "Outline",
+                        values = fontOutlineOptions,
+                        order = 3,
+                        get = function() return KOL.db.profile.tweaks.itemTracker.limitFontOutline end,
+                        set = function(_, value)
+                            KOL.db.profile.tweaks.itemTracker.limitFontOutline = value
+                            Tweaks:ApplyItemTrackerFont()
+                        end,
+                    },
+                }
             },
-            buttonBorder = {
-                type = "color",
-                name = "Button Border",
-                hasAlpha = true,
+
+            -- ItemTracker Scrollbar Skinning Group
+            scrollbarHeader = {
+                type = "header",
+                name = "ItemTracker Scrollbar Skinning",
                 order = 6,
-                width = 0.8,
-                get = function()
-                    local c = KOL.db.profile.tweaks.itemTracker.scrollbarButtonBorder
-                    return c.r, c.g, c.b, c.a
-                end,
-                set = function(_, r, g, b, a)
-                    KOL.db.profile.tweaks.itemTracker.scrollbarButtonBorder = {r=r, g=g, b=b, a=a}
-                    Tweaks:ResetItemTrackerScrollbar()
-                end,
             },
-            buttonArrow = {
-                type = "color",
-                name = "Button Arrow",
-                hasAlpha = true,
-                order = 7,
-                width = 0.8,
-                get = function()
-                    local c = KOL.db.profile.tweaks.itemTracker.scrollbarButtonArrow
-                    return c.r, c.g, c.b, c.a
+
+            scrollbarEnabled = {
+                type = "toggle",
+                name = "Enable Scrollbar Skinning",
+                desc = "Skin the ItemHuntFrame scrollbar to match KoL's dark theme",
+                get = function() return KOL.db.profile.tweaks.itemTracker.scrollbarEnabled end,
+                set = function(_, value)
+                    KOL.db.profile.tweaks.itemTracker.scrollbarEnabled = value
+                    if value then
+                        Tweaks:ApplyItemTrackerScrollbar()
+                        KOL:PrintTag("ItemTracker scrollbar skinning |cFF00FF00enabled|r")
+                    else
+                        KOL:PrintTag("ItemTracker scrollbar skinning |cFFFF0000disabled|r |cFFFFAAAA(requires /reload)|r")
+                    end
                 end,
-                set = function(_, r, g, b, a)
-                    KOL.db.profile.tweaks.itemTracker.scrollbarButtonArrow = {r=r, g=g, b=b, a=a}
+                width = "full",
+                order = 7,
+            },
+
+            scrollbarHidden = {
+                type = "toggle",
+                name = "Hide Scrollbar",
+                desc = "Completely hide the ItemHuntFrame scrollbar (you can still scroll with mouse wheel)",
+                get = function() return KOL.db.profile.tweaks.itemTracker.scrollbarHidden end,
+                set = function(_, value)
+                    KOL.db.profile.tweaks.itemTracker.scrollbarHidden = value
+                    Tweaks:ApplyItemTrackerScrollbar()
+                    if value then
+                        KOL:PrintTag("ItemTracker scrollbar |cFFFF8800hidden|r")
+                    else
+                        KOL:PrintTag("ItemTracker scrollbar |cFF00FF00visible|r")
+                    end
+                end,
+                width = "full",
+                order = 8,
+            },
+
+            scrollbarWidth = {
+                type = "range",
+                name = "Scrollbar Width",
+                desc = "Width of the scrollbar track and buttons (8-32 pixels)",
+                min = 8,
+                max = 32,
+                step = 1,
+                get = function() return KOL.db.profile.tweaks.itemTracker.scrollbarWidth or 16 end,
+                set = function(_, value)
+                    KOL.db.profile.tweaks.itemTracker.scrollbarWidth = value
                     Tweaks:ResetItemTrackerScrollbar()
                 end,
+                hidden = function()
+                    return not KOL.db.profile.tweaks.itemTracker.scrollbarEnabled or
+                           KOL.db.profile.tweaks.itemTracker.scrollbarHidden
+                end,
+                width = "full",
+                order = 9,
+            },
+
+            scrollbarColors = {
+                type = "group",
+                name = "Scrollbar Colors",
+                inline = true,
+                order = 10,
+                hidden = function() return not KOL.db.profile.tweaks.itemTracker.scrollbarEnabled end,
+                args = {
+                    trackBg = {
+                        type = "color",
+                        name = "Track Background",
+                        hasAlpha = true,
+                        order = 1,
+                        width = 0.8,
+                        get = function()
+                            local c = KOL.db.profile.tweaks.itemTracker.scrollbarTrackBg
+                            return c.r, c.g, c.b, c.a
+                        end,
+                        set = function(_, r, g, b, a)
+                            KOL.db.profile.tweaks.itemTracker.scrollbarTrackBg = {r=r, g=g, b=b, a=a}
+                            Tweaks:ResetItemTrackerScrollbar()
+                        end,
+                    },
+                    trackBorder = {
+                        type = "color",
+                        name = "Track Border",
+                        hasAlpha = true,
+                        order = 2,
+                        width = 0.8,
+                        get = function()
+                            local c = KOL.db.profile.tweaks.itemTracker.scrollbarTrackBorder
+                            return c.r, c.g, c.b, c.a
+                        end,
+                        set = function(_, r, g, b, a)
+                            KOL.db.profile.tweaks.itemTracker.scrollbarTrackBorder = {r=r, g=g, b=b, a=a}
+                            Tweaks:ResetItemTrackerScrollbar()
+                        end,
+                    },
+                    thumbBg = {
+                        type = "color",
+                        name = "Thumb Background",
+                        hasAlpha = true,
+                        order = 3,
+                        width = 0.8,
+                        get = function()
+                            local c = KOL.db.profile.tweaks.itemTracker.scrollbarThumbBg
+                            return c.r, c.g, c.b, c.a
+                        end,
+                        set = function(_, r, g, b, a)
+                            KOL.db.profile.tweaks.itemTracker.scrollbarThumbBg = {r=r, g=g, b=b, a=a}
+                            Tweaks:ResetItemTrackerScrollbar()
+                        end,
+                    },
+                    thumbBorder = {
+                        type = "color",
+                        name = "Thumb Border",
+                        hasAlpha = true,
+                        order = 4,
+                        width = 0.8,
+                        get = function()
+                            local c = KOL.db.profile.tweaks.itemTracker.scrollbarThumbBorder
+                            return c.r, c.g, c.b, c.a
+                        end,
+                        set = function(_, r, g, b, a)
+                            KOL.db.profile.tweaks.itemTracker.scrollbarThumbBorder = {r=r, g=g, b=b, a=a}
+                            Tweaks:ResetItemTrackerScrollbar()
+                        end,
+                    },
+                    buttonBg = {
+                        type = "color",
+                        name = "Button Background",
+                        hasAlpha = true,
+                        order = 5,
+                        width = 0.8,
+                        get = function()
+                            local c = KOL.db.profile.tweaks.itemTracker.scrollbarButtonBg
+                            return c.r, c.g, c.b, c.a
+                        end,
+                        set = function(_, r, g, b, a)
+                            KOL.db.profile.tweaks.itemTracker.scrollbarButtonBg = {r=r, g=g, b=b, a=a}
+                            Tweaks:ResetItemTrackerScrollbar()
+                        end,
+                    },
+                    buttonBorder = {
+                        type = "color",
+                        name = "Button Border",
+                        hasAlpha = true,
+                        order = 6,
+                        width = 0.8,
+                        get = function()
+                            local c = KOL.db.profile.tweaks.itemTracker.scrollbarButtonBorder
+                            return c.r, c.g, c.b, c.a
+                        end,
+                        set = function(_, r, g, b, a)
+                            KOL.db.profile.tweaks.itemTracker.scrollbarButtonBorder = {r=r, g=g, b=b, a=a}
+                            Tweaks:ResetItemTrackerScrollbar()
+                        end,
+                    },
+                    buttonArrow = {
+                        type = "color",
+                        name = "Button Arrow",
+                        hasAlpha = true,
+                        order = 7,
+                        width = 0.8,
+                        get = function()
+                            local c = KOL.db.profile.tweaks.itemTracker.scrollbarButtonArrow
+                            return c.r, c.g, c.b, c.a
+                        end,
+                        set = function(_, r, g, b, a)
+                            KOL.db.profile.tweaks.itemTracker.scrollbarButtonArrow = {r=r, g=g, b=b, a=a}
+                            Tweaks:ResetItemTrackerScrollbar()
+                        end,
+                    },
+                },
             },
         },
     }

@@ -843,63 +843,89 @@ end
 -- ============================================================================
 
 function Fishing:InitializeConfig()
-    -- Safety check: ensure configOptions and tweaks tab exist
+    -- Safety check: ensure configOptions and tweaks > synastria tab exist
     if not KOL.configOptions or not KOL.configOptions.args or not KOL.configOptions.args.tweaks then
         KOL:DebugPrint("Fishing: Config not ready yet, deferring InitializeConfig", 2)
         return
     end
 
-    -- Create fishing sub-tab under Tweaks
-    if not KOL.configOptions.args.tweaks.args.fishing then
-        KOL.configOptions.args.tweaks.args.fishing = {
-            type = "group",
-            name = "Fishing",
-            order = 4,
-            args = {}
-        }
+    -- Get reference to synastria tab args (fishing options are part of Synastria)
+    local synastriaTab = KOL.configOptions.args.tweaks.args.synastria
+    if not synastriaTab then
+        KOL:DebugPrint("Fishing: Synastria tab not ready yet", 2)
+        return
     end
-    -- Store reference for UIAdd functions
-    KOL.configGroups.fishing = KOL.configOptions.args.tweaks.args.fishing
 
-    -- Title
-    KOL:UIAddConfigTitle("fishing", "header", "Phantom Ghostfish Auto-Use", 1)
+    -- FISHING tree section (order 4)
+    synastriaTab.args.fishing = {
+        type = "group",
+        name = "Fishing",
+        order = 4,
+        args = {
+            -- Section Header (blue accent)
+            header = {
+                type = "description",
+                name = "FISHING|0.4,0.6,1",  -- Blue accent
+                dialogControl = "KOL_SectionHeader",
+                width = "full",
+                order = 0,
+            },
+            desc = {
+                type = "description",
+                name = "|cFFAAAAAAAutomatically uses Phantom Ghostfish and cancels Invisibility buff after 1 second.|r\n",
+                fontSize = "small",
+                order = 0.1,
+            },
 
-    -- Description
-    KOL:UIAddConfigDescription("fishing", "desc", "Automatically uses Phantom Ghostfish and cancels Invisibility buff after 1 second.", 2)
+            -- Enable module
+            enabled = {
+                type = "toggle",
+                name = "Enable Fishing Module",
+                desc = "Enable automatic Phantom Ghostfish handling",
+                get = function() return KOL.db.profile.tweaks.fishing.enabled end,
+                set = function(_, value)
+                    KOL.db.profile.tweaks.fishing.enabled = value
+                    KOL:PrintTag("Fishing module " .. (value and "|cFF00FF00enabled|r" or "|cFFFF0000disabled|r"))
+                end,
+                order = 1,
+            },
 
-    -- Enable module
-    KOL:UIAddConfigToggle("fishing", "enabled", {
-        name = "Enable Fishing Module",
-        desc = "Enable automatic Phantom Ghostfish handling",
-        order = 10,
-    })
+            -- Auto-use toggle
+            autoUse = {
+                type = "toggle",
+                name = "Auto-Use Ghostfish",
+                desc = "Automatically use Phantom Ghostfish when found in bags",
+                get = function() return KOL.db.profile.tweaks.fishing.autoUse end,
+                set = function(_, value)
+                    KOL.db.profile.tweaks.fishing.autoUse = value
+                end,
+                order = 2,
+            },
 
-    -- Auto-use toggle
-    KOL:UIAddConfigToggle("fishing", "autoUse", {
-        name = "Auto-Use Ghostfish",
-        desc = "Automatically use Phantom Ghostfish when found in bags",
-        order = 11,
-    })
+            -- Auto-cancel toggle
+            autoCancel = {
+                type = "toggle",
+                name = "Auto-Cancel Invisibility",
+                desc = "Automatically cancel Invisibility buff 1 second after using Ghostfish",
+                get = function() return KOL.db.profile.tweaks.fishing.autoCancel end,
+                set = function(_, value)
+                    KOL.db.profile.tweaks.fishing.autoCancel = value
+                end,
+                order = 3,
+            },
 
-    -- Auto-cancel toggle
-    KOL:UIAddConfigToggle("fishing", "autoCancel", {
-        name = "Auto-Cancel Invisibility",
-        desc = "Automatically cancel Invisibility buff 1 second after using Ghostfish",
-        order = 12,
-    })
-
-    -- Spacer
-    KOL:UIAddConfigSpacer("fishing", "spacer1", 15)
-
-    -- Test button
-    KOL:UIAddConfigExecute("fishing", "test", {
-        name = "Test: Check for Ghostfish",
-        desc = "Manually check bags for Phantom Ghostfish",
-        func = function()
-            Fishing:CheckForGhostfish()
-        end,
-        order = 20,
-    })
+            -- Test button
+            test = {
+                type = "execute",
+                name = "Test: Check for Ghostfish",
+                desc = "Manually check bags for Phantom Ghostfish",
+                func = function()
+                    Fishing:CheckForGhostfish()
+                end,
+                order = 4,
+            },
+        },
+    }
 end
 
 -- ============================================================================

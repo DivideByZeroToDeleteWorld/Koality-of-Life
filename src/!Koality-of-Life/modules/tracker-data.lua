@@ -882,7 +882,7 @@ KOL.Tracker:RegisterInstance("naxx_10", {
     difficulty = 1,
     color = "SKY",
     zones = {"Naxxramas"},
-    frameWidth = 190,   -- Optimized width for compact display
+    frameWidth = 230,   -- Wider to fit long boss names like "Grand Widow Faerlina"
     frameHeight = 292,  -- Perfect height to fit all 5 groups without scrolling
     groups = {
         {
@@ -941,7 +941,7 @@ KOL.Tracker:RegisterInstance("naxx_25", {
     difficulty = 2,
     color = "SKY",
     zones = {"Naxxramas"},
-    frameWidth = 190,   -- Optimized width for compact display
+    frameWidth = 230,   -- Wider to fit long boss names like "Grand Widow Faerlina"
     frameHeight = 292,  -- Perfect height to fit all 5 groups without scrolling
     groups = {
         {

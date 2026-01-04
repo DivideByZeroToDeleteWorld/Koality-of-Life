@@ -181,11 +181,8 @@ function CommandBlocks:CreateEditor()
     closeBtn:SetBackdropColor(0.4, 0.1, 0.1, 0.9)  -- Deep red background
     closeBtn:SetBackdropBorderColor(0.25, 0.05, 0.05, 1)  -- Darker red border
 
-    local closeBtnText = closeBtn:CreateFontString(nil, "OVERLAY")
-    closeBtnText:SetFont(CHAR_LIGATURESFONT, 12, CHAR_LIGATURESOUTLINE)
+    local closeBtnText = KOL.UIFactory:CreateGlyph(closeBtn, CHAR_UI_CLOSE, {r = 0.9, g = 0.9, b = 0.9}, 12)
     closeBtnText:SetPoint("CENTER", 0, 0)
-    closeBtnText:SetText(CHAR_UI_CLOSE)
-    closeBtnText:SetTextColor(0.9, 0.9, 0.9, 1)
 
     closeBtn:SetScript("OnEnter", function(self)
         self:SetBackdropColor(0.6, 0.15, 0.15, 1)
@@ -225,19 +222,16 @@ function CommandBlocks:CreateEditor()
     nameDropdownText:SetText("|cFF888888(Select Command Block)|r")
     nameDropdownText:SetTextColor(0.7, 0.7, 0.7, 1)
 
-    local nameDropdownArrow = nameDropdown:CreateFontString(nil, "OVERLAY")
-    nameDropdownArrow:SetFont(CHAR_LIGATURESFONT, 11, CHAR_LIGATURESOUTLINE)
+    local nameDropdownArrow = KOL.UIFactory:CreateGlyph(nameDropdown, CHAR_ARROW_DOWNFILLED, {r = 0.5, g = 0.5, b = 0.5}, 11)
     nameDropdownArrow:SetPoint("RIGHT", -5, 0)
-    nameDropdownArrow:SetText(CHAR_ARROW_DOWNFILLED)
-    nameDropdownArrow:SetTextColor(0.5, 0.5, 0.5, 1)
 
     nameDropdown:SetScript("OnEnter", function(self)
         self:SetBackdropBorderColor(0.5, 0.5, 0.5, 1)
-        nameDropdownArrow:SetTextColor(0.7, 0.7, 0.7, 1)
+        nameDropdownArrow:SetGlyph(nil, {r = 0.7, g = 0.7, b = 0.7})
     end)
     nameDropdown:SetScript("OnLeave", function(self)
         self:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
-        nameDropdownArrow:SetTextColor(0.5, 0.5, 0.5, 1)
+        nameDropdownArrow:SetGlyph(nil, {r = 0.5, g = 0.5, b = 0.5})
     end)
 
     -- Store references

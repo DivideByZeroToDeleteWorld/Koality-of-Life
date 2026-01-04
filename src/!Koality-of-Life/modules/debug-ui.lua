@@ -81,9 +81,9 @@ local function AddDebugMessage(message, level)
 
     table.insert(debugMessages, entry)
 
-    -- Trim old messages based on configured limit
-    local maxLines = (KOL.db and KOL.db.profile.debugMaxLines) or 1000
-    if #debugMessages > maxLines then
+    -- Trim old messages based on configured limit (reduced default to prevent memory issues)
+    local maxLines = (KOL.db and KOL.db.profile.debugMaxLines) or 500
+    while #debugMessages > maxLines do
         table.remove(debugMessages, 1)
     end
 
@@ -299,11 +299,28 @@ function UpdateConsoleDisplay()
     -- Update message count
     consoleFrame.messageCount:SetText(visibleCount .. " / " .. #debugMessages .. " messages (L" .. currentDebugLevel .. ")")
 
-    -- Build message text
+    -- Build message text (limit to last 200 visible lines to prevent memory issues)
+    local MAX_RENDER_LINES = 200
     local lines = {}
-    for _, entry in ipairs(debugMessages) do
-        -- Filter by debug level (only show messages at or below current level)
+    local startIndex = 1
+
+    -- Count visible messages and find start index if we need to skip some
+    local visibleMessages = {}
+    for i, entry in ipairs(debugMessages) do
         if entry.level <= currentDebugLevel then
+            table.insert(visibleMessages, entry)
+        end
+    end
+
+    -- If too many visible messages, skip the oldest ones
+    if #visibleMessages > MAX_RENDER_LINES then
+        startIndex = #visibleMessages - MAX_RENDER_LINES + 1
+    end
+
+    for i = startIndex, #visibleMessages do
+        local entry = visibleMessages[i]
+        -- Filter by debug level (only show messages at or below current level)
+        if entry and entry.level <= currentDebugLevel then
             local color = GetLevelColor(entry.level)
             local colorCode = string.format("|cFF%02x%02x%02x", color.r * 255, color.g * 255, color.b * 255)
 

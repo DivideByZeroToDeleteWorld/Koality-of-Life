@@ -137,6 +137,13 @@ function Tracker:Initialize()
     self.instanceLockouts = KOL.db.profile.tracker.instanceLockouts or {}
     self.hardmodeActive = KOL.db.profile.tracker.hardmodeActive or {}
 
+    -- Initialize autoShow if not exists (for existing users upgrading)
+    -- Default to TRUE so watch frames show automatically
+    if KOL.db.profile.tracker.autoShow == nil then
+        KOL.db.profile.tracker.autoShow = true
+        KOL:DebugPrint("Tracker: Initialized autoShow to true (new field for existing user)", 2)
+    end
+
     -- Initialize collapsed groups if not exists (for existing users)
     if not KOL.db.profile.tracker.collapsedGroups then
         KOL.db.profile.tracker.collapsedGroups = {}
@@ -1959,7 +1966,13 @@ function Tracker:UpdateZoneTracking()
     for _ in pairs(self.instances) do instanceCount = instanceCount + 1 end
     KOL:DebugPrint("UpdateZoneTracking called - " .. instanceCount .. " instances registered", 3)
 
-    if not KOL.db.profile.tracker.autoShow then
+    -- Check autoShow - default to true if nil (for users upgrading from older versions)
+    local autoShow = KOL.db.profile.tracker.autoShow
+    if autoShow == nil then
+        autoShow = true
+        KOL.db.profile.tracker.autoShow = true  -- Save the default
+    end
+    if autoShow == false then
         KOL:DebugPrint("Tracker: AutoShow disabled, skipping zone tracking", 3)
         return
     end
@@ -2590,11 +2603,8 @@ function Tracker:CreateWatchFrame(instanceId)
         minimizeBtn:SetBackdropColor(0.2, 0.2, 0.2, 1)
         minimizeBtn:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
 
-        local minBtnText = minimizeBtn:CreateFontString(nil, "OVERLAY")
-        minBtnText:SetFont(CHAR_LIGATURESFONT, 9, CHAR_LIGATURESOUTLINE)
+        local minBtnText = KOL.UIFactory:CreateGlyph(minimizeBtn, CHAR_UI_MINIMIZE, {r = 0.8, g = 0.8, b = 0.8}, 9)
         minBtnText:SetPoint("CENTER")
-        minBtnText:SetText(CHAR_UI_MINIMIZE)
-        minBtnText:SetTextColor(0.8, 0.8, 0.8, 1)
         minimizeBtn.text = minBtnText
 
         minimizeBtn:SetScript("OnEnter", function(self)
@@ -2646,7 +2656,6 @@ function Tracker:CreateWatchFrame(instanceId)
         -- Get font for scroll buttons
         -- Ensure minimum font size of 6 to prevent crashes with small scrollbar widths
         local btnFontSize = math.max(6, scrollBarWidth - 2)
-        local btnFontPath, btnFontOutline = CHAR_LIGATURESFONT, CHAR_LIGATURESOUTLINE
 
         -- Up button
         scrollUpBtn = CreateFrame("Button", nil, frame)
@@ -2662,20 +2671,17 @@ function Tracker:CreateWatchFrame(instanceId)
         scrollUpBtn:SetBackdropColor(0.15, 0.15, 0.15, 0.9)
         scrollUpBtn:SetBackdropBorderColor(0.2, 0.2, 0.2, 1)
 
-        local upText = scrollUpBtn:CreateFontString(nil, "OVERLAY")
-        upText:SetFont(CHAR_LIGATURESFONT, btnFontSize, CHAR_LIGATURESOUTLINE)
+        local upText = KOL.UIFactory:CreateGlyph(scrollUpBtn, CHAR_ARROW_UPFILLED, {r = 0.6, g = 0.6, b = 0.6}, btnFontSize)
         upText:SetPoint("CENTER", 0, 0)
-        upText:SetText(CHAR_ARROW_UPFILLED)
-        upText:SetTextColor(0.6, 0.6, 0.6, 1)
         scrollUpBtn.text = upText
 
         scrollUpBtn:SetScript("OnEnter", function(self)
             self:SetBackdropColor(0.25, 0.25, 0.25, 1)
-            self.text:SetTextColor(0.9, 0.9, 0.9, 1)
+            if self.text and self.text.SetGlyph then self.text:SetGlyph(nil, {r = 0.9, g = 0.9, b = 0.9}) end
         end)
         scrollUpBtn:SetScript("OnLeave", function(self)
             self:SetBackdropColor(0.15, 0.15, 0.15, 0.9)
-            self.text:SetTextColor(0.6, 0.6, 0.6, 1)
+            if self.text and self.text.SetGlyph then self.text:SetGlyph(nil, {r = 0.6, g = 0.6, b = 0.6}) end
         end)
 
         scrollUpBtn:Hide()  -- Start hidden, will show if needed by OnScrollRangeChanged
@@ -2695,20 +2701,17 @@ function Tracker:CreateWatchFrame(instanceId)
         scrollDownBtn:SetBackdropColor(0.15, 0.15, 0.15, 0.9)
         scrollDownBtn:SetBackdropBorderColor(0.2, 0.2, 0.2, 1)
 
-        local downText = scrollDownBtn:CreateFontString(nil, "OVERLAY")
-        downText:SetFont(CHAR_LIGATURESFONT, btnFontSize, CHAR_LIGATURESOUTLINE)
+        local downText = KOL.UIFactory:CreateGlyph(scrollDownBtn, CHAR_ARROW_DOWNFILLED, {r = 0.6, g = 0.6, b = 0.6}, btnFontSize)
         downText:SetPoint("CENTER", 0, 0)
-        downText:SetText(CHAR_ARROW_DOWNFILLED)
-        downText:SetTextColor(0.6, 0.6, 0.6, 1)
         scrollDownBtn.text = downText
 
         scrollDownBtn:SetScript("OnEnter", function(self)
             self:SetBackdropColor(0.25, 0.25, 0.25, 1)
-            self.text:SetTextColor(0.9, 0.9, 0.9, 1)
+            if self.text and self.text.SetGlyph then self.text:SetGlyph(nil, {r = 0.9, g = 0.9, b = 0.9}) end
         end)
         scrollDownBtn:SetScript("OnLeave", function(self)
             self:SetBackdropColor(0.15, 0.15, 0.15, 0.9)
-            self.text:SetTextColor(0.6, 0.6, 0.6, 1)
+            if self.text and self.text.SetGlyph then self.text:SetGlyph(nil, {r = 0.6, g = 0.6, b = 0.6}) end
         end)
 
         scrollDownBtn:Hide()  -- Start hidden, will show if needed by OnScrollRangeChanged
@@ -3033,6 +3036,12 @@ function Tracker:UpdateWatchFrame(instanceId)
     local killedColorHex = KOL.Colors:ToHex(killedColor)
     local unkilledColorHex = KOL.Colors:ToHex(unkilledColor)
 
+    -- Get group header colors from config (with defaults)
+    local groupIncompleteColorConfig = KOL.db.profile.tracker and KOL.db.profile.tracker.groupIncompleteColor
+    local groupCompleteColorConfig = KOL.db.profile.tracker and KOL.db.profile.tracker.groupCompleteColor
+    local groupIncompleteColor = groupIncompleteColorConfig and {groupIncompleteColorConfig[1], groupIncompleteColorConfig[2], groupIncompleteColorConfig[3]} or {0.7, 0.9, 1}
+    local groupCompleteColor = groupCompleteColorConfig and {groupCompleteColorConfig[1], groupCompleteColorConfig[2], groupCompleteColorConfig[3]} or {0.75, 1, 0.75}
+
     -- Get specific font settings with fallback to global defaults
     local groupFont = config.groupFont or globalFont
     local groupFontSize = config.groupFontSize or globalFontSize
@@ -3106,10 +3115,8 @@ function Tracker:UpdateWatchFrame(instanceId)
                 timerText:SetText("|cFF" .. timerColor .. "TIME: " .. currentTimeStr .. "|r  ")
 
                 -- Arrow separator (ligatures font for guaranteed glyph rendering)
-                local timerSeparator = content:CreateFontString(nil, "OVERLAY")
-                timerSeparator:SetFont(CHAR_LIGATURESFONT, scaledObjectiveFontSize, CHAR_LIGATURESOUTLINE)
+                local timerSeparator = KOL.UIFactory:CreateGlyph(content, CHAR("LEFTRIGHT"), {r = 0.67, g = 0.67, b = 0.67}, scaledObjectiveFontSize)
                 timerSeparator:SetPoint("LEFT", timerText, "RIGHT", 0, 0)
-                timerSeparator:SetText("|cFFAAAAAA" .. CHAR("LEFTRIGHT") .. "|r")
 
                 -- BEST: portion (user font)
                 local bestText = content:CreateFontString(nil, "OVERLAY")
@@ -3134,16 +3141,16 @@ function Tracker:UpdateWatchFrame(instanceId)
                         GameTooltip:AddLine(" ", 1, 1, 1)  -- Spacer
 
                         -- Header row
-                        GameTooltip:AddLine("Encounter/Objective:        BEST:  CURRENT:", 1, 1, 0)
+                        GameTooltip:AddLine("Encounter/Objective:        BEST:   LAST:", 1, 1, 0)
                         GameTooltip:AddLine(" ", 1, 1, 1)  -- Spacer
 
                         -- Timer log entries
                         for _, entry in ipairs(dcState.timerLog) do
                             local bestTimeStr = entry.bestTime > 0 and tracker:FormatTime(entry.bestTime) or "--:--"
-                            local currentTimeStr = tracker:FormatTime(dcState.currentTime)
+                            local lastTimeStr = entry.lastTime > 0 and tracker:FormatTime(entry.lastTime) or "--:--"
 
                             -- Format with monospaced alignment: "Boss Name                   01:30  06:13"
-                            local formattedLine = string.format("%-28s %s  %s", entry.name, bestTimeStr, currentTimeStr)
+                            local formattedLine = string.format("%-28s %s  %s", entry.name, bestTimeStr, lastTimeStr)
                             GameTooltip:AddLine(formattedLine, 1, 1, 1)
                         end
 
@@ -3208,39 +3215,20 @@ function Tracker:UpdateWatchFrame(instanceId)
 
             -- Current movement speed line (if enabled)
             if dcConfig.showSpeed then
-                local currentSpeedIncrease = dcState.currentSpeed  -- Percentage over base (e.g., 40 for 140% speed)
-                local currentSpeedTotal = dcState.currentSpeedTotal or 100  -- Total speed percentage (e.g., 140)
-
-                -- Color and arrow glyph based on speed increase
-                local speedDisplayColor
-                local speedArrowGlyph
-                local speedText
-                if currentSpeedIncrease > 0 then
-                    speedDisplayColor = nuclearGreen
-                    speedArrowGlyph = CHAR("UP")
-                    speedText = currentSpeedIncrease .. "%"
-                elseif currentSpeedIncrease < 0 then
-                    speedDisplayColor = redColor
-                    speedArrowGlyph = CHAR("DOWN")
-                    speedText = currentSpeedIncrease .. "%"
-                else
-                    speedDisplayColor = whiteColor
-                    speedArrowGlyph = CHAR_LIGHTNING_HOLLOW
-                    speedText = "BASE"
-                end
+                -- Use centralized speed data function
+                local speedData = KOL:ReturnSpeedData()
 
                 -- SPEED: portion (user font)
                 local speedDisplayText = content:CreateFontString(nil, "OVERLAY")
                 speedDisplayText:SetFont(objectiveFontPath, scaledObjectiveFontSize, objectiveFontOutline)
                 speedDisplayText:SetPoint("TOPLEFT", content, "TOPLEFT", 4, yOffset)
                 speedDisplayText:SetJustifyH("LEFT")
-                speedDisplayText:SetText("SPEED: |cFF" .. speedDisplayColor .. speedText .. "|r ")
+                speedDisplayText:SetText("SPEED: |cFF" .. speedData.color .. speedData.text .. "|r ")
 
                 -- Arrow/lightning indicator (ligatures font for guaranteed glyph rendering)
-                local speedArrowText = content:CreateFontString(nil, "OVERLAY")
-                speedArrowText:SetFont(CHAR_LIGATURESFONT, scaledObjectiveFontSize, CHAR_LIGATURESOUTLINE)
+                -- Glyph is NOT colored - use white/default color
+                local speedArrowText = KOL.UIFactory:CreateGlyph(content, speedData.glyph, "FFFFFF", scaledObjectiveFontSize)
                 speedArrowText:SetPoint("LEFT", speedDisplayText, "RIGHT", 0, 0)
-                speedArrowText:SetText("|cFF" .. speedDisplayColor .. speedArrowGlyph .. "|r")
 
                 -- Create invisible frame for tooltip (spans both text elements)
                 local speedTooltipFrame = CreateFrame("Frame", nil, content)
@@ -3250,8 +3238,8 @@ function Tracker:UpdateWatchFrame(instanceId)
                 speedTooltipFrame:SetScript("OnEnter", function(self)
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                     GameTooltip:AddLine("Movement Speed", 1, 1, 1)
-                    GameTooltip:AddDoubleLine("Total Speed:", currentSpeedTotal .. "%", 1, 1, 1, 0, 1, 0)
-                    GameTooltip:AddDoubleLine("Over Base:", currentSpeedIncrease .. "%", 1, 1, 1, 0, 1, 0)
+                    GameTooltip:AddDoubleLine("Total Speed:", speedData.speedTotal .. "%", 1, 1, 1, 0, 1, 0)
+                    GameTooltip:AddDoubleLine("Over Base:", speedData.speedIncrease .. "%", 1, 1, 1, 0, 1, 0)
                     GameTooltip:Show()
                 end)
                 speedTooltipFrame:SetScript("OnLeave", function(self)
@@ -3286,29 +3274,21 @@ function Tracker:UpdateWatchFrame(instanceId)
             bossBtn:RegisterForClicks("AnyUp")
 
             -- Icon (using ligatures font for proper Unicode rendering)
-            local bossIcon = bossBtn:CreateFontString(nil, "OVERLAY")
-            bossIcon:SetFont(CHAR_LIGATURESFONT, scaledObjectiveFontSize, CHAR_LIGATURESOUTLINE)
+            local bossIcon = KOL.UIFactory:CreateGlyph(bossBtn, checkMark, colorHex, scaledObjectiveFontSize)
             bossIcon:SetPoint("LEFT", bossBtn, "LEFT", 4, 0)
-            bossIcon:SetText("|cFF" .. colorHex .. checkMark .. "|r")
 
             -- Hardmode icon (using ligatures font for proper Unicode rendering)
             local isHardmode = self:IsBossHardmode(instanceId, i)
-            local hardmodeIcon = bossBtn:CreateFontString(nil, "OVERLAY")
-            hardmodeIcon:SetFont(CHAR_LIGATURESFONT, scaledObjectiveFontSize, CHAR_LIGATURESOUTLINE)
-            hardmodeIcon:SetPoint("LEFT", bossIcon, "RIGHT", 2, 0)
-            if isHardmode then
-                local nuclearPurple = "CC66FF"
-                if KOL.Colors and KOL.Colors.GetNuclear then
-                    nuclearPurple = KOL.Colors:GetNuclear("PURPLE") or nuclearPurple
-                end
-                hardmodeIcon:SetText("|cFF" .. nuclearPurple .. CHAR_LIGHTNING .. "|r")
-            else
-                hardmodeIcon:SetText("")
+            local nuclearPurple = "CC66FF"
+            if KOL.Colors and KOL.Colors.GetNuclear then
+                nuclearPurple = KOL.Colors:GetNuclear("PURPLE") or nuclearPurple
             end
+            local hardmodeIcon = KOL.UIFactory:CreateGlyph(bossBtn, isHardmode and CHAR_LIGHTNING or "", nuclearPurple, scaledObjectiveFontSize)
+            hardmodeIcon:SetPoint("LEFT", bossIcon, "RIGHT", 2, 0)
 
             -- Text (using configured objective font)
             local bossText = bossBtn:CreateFontString(nil, "OVERLAY")
-            bossText:SetFont(objectiveFontPath, scaledObjectiveFontSize, fontOutline)
+            bossText:SetFont(objectiveFontPath, scaledObjectiveFontSize, objectiveFontOutline)
             bossText:SetPoint("LEFT", hardmodeIcon, "RIGHT", isHardmode and 2 or 0, 0)
             bossText:SetPoint("RIGHT", bossBtn, "RIGHT", -4, 0)
             bossText:SetJustifyH("LEFT")
@@ -3357,45 +3337,20 @@ function Tracker:UpdateWatchFrame(instanceId)
     elseif data.entries and #data.entries > 0 then
         -- Speed display for custom trackers at TOP (if showSpeed is enabled)
         if data.showSpeed then
-            -- Get current speed
-            local currentSpeedIncrease = self:GetPlayerMovementSpeed()  -- Percentage over base
-            local currentSpeedTotal = self:GetPlayerMovementSpeedTotal() or 100  -- Total percentage
-
-            -- Define colors
-            local nuclearGreen = KOL.Colors:GetNuclear("GREEN") or "00FF00"
-            local redColor = "FF4444"  -- Hardcoded hex (GetPastel returns table, not string)
-            local whiteColor = "FFFFFF"
-
-            -- Color and arrow glyph based on speed increase
-            local speedDisplayColor
-            local speedArrowGlyph
-            local speedText
-            if currentSpeedIncrease > 0 then
-                speedDisplayColor = nuclearGreen
-                speedArrowGlyph = CHAR("UP")
-                speedText = currentSpeedIncrease .. "%"
-            elseif currentSpeedIncrease < 0 then
-                speedDisplayColor = redColor
-                speedArrowGlyph = CHAR("DOWN")
-                speedText = currentSpeedIncrease .. "%"
-            else
-                speedDisplayColor = whiteColor
-                speedArrowGlyph = CHAR_LIGHTNING_HOLLOW
-                speedText = "BASE"
-            end
+            -- Use centralized speed data function
+            local speedData = KOL:ReturnSpeedData()
 
             -- SPEED: portion (user font)
             local speedDisplayText = content:CreateFontString(nil, "OVERLAY")
             speedDisplayText:SetFont(objectiveFontPath, scaledObjectiveFontSize, objectiveFontOutline)
             speedDisplayText:SetPoint("TOPLEFT", content, "TOPLEFT", 4, yOffset)
             speedDisplayText:SetJustifyH("LEFT")
-            speedDisplayText:SetText("SPEED: |cFF" .. speedDisplayColor .. speedText .. "|r ")
+            speedDisplayText:SetText("SPEED: |cFF" .. speedData.color .. speedData.text .. "|r ")
 
             -- Arrow/lightning indicator (ligatures font for guaranteed glyph rendering)
-            local speedArrowText = content:CreateFontString(nil, "OVERLAY")
-            speedArrowText:SetFont(CHAR_LIGATURESFONT, scaledObjectiveFontSize, CHAR_LIGATURESOUTLINE)
+            -- Glyph is NOT colored - use white/default color
+            local speedArrowText = KOL.UIFactory:CreateGlyph(content, speedData.glyph, "FFFFFF", scaledObjectiveFontSize)
             speedArrowText:SetPoint("LEFT", speedDisplayText, "RIGHT", 0, 0)
-            speedArrowText:SetText("|cFF" .. speedDisplayColor .. speedArrowGlyph .. "|r")
 
             -- Create invisible frame for tooltip (spans both text elements)
             local speedTooltipFrame = CreateFrame("Frame", nil, content)
@@ -3405,8 +3360,8 @@ function Tracker:UpdateWatchFrame(instanceId)
             speedTooltipFrame:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:AddLine("Movement Speed", 1, 1, 1)
-                GameTooltip:AddDoubleLine("Total Speed:", currentSpeedTotal .. "%", 1, 1, 1, 0, 1, 0)
-                GameTooltip:AddDoubleLine("Over Base:", currentSpeedIncrease .. "%", 1, 1, 1, 0, 1, 0)
+                GameTooltip:AddDoubleLine("Total Speed:", speedData.speedTotal .. "%", 1, 1, 1, 0, 1, 0)
+                GameTooltip:AddDoubleLine("Over Base:", speedData.speedIncrease .. "%", 1, 1, 1, 0, 1, 0)
                 GameTooltip:Show()
             end)
             speedTooltipFrame:SetScript("OnLeave", function(self)
@@ -3494,10 +3449,8 @@ function Tracker:UpdateWatchFrame(instanceId)
             entryBtn:RegisterForClicks("AnyUp")
 
             -- Icon (using ligatures font for proper Unicode rendering)
-            local entryIcon = entryBtn:CreateFontString(nil, "OVERLAY")
-            entryIcon:SetFont(CHAR_LIGATURESFONT, scaledObjectiveFontSize, CHAR_LIGATURESOUTLINE)
+            local entryIcon = KOL.UIFactory:CreateGlyph(entryBtn, checkMark, colorHex, scaledObjectiveFontSize)
             entryIcon:SetPoint("LEFT", entryBtn, "LEFT", 0, 0)
-            entryIcon:SetText("|cFF" .. colorHex .. checkMark .. "|r")
 
             -- Text - ONLY show name, no note
             -- Add prefix if showPrefix is enabled
@@ -3550,7 +3503,7 @@ function Tracker:UpdateWatchFrame(instanceId)
             displayText = displayText .. " |cFF" .. bracketColor .. "[|r|cFF" .. progressHex .. currentProgress .. "|r|cFF" .. bracketColor .. "/|r|cFF" .. progressHex .. requiredCount .. "|r|cFF" .. bracketColor .. "]|r"
 
             local entryText = entryBtn:CreateFontString(nil, "OVERLAY")
-            entryText:SetFont(objectiveFontPath, scaledObjectiveFontSize, fontOutline)
+            entryText:SetFont(objectiveFontPath, scaledObjectiveFontSize, objectiveFontOutline)
             entryText:SetPoint("LEFT", entryIcon, "RIGHT", 2, 0)
             entryText:SetPoint("RIGHT", entryBtn, "RIGHT", -4, 0)
             entryText:SetJustifyH("LEFT")
@@ -3728,13 +3681,13 @@ function Tracker:UpdateWatchFrame(instanceId)
                 end
             end
 
-            -- Use Easter Green for completed groups, instance color otherwise
-            local groupHeaderColor = allCompleted and KOL.Colors:GetPastel("EASTER_GREEN") or instanceColor
+            -- Use configured group colors (complete/incomplete)
+            local groupHeaderColor = allCompleted and groupCompleteColor or groupIncompleteColor
             local groupHeaderColorHex = KOL.Colors:ToHex(groupHeaderColor)
 
             -- Check collapsed state
             local isCollapsed = self:IsGroupCollapsed(instanceId, groupIdx)
-            local collapseIcon = isCollapsed and CHAR_ARROW_RIGHTFILLED .. " " or CHAR_ARROW_DOWNFILLED .. " "
+            local collapseIcon = isCollapsed and CHAR_ARROW_RIGHTFILLED or CHAR_ARROW_DOWNFILLED
 
             -- Group header (clickable button for collapse/expand)
             local groupHeaderBtn = CreateFrame("Button", nil, content)
@@ -3745,17 +3698,14 @@ function Tracker:UpdateWatchFrame(instanceId)
             groupHeaderBtn:RegisterForClicks("AnyUp")
 
             -- Icon (using symbol font for proper Unicode rendering)
-            local iconFontPath, iconFontSize, iconFontOutline = CHAR_LIGATURESFONT, scaledGroupFontSize, CHAR_LIGATURESOUTLINE
-            local groupIcon = groupHeaderBtn:CreateFontString(nil, "OVERLAY")
-            groupIcon:SetFont(iconFontPath, iconFontSize, iconFontOutline)
+            local groupIcon = KOL.UIFactory:CreateGlyph(groupHeaderBtn, collapseIcon, groupHeaderColorHex, scaledGroupFontSize)
             groupIcon:SetPoint("LEFT", groupHeaderBtn, "LEFT", 0, 0)
-            groupIcon:SetText("|cFF" .. groupHeaderColorHex .. collapseIcon .. "|r")
             groupHeaderBtn.icon = groupIcon
 
             -- Text (using configured group font)
             local groupHeader = groupHeaderBtn:CreateFontString(nil, "OVERLAY")
             groupHeader:SetFont(groupFontPath, scaledGroupFontSize, groupFontOutline)
-            groupHeader:SetPoint("LEFT", groupIcon, "RIGHT", 0, 0)
+            groupHeader:SetPoint("LEFT", groupIcon, "RIGHT", 4, 0)
             groupHeader:SetJustifyH("LEFT")
             groupHeader:SetText("|cFF" .. groupHeaderColorHex .. "[" .. groupName .. "]|r")
             groupHeaderBtn.text = groupHeader
@@ -3770,15 +3720,15 @@ function Tracker:UpdateWatchFrame(instanceId)
                 end
             end)
 
-            -- Mouseover highlight
+            -- Mouseover highlight - change color on hover, no extra glyph
             groupHeaderBtn:SetScript("OnEnter", function(self)
-                local currentIcon = Tracker:IsGroupCollapsed(instanceId, groupIdx) and CHAR_ARROW_RIGHTFILLED .. " " or CHAR_ARROW_DOWNFILLED .. " "
-                self.icon:SetText("|cFF" .. self.groupHeaderColorHex .. currentIcon .. "|r")
-                self.text:SetText("|cFF" .. self.groupHeaderColorHex .. "[" .. self.groupName .. "]|r|cFFFFFFFF " .. CHAR_ARROW_LEFTFILLED .. "|r")
+                local currentIcon = Tracker:IsGroupCollapsed(instanceId, groupIdx) and CHAR_ARROW_RIGHTFILLED or CHAR_ARROW_DOWNFILLED
+                self.icon:SetGlyph(currentIcon, "FFFFFF")  -- White on hover
+                self.text:SetText("|cFFFFFFFF[" .. self.groupName .. "]|r")
             end)
             groupHeaderBtn:SetScript("OnLeave", function(self)
-                local currentIcon = Tracker:IsGroupCollapsed(instanceId, groupIdx) and CHAR_ARROW_RIGHTFILLED .. " " or CHAR_ARROW_DOWNFILLED .. " "
-                self.icon:SetText("|cFF" .. self.groupHeaderColorHex .. currentIcon .. "|r")
+                local currentIcon = Tracker:IsGroupCollapsed(instanceId, groupIdx) and CHAR_ARROW_RIGHTFILLED or CHAR_ARROW_DOWNFILLED
+                self.icon:SetGlyph(currentIcon, self.groupHeaderColorHex)
                 self.text:SetText("|cFF" .. self.groupHeaderColorHex .. "[" .. self.groupName .. "]|r")
             end)
 
@@ -3807,7 +3757,7 @@ function Tracker:UpdateWatchFrame(instanceId)
         for groupIndex, group in ipairs(data.groups) do
             -- Check if group is collapsed
             local isCollapsed = self:IsGroupCollapsed(instanceId, groupIndex)
-            local collapseIcon = isCollapsed and CHAR_ARROW_RIGHTFILLED .. " " or CHAR_ARROW_DOWNFILLED .. " "
+            local collapseIcon = isCollapsed and CHAR_ARROW_RIGHTFILLED or CHAR_ARROW_DOWNFILLED
 
             -- Check if all bosses in this group are killed
             local allGroupBossesKilled = true
@@ -3823,8 +3773,8 @@ function Tracker:UpdateWatchFrame(instanceId)
                 allGroupBossesKilled = false
             end
 
-            -- Use Easter Green for completed groups, instance color otherwise
-            local groupHeaderColor = allGroupBossesKilled and KOL.Colors:GetPastel("EASTER_GREEN") or instanceColor
+            -- Use configured group colors (complete/incomplete)
+            local groupHeaderColor = allGroupBossesKilled and groupCompleteColor or groupIncompleteColor
             local groupHeaderColorHex = KOL.Colors:ToHex(groupHeaderColor)
 
             -- Group header (clickable button for collapse/expand)
@@ -3836,17 +3786,14 @@ function Tracker:UpdateWatchFrame(instanceId)
             groupHeaderBtn:RegisterForClicks("AnyUp")
 
             -- Icon (using symbol font for proper Unicode rendering)
-            local iconFontPath, iconFontSize, iconFontOutline = CHAR_LIGATURESFONT, scaledGroupFontSize, CHAR_LIGATURESOUTLINE
-            local groupIcon = groupHeaderBtn:CreateFontString(nil, "OVERLAY")
-            groupIcon:SetFont(iconFontPath, iconFontSize, iconFontOutline)
+            local groupIcon = KOL.UIFactory:CreateGlyph(groupHeaderBtn, collapseIcon, groupHeaderColorHex, scaledGroupFontSize)
             groupIcon:SetPoint("LEFT", groupHeaderBtn, "LEFT", 0, 0)
-            groupIcon:SetText("|cFF" .. groupHeaderColorHex .. collapseIcon .. "|r")
             groupHeaderBtn.icon = groupIcon
 
             -- Text (using configured group font)
             local groupHeader = groupHeaderBtn:CreateFontString(nil, "OVERLAY")
             groupHeader:SetFont(groupFontPath, scaledGroupFontSize, groupFontOutline)
-            groupHeader:SetPoint("LEFT", groupIcon, "RIGHT", 0, 0)
+            groupHeader:SetPoint("LEFT", groupIcon, "RIGHT", 4, 0)
             groupHeader:SetJustifyH("LEFT")
             groupHeader:SetText("|cFF" .. groupHeaderColorHex .. "[" .. group.name .. "]|r")
             groupHeaderBtn.text = groupHeader
@@ -3860,15 +3807,15 @@ function Tracker:UpdateWatchFrame(instanceId)
                 end
             end)
 
-            -- Mouseover highlight
+            -- Mouseover highlight - change color on hover, no extra glyph
             groupHeaderBtn:SetScript("OnEnter", function(self)
-                local currentIcon = Tracker:IsGroupCollapsed(instanceId, groupIndex) and CHAR_ARROW_RIGHTFILLED .. " " or CHAR_ARROW_DOWNFILLED .. " "
-                self.icon:SetText("|cFF" .. self.groupHeaderColorHex .. currentIcon .. "|r")
-                self.text:SetText("|cFF" .. self.groupHeaderColorHex .. "[" .. group.name .. "]|r|cFFFFFFFF " .. CHAR_ARROW_LEFTFILLED .. "|r")
+                local currentIcon = Tracker:IsGroupCollapsed(instanceId, groupIndex) and CHAR_ARROW_RIGHTFILLED or CHAR_ARROW_DOWNFILLED
+                self.icon:SetGlyph(currentIcon, "FFFFFF")  -- White on hover
+                self.text:SetText("|cFFFFFFFF[" .. group.name .. "]|r")
             end)
             groupHeaderBtn:SetScript("OnLeave", function(self)
-                local currentIcon = Tracker:IsGroupCollapsed(instanceId, groupIndex) and CHAR_ARROW_RIGHTFILLED .. " " or CHAR_ARROW_DOWNFILLED .. " "
-                self.icon:SetText("|cFF" .. self.groupHeaderColorHex .. currentIcon .. "|r")
+                local currentIcon = Tracker:IsGroupCollapsed(instanceId, groupIndex) and CHAR_ARROW_RIGHTFILLED or CHAR_ARROW_DOWNFILLED
+                self.icon:SetGlyph(currentIcon, self.groupHeaderColorHex)
                 self.text:SetText("|cFF" .. self.groupHeaderColorHex .. "[" .. group.name .. "]|r")
             end)
 
@@ -3895,29 +3842,21 @@ function Tracker:UpdateWatchFrame(instanceId)
                     bossBtn:RegisterForClicks("AnyUp")
 
                     -- Icon (using ligatures font for proper Unicode rendering)
-                    local bossIcon = bossBtn:CreateFontString(nil, "OVERLAY")
-                    bossIcon:SetFont(CHAR_LIGATURESFONT, scaledObjectiveFontSize, CHAR_LIGATURESOUTLINE)
+                    local bossIcon = KOL.UIFactory:CreateGlyph(bossBtn, checkMark, colorHex, scaledObjectiveFontSize)
                     bossIcon:SetPoint("LEFT", bossBtn, "LEFT", 0, 0)
-                    bossIcon:SetText("|cFF" .. colorHex .. checkMark .. "|r")
 
                     -- Hardmode icon (using ligatures font for proper Unicode rendering)
                     local isHardmode = self:IsBossHardmode(instanceId, bossId)
-                    local hardmodeIcon = bossBtn:CreateFontString(nil, "OVERLAY")
-                    hardmodeIcon:SetFont(CHAR_LIGATURESFONT, scaledObjectiveFontSize, CHAR_LIGATURESOUTLINE)
-                    hardmodeIcon:SetPoint("LEFT", bossIcon, "RIGHT", 2, 0)
-                    if isHardmode then
-                        local nuclearPurple = "CC66FF"
-                        if KOL.Colors and KOL.Colors.GetNuclear then
-                            nuclearPurple = KOL.Colors:GetNuclear("PURPLE") or nuclearPurple
-                        end
-                        hardmodeIcon:SetText("|cFF" .. nuclearPurple .. CHAR_LIGHTNING .. "|r")
-                    else
-                        hardmodeIcon:SetText("")
+                    local nuclearPurple = "CC66FF"
+                    if KOL.Colors and KOL.Colors.GetNuclear then
+                        nuclearPurple = KOL.Colors:GetNuclear("PURPLE") or nuclearPurple
                     end
+                    local hardmodeIcon = KOL.UIFactory:CreateGlyph(bossBtn, isHardmode and CHAR_LIGHTNING or "", nuclearPurple, scaledObjectiveFontSize)
+                    hardmodeIcon:SetPoint("LEFT", bossIcon, "RIGHT", 2, 0)
 
                     -- Text (using configured objective font)
                     local bossText = bossBtn:CreateFontString(nil, "OVERLAY")
-                    bossText:SetFont(objectiveFontPath, scaledObjectiveFontSize, fontOutline)
+                    bossText:SetFont(objectiveFontPath, scaledObjectiveFontSize, objectiveFontOutline)
                     bossText:SetPoint("LEFT", hardmodeIcon, "RIGHT", isHardmode and 2 or 0, 0)
                     bossText:SetPoint("RIGHT", bossBtn, "RIGHT", -4, 0)
                     bossText:SetJustifyH("LEFT")
@@ -3985,14 +3924,12 @@ function Tracker:UpdateWatchFrame(instanceId)
             local checkMark = completed and CHAR_OBJECTIVE_COMPLETE or CHAR_OBJECTIVE_BOX
 
             -- Icon (using ligatures font for proper Unicode rendering)
-            local objIcon = content:CreateFontString(nil, "OVERLAY")
-            objIcon:SetFont(CHAR_LIGATURESFONT, scaledObjectiveFontSize, CHAR_LIGATURESOUTLINE)
+            local objIcon = KOL.UIFactory:CreateGlyph(content, checkMark, colorHex, scaledObjectiveFontSize)
             objIcon:SetPoint("TOPLEFT", content, "TOPLEFT", 4, yOffset)
-            objIcon:SetText("|cFF" .. colorHex .. checkMark .. "|r")
 
             -- Text (using configured objective font)
             local objText = content:CreateFontString(nil, "OVERLAY")
-            objText:SetFont(objectiveFontPath, scaledObjectiveFontSize, fontOutline)
+            objText:SetFont(objectiveFontPath, scaledObjectiveFontSize, objectiveFontOutline)
             objText:SetPoint("LEFT", objIcon, "RIGHT", 2, 0)
             objText:SetPoint("TOPRIGHT", content, "TOPRIGHT", -4, yOffset)
             objText:SetJustifyH("LEFT")
@@ -4012,7 +3949,7 @@ function Tracker:UpdateWatchFrame(instanceId)
     else
         -- No bosses or objectives
         local noDataText = content:CreateFontString(nil, "OVERLAY")
-        noDataText:SetFont(objectiveFontPath, scaledObjectiveFontSize, fontOutline)
+        noDataText:SetFont(objectiveFontPath, scaledObjectiveFontSize, objectiveFontOutline)
         noDataText:SetPoint("TOPLEFT", content, "TOPLEFT", 4, yOffset)
         noDataText:SetText("|cFFAAAAAANo objectives defined|r")
         table.insert(frame.bossTexts, noDataText)
@@ -4767,43 +4704,15 @@ function Tracker:ScanSpeedBuff()
 end
 
 -- Get player movement speed (percentage above base 100%)
+-- DEPRECATED: Use KOL:ReturnUserSpeed() instead
 function Tracker:GetPlayerMovementSpeed()
-    -- Check if player is in a vehicle (like WeakAura does)
-    local unit = UnitInVehicle("player") and "vehicle" or "player"
-
-    -- Get current speed (FIRST return value is the actual current speed)
-    local currentSpeed, runSpeed, flightSpeed, swimSpeed = GetUnitSpeed(unit)
-
-    -- Base run speed in WoW is 7 yards/second
-    local BASE_RUN_SPEED = 7
-
-    -- Handle nil or 0 values (player dead, loading, etc.)
-    if not currentSpeed or currentSpeed == 0 then
-        return 0  -- Player is not moving or speed is 0
-    end
-
-    -- Calculate percentage above base (e.g., if currentSpeed is 9.8, that's 140% of base)
-    local speedPercent = (currentSpeed / BASE_RUN_SPEED) * 100
-    local speedIncrease = math.floor(speedPercent - 100)
-
-    -- Return the percentage above 100% (e.g., 140% becomes 40%)
-    return speedIncrease
+    return KOL:ReturnUserSpeed()
 end
 
 -- Get player movement speed (total percentage)
+-- DEPRECATED: Use KOL:ReturnUserSpeedTotal() instead
 function Tracker:GetPlayerMovementSpeedTotal()
-    -- Check if player is in a vehicle (like WeakAura does)
-    local unit = UnitInVehicle("player") and "vehicle" or "player"
-
-    local currentSpeed, runSpeed, flightSpeed, swimSpeed = GetUnitSpeed(unit)
-    local BASE_RUN_SPEED = 7
-
-    -- Handle nil or 0 values (player dead, loading, etc.)
-    if not currentSpeed or currentSpeed == 0 then
-        return 100  -- Default speed
-    end
-
-    return math.floor((currentSpeed / BASE_RUN_SPEED) * 100)
+    return KOL:ReturnUserSpeedTotal()
 end
 
 -- Update dungeon challenge state
@@ -4903,9 +4812,9 @@ function Tracker:UpdateDungeonChallengeState(instanceId)
     end
 
     -- Get current movement speed (always live, never cached - speed changes with buffs)
-    -- This returns the percentage ABOVE base (e.g., 140% speed = 40% increase)
-    state.currentSpeed = self:GetPlayerMovementSpeed()
-    state.currentSpeedTotal = self:GetPlayerMovementSpeedTotal()  -- Keep total for tooltip
+    -- Uses centralized speed functions from functions.lua
+    state.currentSpeed = KOL:ReturnUserSpeed()
+    state.currentSpeedTotal = KOL:ReturnUserSpeedTotal()  -- Keep total for tooltip
 
     -- Load best time from database
     if KOL.db.profile.tracker.dungeonChallenge and KOL.db.profile.tracker.dungeonChallenge.bestTimes then
@@ -4956,6 +4865,7 @@ function Tracker:AddTimerLogEntry(instanceId)
                 type = "boss",
                 index = i,
                 bestTime = 0,
+                lastTime = 0,
             })
         end
 
@@ -4965,6 +4875,7 @@ function Tracker:AddTimerLogEntry(instanceId)
             type = "boss",
             index = #vhBosses + 1,
             bestTime = 0,
+            lastTime = 0,
         })
     else
         -- Check if this instance uses groups (like Naxxramas quarters)
@@ -4979,6 +4890,7 @@ function Tracker:AddTimerLogEntry(instanceId)
                             type = "boss",
                             index = entryIndex,
                             bestTime = 0,
+                            lastTime = 0,
                         })
                         entryIndex = entryIndex + 1
                     end
@@ -4992,19 +4904,23 @@ function Tracker:AddTimerLogEntry(instanceId)
                     type = "boss",
                     index = i,
                     bestTime = 0,
+                    lastTime = 0,
                 })
             end
         end
     end
 
-    -- Load saved best times from database
-    if KOL.db.profile.tracker.dungeonChallenge and KOL.db.profile.tracker.dungeonChallenge.timerLogs then
-        local savedLog = KOL.db.profile.tracker.dungeonChallenge.timerLogs[instanceId]
-        if savedLog then
-            for _, entry in ipairs(state.timerLog) do
-                if savedLog[entry.name] then
-                    entry.bestTime = savedLog[entry.name]
-                end
+    -- Load saved times from database (best times and last times)
+    if KOL.db.profile.tracker.dungeonChallenge then
+        local savedBest = KOL.db.profile.tracker.dungeonChallenge.timerLogs and KOL.db.profile.tracker.dungeonChallenge.timerLogs[instanceId]
+        local savedLast = KOL.db.profile.tracker.dungeonChallenge.timerLogsLast and KOL.db.profile.tracker.dungeonChallenge.timerLogsLast[instanceId]
+
+        for _, entry in ipairs(state.timerLog) do
+            if savedBest and savedBest[entry.name] then
+                entry.bestTime = savedBest[entry.name]
+            end
+            if savedLast and savedLast[entry.name] then
+                entry.lastTime = savedLast[entry.name]
             end
         end
     end
@@ -5013,7 +4929,7 @@ function Tracker:AddTimerLogEntry(instanceId)
     KOL:DebugPrint(string.format("Timer log initialized for %s with %d entries", instanceId, #state.timerLog), 2)
 end
 
--- Update a timer log entry with a new best time
+-- Update a timer log entry with kill time (always updates lastTime, updates bestTime if new record)
 function Tracker:UpdateTimerLogEntry(instanceId, encounterName, currentTime)
     if not instanceId or not encounterName then return end
 
@@ -5023,20 +4939,33 @@ function Tracker:UpdateTimerLogEntry(instanceId, encounterName, currentTime)
     -- Find the entry
     for _, entry in ipairs(state.timerLog) do
         if entry.name == encounterName then
-            -- Only update if this is a new best (or first time)
+            -- Always update lastTime (records every kill)
+            entry.lastTime = currentTime
+
+            -- Initialize database structures if needed
+            if not KOL.db.profile.tracker.dungeonChallenge.timerLogs then
+                KOL.db.profile.tracker.dungeonChallenge.timerLogs = {}
+            end
+            if not KOL.db.profile.tracker.dungeonChallenge.timerLogs[instanceId] then
+                KOL.db.profile.tracker.dungeonChallenge.timerLogs[instanceId] = {}
+            end
+            if not KOL.db.profile.tracker.dungeonChallenge.timerLogsLast then
+                KOL.db.profile.tracker.dungeonChallenge.timerLogsLast = {}
+            end
+            if not KOL.db.profile.tracker.dungeonChallenge.timerLogsLast[instanceId] then
+                KOL.db.profile.tracker.dungeonChallenge.timerLogsLast[instanceId] = {}
+            end
+
+            -- Save lastTime to database
+            KOL.db.profile.tracker.dungeonChallenge.timerLogsLast[instanceId][encounterName] = currentTime
+
+            -- Update bestTime if this is a new best (or first time)
             if entry.bestTime == 0 or currentTime < entry.bestTime then
                 entry.bestTime = currentTime
-
-                -- Save to database
-                if not KOL.db.profile.tracker.dungeonChallenge.timerLogs then
-                    KOL.db.profile.tracker.dungeonChallenge.timerLogs = {}
-                end
-                if not KOL.db.profile.tracker.dungeonChallenge.timerLogs[instanceId] then
-                    KOL.db.profile.tracker.dungeonChallenge.timerLogs[instanceId] = {}
-                end
                 KOL.db.profile.tracker.dungeonChallenge.timerLogs[instanceId][encounterName] = currentTime
-
-                KOL:DebugPrint(string.format("Timer log updated: %s - %s", encounterName, self:FormatTime(currentTime)), 2)
+                KOL:DebugPrint(string.format("Timer log: NEW BEST for %s - %s", encounterName, self:FormatTime(currentTime)), 2)
+            else
+                KOL:DebugPrint(string.format("Timer log: %s killed at %s (best: %s)", encounterName, self:FormatTime(currentTime), self:FormatTime(entry.bestTime)), 2)
             end
             return
         end

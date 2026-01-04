@@ -26,6 +26,32 @@ local KOL = KoalityOfLife
 KOL.version = version
 KOL.addonName = addonName
 
+-- ============================================================================
+-- Emergency Error Handler - Print ALL Lua errors to chat
+-- ============================================================================
+-- This allows seeing errors even when BugSack/other error frames are blocked
+local originalErrorHandler = geterrorhandler()
+local errorPrintEnabled = true  -- Set to false to disable chat error printing
+
+seterrorhandler(function(err)
+    -- Always print KoL errors to chat for debugging
+    if errorPrintEnabled and err then
+        local errStr = tostring(err)
+        -- Only print KoL-related errors (or all if you want)
+        if string.find(errStr, "Koality") or string.find(errStr, "KOL") or string.find(errStr, "!Koality") then
+            print("|cFFFF0000[KOL ERROR]|r " .. errStr)
+        end
+    end
+    -- Call original handler (BugSack etc)
+    return originalErrorHandler(err)
+end)
+
+-- Function to toggle error printing
+function KOL:ToggleErrorPrinting(enabled)
+    errorPrintEnabled = enabled
+    print("|cFFFFCC00[KoL]|r Error printing to chat: " .. (enabled and "|cFF00FF00ON|r" or "|cFFFF0000OFF|r"))
+end
+
 -- Default database structure
 local defaults = {
     profile = {
@@ -38,6 +64,12 @@ local defaults = {
         watchDeathsLevel = 0,  -- 0 = disabled, 1 = bosses only, 2 = elites+bosses, 3 = all mobs
         showPrints = false,  -- Controls PrintTag visibility (separate from debug)
         showSplash = true,  -- Show splash screen on login
+        limitDamage = false,  -- Tweaks: Limit Damage perk option (Chromie server)
+
+        -- Racial Swap: Toggle between two saved racials (Chromie server)
+        racialPrimary = nil,    -- Primary racial (set per class on first use)
+        racialSecondary = nil,  -- Secondary racial (set per class on first use)
+        currentRacial = nil,    -- Currently active racial
 
         -- Command Blocks: Reusable code snippets that return values
         commandBlocks = {},
@@ -83,12 +115,23 @@ local defaults = {
             raidFilterExpansion = "",
             raidFilterDifficulty = "all",
             selectedRaidInstance = "",
+            -- Auto-show watch frames when entering zones (default: ON)
+            autoShow = true,
         },
 
         -- Themes: UI theme management
         themes = {
-            active = "Nuclear Zero",
+            active = "Furwin",
             themes = {},  -- Registered themes stored here
+        },
+
+    },
+    global = {
+        -- Build Manager: Perk/talent build management (shared across all characters)
+        buildManager = {
+            -- Misc Perks config: perks set to false will be DISABLED, everything else enabled
+            miscPerksDisabled = {},  -- { ["Perk Name"] = true } means this perk will be disabled
+            miscSubOptionsDisabled = {},  -- { ["Category:Option"] = true } means this sub-option disabled
         },
     }
 }
