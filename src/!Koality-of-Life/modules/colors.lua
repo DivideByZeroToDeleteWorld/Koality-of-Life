@@ -1,22 +1,7 @@
--- ============================================================================
--- !Koality-of-Life: Colors Module
--- ============================================================================
--- Unified color library for the entire addon
--- Provides standard colors, pastel colors, and user customization
--- ============================================================================
-
 local KOL = KoalityOfLife
-
--- ============================================================================
--- Colors Module
--- ============================================================================
 
 KOL.Colors = {}
 local Colors = KOL.Colors
-
--- ============================================================================
--- Standard Color Palette (used by color functions like RED(), GREEN(), etc.)
--- ============================================================================
 
 Colors.STANDARD = {
     RED = "FF0000",
@@ -34,12 +19,7 @@ Colors.STANDARD = {
     PASTEL_YELLOW = "FFFF99",
 }
 
--- ============================================================================
--- Pastel Color Palette (RGB arrays for UI rendering)
--- ============================================================================
-
 Colors.PASTEL = {
-    -- Basic palette
     RED = {1, 0.6, 0.6},
     ORANGE = {1, 0.8, 0.6},
     YELLOW = {1, 1, 0.7},
@@ -49,7 +29,6 @@ Colors.PASTEL = {
     PURPLE = {0.9, 0.7, 1},
     PINK = {1, 0.7, 0.9},
 
-    -- Extended palette
     MINT = {0.7, 1, 0.85},
     LAVENDER = {0.85, 0.8, 1},
     PEACH = {1, 0.85, 0.7},
@@ -58,17 +37,12 @@ Colors.PASTEL = {
     LIME = {0.85, 1, 0.7},
     CORAL = {1, 0.8, 0.75},
     AQUA = {0.75, 0.95, 0.9},
-    EASTER_GREEN = {0.75, 1, 0.75},  -- Light spring green for completed groups
+    EASTER_GREEN = {0.75, 1, 0.75},
 
-    -- Neutral tones
     CREAM = {1, 0.98, 0.9},
     IVORY = {1, 1, 0.94},
     PEARL = {0.95, 0.95, 0.95},
 }
-
--- ============================================================================
--- Nuclear Color Palette (RGB objects for vibrant UI colors)
--- ============================================================================
 
 Colors.NUCLEAR = {
     RED = {r = 1.0, g = 0.1, b = 0.1},
@@ -83,57 +57,34 @@ Colors.NUCLEAR = {
     ORANGE = {r = 1.0, g = 0.5, b = 0.0},
 }
 
--- ============================================================================
--- Selected Color States (for UI components)
--- ============================================================================
-
 Colors.PASTEL_SELECTED = {r = 0.9, g = 0.9, b = 0.7}
 Colors.NUCLEAR_SELECTED = {r = 1, g = 0.6, b = 0.2}
 Colors.STANDARD_SELECTED = {r = 0.7, g = 0.7, b = 0.7}
 
--- ============================================================================
--- Separator Colors (for text formatting with CHAR_SEPARATOR)
--- ============================================================================
+Colors.PASTEL_SEPARATOR = {r = 0.8, g = 0.8, b = 0.9}
+Colors.NUCLEAR_SEPARATOR = {r = 1.0, g = 0.8, b = 0.0}
+Colors.STANDARD_SEPARATOR = {r = 0.6, g = 0.6, b = 0.6}
 
-Colors.PASTEL_SEPARATOR = {r = 0.8, g = 0.8, b = 0.9}     -- Soft lavender
-Colors.NUCLEAR_SEPARATOR = {r = 1.0, g = 0.8, b = 0.0}    -- Bright gold
-Colors.STANDARD_SEPARATOR = {r = 0.6, g = 0.6, b = 0.6}   -- Medium gray
-
--- ============================================================================
--- Color Utility Functions
--- ============================================================================
-
--- Wrap text in color codes
--- @param hexColor: Hex color string (e.g., "FF0000")
--- @param text: Text to wrap
--- @return: Colored text string
 function Colors:Wrap(hexColor, text)
     return "|cFF" .. hexColor .. tostring(text) .. "|r"
 end
 
--- Convert RGB to hex color code
--- @param color: RGB as indexed {r, g, b} or named {r=, g=, b=} with values 0-1
--- @return: Hex color string (e.g., "FF6B6B")
 function Colors:ToHex(color)
     if type(color) ~= "table" then
         KOL:DebugPrint("Colors: Invalid color for ToHex: " .. tostring(color), 1)
-        return "FFFFFF"  -- Default to white
+        return "FFFFFF"
     end
 
-    -- Support both indexed {r, g, b} and named {r=, g=, b=} formats
     local r, g, b
     if color[1] ~= nil then
-        -- Indexed array: {0.5, 0.6, 0.7}
         r, g, b = color[1], color[2], color[3]
     elseif color.r ~= nil then
-        -- Named table: {r = 0.5, g = 0.6, b = 0.7}
         r, g, b = color.r, color.g, color.b
     else
         KOL:DebugPrint("Colors: Invalid color format for ToHex (no r/g/b or [1]/[2]/[3])", 1)
         return "FFFFFF"
     end
 
-    -- Ensure values are numbers and in 0-1 range
     r = tonumber(r) or 1
     g = tonumber(g) or 1
     b = tonumber(b) or 1
@@ -141,13 +92,10 @@ function Colors:ToHex(color)
     return string.format("%02X%02X%02X", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255))
 end
 
--- Convert hex to RGB array
--- @param hex: Hex color string (e.g., "FF6B6B")
--- @return: RGB array {r, g, b} with values 0-1
 function Colors:ToRGB(hex)
     if type(hex) ~= "string" or #hex ~= 6 then
         KOL:DebugPrint("Colors: Invalid hex string for ToRGB: " .. tostring(hex), 1)
-        return {1, 1, 1}  -- Default to white
+        return {1, 1, 1}
     end
 
     local r = tonumber(string.sub(hex, 1, 2), 16) / 255
@@ -157,30 +105,21 @@ function Colors:ToRGB(hex)
     return {r, g, b}
 end
 
--- Get a pastel color by name (with user customization support)
--- @param colorName: Name of the color (e.g., "RED", "MINT")
--- @return: RGB array {r, g, b}
 function Colors:GetPastel(colorName)
     colorName = string.upper(colorName)
 
-    -- Check if user has customized this color
     if KOL.db and KOL.db.profile and KOL.db.profile.colors then
         if KOL.db.profile.colors.pastel and KOL.db.profile.colors.pastel[colorName] then
             return KOL.db.profile.colors.pastel[colorName]
         end
     end
 
-    -- Return default pastel color
-    return self.PASTEL[colorName] or self.PASTEL.PINK  -- Default to pink if not found
+    return self.PASTEL[colorName] or self.PASTEL.PINK
 end
 
--- Get a nuclear (vibrant) color by name
--- @param colorName: Name of the color (e.g., "RED", "GREEN")
--- @return: Hex color string
 function Colors:GetNuclear(colorName)
     colorName = string.upper(colorName)
 
-    -- Check if user has customized this color
     if KOL.db and KOL.db.profile and KOL.db.profile.colors then
         if KOL.db.profile.colors.nuclear and KOL.db.profile.colors.nuclear[colorName] then
             local c = KOL.db.profile.colors.nuclear[colorName]
@@ -188,35 +127,26 @@ function Colors:GetNuclear(colorName)
         end
     end
 
-    -- Get from NUCLEAR table
     local c = self.NUCLEAR[colorName]
     if c then
         return string.format("%02X%02X%02X", c.r * 255, c.g * 255, c.b * 255)
     end
 
-    return "FFFFFF"  -- Default to white if not found
+    return "FFFFFF"
 end
 
--- Get a standard color by name (with user customization support)
--- @param colorName: Name of the color (e.g., "RED", "GREEN")
--- @return: Hex color string
 function Colors:GetStandard(colorName)
     colorName = string.upper(colorName)
 
-    -- Check if user has customized this color
     if KOL.db and KOL.db.profile and KOL.db.profile.colors then
         if KOL.db.profile.colors.standard and KOL.db.profile.colors.standard[colorName] then
             return KOL.db.profile.colors.standard[colorName]
         end
     end
 
-    -- Return default standard color
-    return self.STANDARD[colorName] or "FFFFFF"  -- Default to white if not found
+    return self.STANDARD[colorName] or "FFFFFF"
 end
 
--- Reset a color to default
--- @param palette: "standard" or "pastel"
--- @param colorName: Name of the color
 function Colors:ResetColor(palette, colorName)
     if not KOL.db or not KOL.db.profile then return false end
 
@@ -238,7 +168,6 @@ function Colors:ResetColor(palette, colorName)
     return true
 end
 
--- Reset all colors to defaults
 function Colors:ResetAll()
     if not KOL.db or not KOL.db.profile then return false end
 
@@ -251,37 +180,28 @@ function Colors:ResetAll()
     return true
 end
 
--- ============================================================================
--- Rainbow and Formatted Text Functions
--- ============================================================================
-
--- Rainbow color gradient for text
--- Each character gets a different color cycling through the rainbow
--- @param text: Text to colorize
--- @return: Rainbow-colored text string
 function Colors:RainbowText(text)
     if not text or text == "" then return "" end
 
-    -- Rainbow gradient colors (smooth transition)
     local rainbowColors = {
-        "FF6600", -- Red-orange
-        "FF8800", -- Orange
-        "FFAA00", -- Yellow-orange
-        "FFCC00", -- Gold
-        "FFEE00", -- Yellow
-        "DDFF00", -- Yellow-green
-        "BBFF00", -- Lime
-        "99FF00", -- Light green
-        "77FF00", -- Green
-        "55FF00", -- Bright green
-        "33FF00", -- Green-cyan
-        "00FF33", -- Cyan-green
-        "00FF66", -- Teal
-        "00FF99", -- Aqua
-        "00FFCC", -- Cyan
-        "00CCFF", -- Sky blue
-        "0099FF", -- Light blue
-        "0066FF", -- Blue
+        "FF6600",
+        "FF8800",
+        "FFAA00",
+        "FFCC00",
+        "FFEE00",
+        "DDFF00",
+        "BBFF00",
+        "99FF00",
+        "77FF00",
+        "55FF00",
+        "33FF00",
+        "00FF33",
+        "00FF66",
+        "00FF99",
+        "00FFCC",
+        "00CCFF",
+        "0099FF",
+        "0066FF",
     }
 
     local result = ""
@@ -290,7 +210,6 @@ function Colors:RainbowText(text)
 
     for i = 1, #text do
         local char = string.sub(text, i, i)
-        -- Skip spaces for coloring but keep them
         if char == " " then
             result = result .. char
         else
@@ -305,23 +224,17 @@ function Colors:RainbowText(text)
     return result
 end
 
--- Color text with a named color or hex code
--- @param text: Text to colorize
--- @param colorNameOrHex: Color name (e.g., "RED", "GREEN", "SKY") or hex code (e.g., "FF0000")
--- @return: Colored text string
 function Colors:ColorText(text, colorNameOrHex)
     if not text then return "" end
     if not colorNameOrHex then return tostring(text) end
 
     local hexColor = colorNameOrHex
 
-    -- If it's not a 6-character hex string, try to look it up as a color name
     if not (type(colorNameOrHex) == "string" and string.match(colorNameOrHex, "^%x%x%x%x%x%x$")) then
         local lookedUpColor = self:GetColor(colorNameOrHex)
         if lookedUpColor then
             hexColor = lookedUpColor
         else
-            -- Fallback to white if color not found
             hexColor = "FFFFFF"
         end
     end
@@ -329,46 +242,31 @@ function Colors:ColorText(text, colorNameOrHex)
     return "|cFF" .. hexColor .. tostring(text) .. "|r"
 end
 
--- Format a settings change message with consistent styling
--- Example: "[Koality-of-Life] Changed [Limit Damage] to [YES]"
--- @param optionName: Name of the option being changed
--- @param newValue: New value (will be colored GREEN for true/YES, RED for false/NO)
--- @param useShortTag: If true, use "KoL" instead of "Koality-of-Life"
--- @return: Formatted message string
 function Colors:FormatSettingChange(optionName, newValue, useShortTag)
     local tagText = useShortTag and "KoL" or "Koality-of-Life"
     local rainbowTag = self:RainbowText(tagText)
 
-    -- Determine value text and color
     local valueText, valueColor
     if type(newValue) == "boolean" then
         valueText = newValue and "YES" or "NO"
-        valueColor = newValue and "00FF00" or "FF0000"  -- Green for YES, Red for NO
+        valueColor = newValue and "00FF00" or "FF0000"
     else
         valueText = tostring(newValue)
-        valueColor = "FFCC00"  -- Gold for other values
+        valueColor = "FFCC00"
     end
 
-    -- Build the formatted message
-    -- [Rainbow Tag] Changed [Option Name] to [Value]
     return "|cFFFFFFFF[|r" .. rainbowTag .. "|cFFFFFFFF]|r " ..
            "Changed |cFFFFFFFF[|r" .. self:ColorText(optionName, "SKY") .. "|cFFFFFFFF]|r " ..
            "to |cFFFFFFFF[|r" .. "|cFF" .. valueColor .. valueText .. "|r" .. "|cFFFFFFFF]|r"
 end
 
--- ============================================================================
--- Global Color Functions
--- ============================================================================
--- These are GLOBAL so they can be used anywhere (modules, macros, etc.)
-
--- Helper function for creating global color functions
+-- Global color functions accessible from anywhere (modules, macros, etc.)
 local function CreateColorFunction(colorName)
     return function(text)
         return KOL.Colors:Wrap(KOL.Colors:GetStandard(colorName), text)
     end
 end
 
--- Create all standard color functions
 RED = CreateColorFunction("RED")
 GREEN = CreateColorFunction("GREEN")
 BLUE = CreateColorFunction("BLUE")
@@ -383,9 +281,6 @@ PASTEL_RED = CreateColorFunction("PASTEL_RED")
 PASTEL_PINK = CreateColorFunction("PASTEL_PINK")
 PASTEL_YELLOW = CreateColorFunction("PASTEL_YELLOW")
 
--- Global text formatting functions
--- Usage: RainbowText("KoL") returns rainbow-colored "KoL"
--- Usage: ColorText("YES", "GREEN") returns green "YES"
 function RainbowText(text)
     return KOL.Colors:RainbowText(text)
 end
@@ -394,48 +289,33 @@ function ColorText(text, colorNameOrHex)
     return KOL.Colors:ColorText(text, colorNameOrHex)
 end
 
--- Unified color lookup function
--- Searches all palettes (STANDARD, PASTEL, NUCLEAR) for a color by name
--- @param colorName: Name of the color (e.g., "RED", "PASTEL_YELLOW", "NUCLEAR_GREEN")
--- @return: Hex color string or nil if not found
 function Colors:GetColor(colorName)
     colorName = string.upper(colorName)
 
-    -- Check STANDARD palette first (hex strings)
     if self.STANDARD[colorName] then
         return self.STANDARD[colorName]
     end
 
-    -- Check PASTEL palette (RGB arrays - need conversion)
     if self.PASTEL[colorName] then
         return self:ToHex(self.PASTEL[colorName])
     end
 
-    -- Check NUCLEAR palette (RGB objects - need conversion)
     if self.NUCLEAR and self.NUCLEAR[string.gsub(colorName, "NUCLEAR_", "")] then
         local nuclearColor = self.NUCLEAR[string.gsub(colorName, "NUCLEAR_", "")]
         return self:ToHex({nuclearColor.r, nuclearColor.g, nuclearColor.b})
     end
 
-    -- Not found
     return nil
 end
 
--- Unified color function - takes color name OR hex code
--- Examples:
---   COLOR("RED", "text") - looks up RED from any palette
---   COLOR("NUCLEAR_GREEN", "text") - looks up NUCLEAR_GREEN
---   COLOR("FF6600", "text") - uses hex code directly
 function COLOR(colorNameOrHex, text)
     local hexColor = colorNameOrHex
 
-    -- If it's not a 6-character hex string, try to look it up as a color name
     if not (type(colorNameOrHex) == "string" and string.match(colorNameOrHex, "^%x%x%x%x%x%x$")) then
         local lookedUpColor = KOL.Colors:GetColor(colorNameOrHex)
         if lookedUpColor then
             hexColor = lookedUpColor
         else
-            -- Fallback to white if color not found
             hexColor = "FFFFFF"
         end
     end
@@ -443,59 +323,33 @@ function COLOR(colorNameOrHex, text)
     return KOL.Colors:Wrap(hexColor, text)
 end
 
--- ============================================================================
--- Theme-Aware Color Functions
--- ============================================================================
-
--- Get theme color with fallback to existing color system
--- @param colorPath: Theme color path (e.g., "GlobalBG", "ButtonNormal")
--- @param fallback: Fallback color if theme color not found
--- @return: Hex color string
 function Colors:GetThemeColor(colorPath, fallback)
-    -- Check if themes module is available
     if KOL.Themes and KOL.Themes.GetThemeColor then
         return KOL.Themes:GetThemeColor(colorPath, fallback)
     end
-    
-    -- Fallback to provided fallback or default
+
     return fallback or "FFFFFF"
 end
 
--- Get theme color as RGB object for UI components
--- @param colorPath: Theme color path (e.g., "GlobalBG", "ButtonNormal")
--- @param fallback: Fallback RGB table if theme color not found
--- @return: RGB object {r, g, b}
 function Colors:GetUIThemeColor(colorPath, fallback)
-    -- Check if themes module is available
     if KOL.Themes and KOL.Themes.GetUIThemeColor then
         return KOL.Themes:GetUIThemeColor(colorPath, fallback)
     end
-    
-    -- Fallback to provided fallback or default white
+
     return fallback or {r = 1, g = 1, b = 1}
 end
 
--- Enhanced color lookup that checks themes first, then existing palettes
--- @param colorName: Name of color (e.g., "RED", "PASTEL_YELLOW", "NUCLEAR_GREEN", "GlobalBG")
--- @return: Hex color string or nil if not found
 function Colors:GetColorWithTheme(colorName)
-    -- First check if it's a theme color
     if KOL.Themes and KOL.Themes.GetThemeColor then
         local themeColor = KOL.Themes:GetThemeColor(colorName)
         if themeColor then
             return themeColor
         end
     end
-    
-    -- Fall back to existing color system
+
     return self:GetColor(colorName)
 end
 
--- ============================================================================
--- Config UI Population
--- ============================================================================
-
--- Populate standard colors in config UI
 function Colors:PopulateStandardColorsUI()
     if not KOL.configOptions or not KOL.configOptions.args.general or not KOL.configOptions.args.general.args.colors then
         return
@@ -504,7 +358,6 @@ function Colors:PopulateStandardColorsUI()
     local standardArgs = KOL.configOptions.args.general.args.colors.args.standardColors.args
     local order = 0
 
-    -- Sort color names alphabetically
     local sortedColors = {}
     for colorName, _ in pairs(self.STANDARD) do
         table.insert(sortedColors, colorName)
@@ -541,7 +394,6 @@ function Colors:PopulateStandardColorsUI()
         }
     end
 
-    -- Add spacer before special colors
     order = order + 1
     standardArgs["spacer_" .. order] = {
         type = "description",
@@ -549,7 +401,6 @@ function Colors:PopulateStandardColorsUI()
         order = order,
     }
 
-    -- Add STANDARD_SELECTED
     order = order + 1
     standardArgs["standard_selected"] = {
         type = "color",
@@ -567,7 +418,6 @@ function Colors:PopulateStandardColorsUI()
         order = order,
     }
 
-    -- Add STANDARD_SEPARATOR
     order = order + 1
     standardArgs["standard_separator"] = {
         type = "color",
@@ -588,7 +438,6 @@ function Colors:PopulateStandardColorsUI()
     KOL:DebugPrint("Colors: Populated standard colors UI", 3)
 end
 
--- Populate pastel colors in config UI
 function Colors:PopulatePastelColorsUI()
     if not KOL.configOptions or not KOL.configOptions.args.general or not KOL.configOptions.args.general.args.colors then
         return
@@ -597,7 +446,6 @@ function Colors:PopulatePastelColorsUI()
     local pastelArgs = KOL.configOptions.args.general.args.colors.args.pastelColors.args
     local order = 0
 
-    -- Sort color names alphabetically
     local sortedColors = {}
     for colorName, _ in pairs(self.PASTEL) do
         table.insert(sortedColors, colorName)
@@ -633,7 +481,6 @@ function Colors:PopulatePastelColorsUI()
         }
     end
 
-    -- Add spacer before special colors
     order = order + 1
     pastelArgs["spacer_" .. order] = {
         type = "description",
@@ -641,7 +488,6 @@ function Colors:PopulatePastelColorsUI()
         order = order,
     }
 
-    -- Add PASTEL_SELECTED
     order = order + 1
     pastelArgs["pastel_selected"] = {
         type = "color",
@@ -659,7 +505,6 @@ function Colors:PopulatePastelColorsUI()
         order = order,
     }
 
-    -- Add PASTEL_SEPARATOR
     order = order + 1
     pastelArgs["pastel_separator"] = {
         type = "color",
@@ -680,7 +525,6 @@ function Colors:PopulatePastelColorsUI()
     KOL:DebugPrint("Colors: Populated pastel colors UI", 3)
 end
 
--- Populate nuclear colors in config UI
 function Colors:PopulateNuclearColorsUI()
     if not KOL.configOptions or not KOL.configOptions.args.general or not KOL.configOptions.args.general.args.colors then
         return
@@ -689,7 +533,6 @@ function Colors:PopulateNuclearColorsUI()
     local nuclearArgs = KOL.configOptions.args.general.args.colors.args.nuclearColors.args
     local order = 0
 
-    -- Sort color names alphabetically
     local sortedColors = {}
     for colorName, _ in pairs(self.NUCLEAR) do
         table.insert(sortedColors, colorName)
@@ -717,7 +560,6 @@ function Colors:PopulateNuclearColorsUI()
         }
     end
 
-    -- Add spacer before special colors
     order = order + 1
     nuclearArgs["spacer_" .. order] = {
         type = "description",
@@ -725,7 +567,6 @@ function Colors:PopulateNuclearColorsUI()
         order = order,
     }
 
-    -- Add NUCLEAR_SELECTED
     order = order + 1
     nuclearArgs["nuclear_selected"] = {
         type = "color",
@@ -743,7 +584,6 @@ function Colors:PopulateNuclearColorsUI()
         order = order,
     }
 
-    -- Add NUCLEAR_SEPARATOR
     order = order + 1
     nuclearArgs["nuclear_separator"] = {
         type = "color",
@@ -764,7 +604,6 @@ function Colors:PopulateNuclearColorsUI()
     KOL:DebugPrint("Colors: Populated nuclear colors UI", 3)
 end
 
--- Populate custom colors in config UI
 function Colors:PopulateCustomColorsUI()
     if not KOL.configOptions or not KOL.configOptions.args.general or not KOL.configOptions.args.general.args.colors then
         return
@@ -772,7 +611,6 @@ function Colors:PopulateCustomColorsUI()
 
     local customArgs = KOL.configOptions.args.general.args.colors.args.customColors.args
 
-    -- Clear existing custom colors
     for k, _ in pairs(customArgs) do
         customArgs[k] = nil
     end
@@ -810,9 +648,7 @@ function Colors:PopulateCustomColorsUI()
     KOL:DebugPrint("Colors: Populated custom colors UI", 3)
 end
 
--- Show dialog to add a custom color
 function Colors:ShowCustomColorDialog()
-    -- Simple prompt for now - could be enhanced later
     StaticPopupDialogs["KOL_ADD_CUSTOM_COLOR"] = {
         text = "Enter a name for your custom color:",
         button1 = "Add",
@@ -824,10 +660,8 @@ function Colors:ShowCustomColorDialog()
         OnAccept = function(self)
             local colorName = self.editBox:GetText()
             if colorName and colorName ~= "" then
-                -- Normalize name
                 colorName = string.upper(string.gsub(colorName, "%s+", "_"))
 
-                -- Initialize custom colors if needed
                 if not KOL.db.profile.colors then
                     KOL.db.profile.colors = {standard = {}, pastel = {}, custom = {}}
                 end
@@ -835,12 +669,10 @@ function Colors:ShowCustomColorDialog()
                     KOL.db.profile.colors.custom = {}
                 end
 
-                -- Add default white color
                 KOL.db.profile.colors.custom[colorName] = {1, 1, 1}
 
                 KOL:PrintTag("Added custom color: " .. colorName .. " (set to white by default)")
 
-                -- Refresh config UI
                 if KOL.Colors then
                     KOL.Colors:PopulateCustomColorsUI()
                     LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
@@ -855,9 +687,6 @@ function Colors:ShowCustomColorDialog()
     StaticPopup_Show("KOL_ADD_CUSTOM_COLOR")
 end
 
--- Get a custom color by name
--- @param colorName: Name of the custom color
--- @return: RGB array {r, g, b} or nil if not found
 function Colors:GetCustom(colorName)
     colorName = string.upper(colorName)
 
@@ -870,7 +699,6 @@ function Colors:GetCustom(colorName)
         return nil
     end
 
-    -- Convert hex to RGB if needed
     if type(color) == "string" then
         return self:ToRGB(color)
     else
@@ -878,22 +706,16 @@ function Colors:GetCustom(colorName)
     end
 end
 
--- ============================================================================
--- Initialization
--- ============================================================================
-
 function Colors:Initialize()
-    -- Ensure database structure exists
     if KOL.db and KOL.db.profile then
         if not KOL.db.profile.colors then
             KOL.db.profile.colors = {
-                standard = {},  -- User customizations for standard colors
-                pastel = {},    -- User customizations for pastel colors
-                custom = {},    -- User-defined custom colors
+                standard = {},
+                pastel = {},
+                custom = {},
             }
         end
 
-        -- Populate config UI if it's ready
         if KOL.configOptions and KOL.configOptions.args.colors then
             self:PopulateStandardColorsUI()
             self:PopulatePastelColorsUI()
@@ -906,6 +728,3 @@ function Colors:Initialize()
         KOL:DebugPrint("Colors: Module initialized", 1)
     end
 end
-
--- Note: Color functions are now available globally
--- Initialization happens later in ui.lua after DB is ready

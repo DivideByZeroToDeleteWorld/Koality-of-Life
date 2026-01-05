@@ -844,10 +844,17 @@ function Tracker:ResetInstance(instanceId)
     self.lastExitTime[instanceId] = nil  -- Clear exit time tracking
     self.instanceLockouts[instanceId] = nil  -- Clear lockout ID
 
-    -- Clear Dungeon Challenge cached state
-    if self.dungeonChallengeState[instanceId] then
-        self.dungeonChallengeState[instanceId] = nil
-    end
+    -- Reset Dungeon Challenge timer - restart fresh
+    self.dungeonChallengeState[instanceId] = {
+        startTime = GetTime(),
+        timeElapsedOffset = 0,
+        buffActive = false,
+        timerStopped = false,
+        completionTime = nil,
+        cachedTime = nil,
+        currentTime = nil,
+    }
+    KOL:DebugPrint("Tracker: Restarted dungeon timer for " .. instanceId, 2)
 
     -- Clear saved dungeon challenge timer from database
     if KOL.db.profile.tracker.dungeonChallenge and KOL.db.profile.tracker.dungeonChallenge.currentTimes then

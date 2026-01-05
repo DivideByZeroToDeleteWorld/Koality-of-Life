@@ -40,15 +40,15 @@ local COLORS = {
     VERSION = {r = 0.5, g = 0.5, b = 0.5},   -- Version text
 }
 
--- Icons - loaded dynamically to ensure CHAR_ constants are available
+-- Icons - use directly available constants or literal characters
 local function GetIcon(name)
     local icons = {
-        ARROW_RIGHT = CHAR_ARROW_RIGHTFILLED or ">",
-        ARROW_LEFT = CHAR_ARROW_LEFTFILLED or "<",
-        FOLDER = CHAR_FOLDER or "+",
-        SETTINGS = CHAR_GEAR or "*",
-        RELOAD = CHAR_RELOAD or CHAR_SHAPES_CIRCLE or "o",
-        CLOSE = CHAR_XMARK or CHAR_SHAPES_SQUARE or "x",
+        ARROW_RIGHT = CHAR_ARROW_RIGHTFILLED or "▶",
+        ARROW_LEFT = CHAR_ARROW_LEFTFILLED or "◄",
+        FOLDER = "▸",      -- Small triangle right
+        SETTINGS = "◆",    -- Filled diamond
+        RELOAD = "↔",      -- Left-right arrow (back and forth/refresh)
+        CLOSE = "×",       -- Multiplication sign (clean X)
     }
     return icons[name] or ""
 end
@@ -273,6 +273,40 @@ local function CreateSeparator(tooltip, yOffset, text)
     end
 
     return SEPARATOR_HEIGHT
+end
+
+-- Styled section header (matches UIFactory:CreateSectionHeader style)
+local SECTION_HEADER_HEIGHT = 18
+local function CreateSectionHeader(tooltip, yOffset, text, color)
+    local fontPath, fontOutline = GetFont()
+    color = color or COLORS.LABEL
+
+    -- Background - subtle dark using accent color at 20% intensity
+    local bg = tooltip:CreateTexture(nil, "BACKGROUND")
+    bg:SetPoint("TOPLEFT", tooltip, "TOPLEFT", PADDING, yOffset)
+    bg:SetPoint("TOPRIGHT", tooltip, "TOPRIGHT", -PADDING, yOffset)
+    bg:SetHeight(SECTION_HEADER_HEIGHT)
+    bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+    bg:SetVertexColor(color.r * 0.2, color.g * 0.2, color.b * 0.2, 0.8)
+    table.insert(tooltip.regions, bg)
+
+    -- Left accent bar (3px wide)
+    local accent = tooltip:CreateTexture(nil, "ARTWORK")
+    accent:SetPoint("TOPLEFT", tooltip, "TOPLEFT", PADDING, yOffset)
+    accent:SetSize(3, SECTION_HEADER_HEIGHT)
+    accent:SetTexture("Interface\\Buttons\\WHITE8X8")
+    accent:SetVertexColor(color.r, color.g, color.b, 1)
+    table.insert(tooltip.regions, accent)
+
+    -- Text in accent color
+    local label = tooltip:CreateFontString(nil, "OVERLAY")
+    label:SetFont(fontPath, 10, fontOutline)
+    label:SetPoint("LEFT", tooltip, "TOPLEFT", PADDING + 8, yOffset - (SECTION_HEADER_HEIGHT / 2))
+    label:SetTextColor(color.r, color.g, color.b, 1)
+    label:SetText(text)
+    table.insert(tooltip.regions, label)
+
+    return SECTION_HEADER_HEIGHT + 2  -- Small gap after
 end
 
 local function CreateSettingRow(tooltip, yOffset, settingName, value, onClick)
@@ -624,7 +658,7 @@ local function GetMenuStructure()
         },
         {
             text = "Boss Recorder",
-            icon = CHAR_SWORDS or "⚔",
+            icon = "†",  -- Dagger symbol
             isFolder = true,
             title = "Boss Recorder",
             children = {
@@ -635,7 +669,7 @@ local function GetMenuStructure()
         },
         {
             text = "Key Bindings",
-            icon = CHAR_KEYBOARD or "⌨",
+            icon = "☼",  -- Cog/settings symbol
             onClick = function()
                 KOL:OpenConfig()
                 -- Note: Would need bindings tab navigation
@@ -643,17 +677,17 @@ local function GetMenuStructure()
         },
         {
             text = "Debug Console",
-            icon = CHAR_SHAPES_STAR or "★",
+            icon = "★",  -- Star symbol
             onClick = function() KOL:ToggleDebugConsole() end,
         },
         {
             text = "Character Viewer",
-            icon = CHAR_PERSON or "👤",
+            icon = "☺",  -- Smiley face
             onClick = function() KOL:ToggleCharViewer() end,
         },
         {
             text = "Theme Editor",
-            icon = CHAR_PALETTE or "🎨",
+            icon = "♫",  -- Music notes (creative/artistic)
             onClick = function()
                 if KOL.ThemeEditor then
                     KOL.ThemeEditor:Toggle()
@@ -662,7 +696,7 @@ local function GetMenuStructure()
         },
         {
             text = "Racial Swap",
-            icon = CHAR("PERSON") or "👤",
+            icon = "☻",  -- Filled smiley (person/character)
             isFolder = true,
             title = "Racial Swap",
             children = (function()
@@ -998,12 +1032,12 @@ function LDBModule:ShowMainMenu(anchor)
     totalHeight = totalHeight + standaloneHeight
 
     -- ========================================================================
-    -- Separator: --- Options ---
+    -- Options Header (styled section header with accent bar)
     -- ========================================================================
 
-    local optionsSepHeight = CreateSeparator(tooltip, yOffset, "--- Options ---")
-    yOffset = yOffset - optionsSepHeight
-    totalHeight = totalHeight + optionsSepHeight
+    local optionsHeaderHeight = CreateSectionHeader(tooltip, yOffset, "OPTIONS", COLORS.LABEL)
+    yOffset = yOffset - optionsHeaderHeight
+    totalHeight = totalHeight + optionsHeaderHeight
 
     -- ========================================================================
     -- Config Tab Items
@@ -1087,6 +1121,7 @@ function LDBModule:ShowMainMenu(anchor)
 
     local catcher = GetClickCatcher()
     -- Frame level already set in GetClickCatcher() - strata (LOW) handles layering
+    catcher:EnableMouse(true)  -- Re-enable after previous ReleaseEverything disabled it
     catcher:Show()
 
     -- Close on escape (with error protection)
@@ -1664,47 +1699,185 @@ function LDBModule:HookChocolateBarFont()
     end
 end
 
--- Hook minimap button for hover effects (extracted to separate function)
+-- Hook minimap button for custom menu and square appearance
 function LDBModule:HookMinimapButton()
     C_Timer.After(0.1, function()
-        local button = LDBIcon:GetMinimapButton("!Koality-of-Life")
+        local button = LDBIcon.objects and LDBIcon.objects["!Koality-of-Life"]
         if button and not button.kolHooked then
             button.kolHooked = true
             local iconTexture = button.icon or button.Icon
-            if iconTexture then
-                local origEnter = button:GetScript("OnEnter")
-                local origLeave = button:GetScript("OnLeave")
-                local origClick = button:GetScript("OnClick")
 
-                button:SetScript("OnEnter", function(self)
-                    iconTexture:SetVertexColor(1.4, 1.2, 0.6, 1)
-                    if button.SetScale then button:SetScale(1.15) end
-                    if origEnter then origEnter(self) end
-                end)
+            -- ============================================================
+            -- CUSTOM DRAG BEHAVIOR - Square edge positioning
+            -- ============================================================
+            local EDGE_OFFSET = 10  -- Distance from minimap edge to button center
 
-                button:SetScript("OnLeave", function(self)
-                    iconTexture:SetVertexColor(1, 1, 1, 1)
-                    if button.SetScale then button:SetScale(1.0) end
-                    if origLeave then origLeave(self) end
-                end)
+            -- Position button along square edge at given angle
+            local function PositionAtAngle(angle)
+                local rads = math.rad(angle)
+                local cos_a = math.cos(rads)
+                local sin_a = math.sin(rads)
 
-                button:SetScript("OnClick", function(self, btn)
-                    iconTexture:SetVertexColor(1.4, 0.3, 1.5, 1)
-                    if button.SetScale then button:SetScale(0.9) end
-                    C_Timer.After(0.1, function()
-                        if MouseIsOver(button) then
-                            iconTexture:SetVertexColor(1.4, 1.2, 0.6, 1)
-                            if button.SetScale then button:SetScale(1.15) end
-                        else
-                            iconTexture:SetVertexColor(1, 1, 1, 1)
-                            if button.SetScale then button:SetScale(1.0) end
-                        end
-                    end)
-                    if origClick then origClick(self, btn) end
-                end)
+                -- Get minimap half-size (square minimap)
+                local halfSize = (Minimap:GetWidth() / 2) + EDGE_OFFSET
+
+                -- Calculate intersection with square boundary
+                local abs_cos = math.abs(cos_a)
+                local abs_sin = math.abs(sin_a)
+                local t
+
+                if abs_cos < 0.001 then
+                    t = halfSize / abs_sin
+                elseif abs_sin < 0.001 then
+                    t = halfSize / abs_cos
+                elseif abs_cos > abs_sin then
+                    t = halfSize / abs_cos
+                else
+                    t = halfSize / abs_sin
+                end
+
+                local x = cos_a * t
+                local y = sin_a * t
+
+                button:ClearAllPoints()
+                button:SetPoint("CENTER", Minimap, "CENTER", x, y)
             end
+
+            -- Apply initial position
+            local currentAngle = KOL.db.profile.minimap.minimapPos or 220
+            PositionAtAngle(currentAngle)
+
+            -- Block ALL of LibDBIcon's SetPoint calls - we handle positioning entirely
+            local origSetPoint = button.SetPoint
+            button.SetPoint = function(self, ...)
+                -- Only allow our own calls (identified by first arg being "CENTER" to Minimap)
+                local point, relativeTo = ...
+                if point == "CENTER" and relativeTo == Minimap then
+                    origSetPoint(self, ...)
+                end
+                -- Block everything else (LibDBIcon's repositioning)
+            end
+
+            -- Completely replace drag behavior
+            local isDragging = false
+
+            -- Remove LibDBIcon's drag scripts entirely
+            button:SetScript("OnDragStart", function(self)
+                isDragging = true
+                self:SetScript("OnUpdate", function(self)
+                    -- Get cursor position and calculate angle to minimap center
+                    local cx, cy = GetCursorPosition()
+                    local scale = UIParent:GetEffectiveScale()
+                    cx, cy = cx / scale, cy / scale
+
+                    local mx, my = Minimap:GetCenter()
+                    if mx and my then
+                        local dx, dy = cx - mx, cy - my
+                        currentAngle = math.deg(math.atan2(dy, dx))
+                        PositionAtAngle(currentAngle)
+                    end
+                end)
+            end)
+
+            button:SetScript("OnDragStop", function(self)
+                isDragging = false
+                self:SetScript("OnUpdate", nil)
+                -- Save the angle
+                KOL.db.profile.minimap.minimapPos = currentAngle
+            end)
+
+            -- ============================================================
+            -- Make button SQUARE instead of round
+            -- ============================================================
+            -- Hide ALL textures except the icon (removes circular border/overlay/mask)
+            local regions = {button:GetRegions()}
+            for _, region in ipairs(regions) do
+                if region:GetObjectType() == "Texture" and region ~= iconTexture then
+                    region:Hide()
+                end
+            end
+
+            -- Also hide named elements if they exist
+            if button.overlay then button.overlay:Hide() end
+            if button.border then button.border:Hide() end
+            if button.background then button.background:Hide() end
+
+            -- Use backdrop for square look with border
+            if button.SetBackdrop then
+                button:SetBackdrop({
+                    bgFile = "Interface\\Buttons\\WHITE8X8",
+                    edgeFile = "Interface\\Buttons\\WHITE8X8",
+                    tile = false,
+                    edgeSize = 1,
+                    insets = { left = 0, right = 0, top = 0, bottom = 0 }
+                })
+                button:SetBackdropColor(0.1, 0.1, 0.1, 0.9)
+                button:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+            end
+
+            -- Make the icon fill the square
+            if iconTexture then
+                iconTexture:Show()  -- Make sure icon is visible
+                iconTexture:ClearAllPoints()
+                iconTexture:SetPoint("TOPLEFT", button, "TOPLEFT", 2, -2)
+                iconTexture:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -2, 2)
+                iconTexture:SetTexCoord(0, 1, 0, 1)  -- Full texture, no circular crop
+            end
+
+            -- ============================================================
+            -- Hover effects only (menu requires click)
+            -- ============================================================
+            button:SetScript("OnEnter", function(self)
+                -- Hover effect
+                if iconTexture then
+                    iconTexture:SetVertexColor(1.4, 1.2, 0.6, 1)
+                end
+                if button.SetBackdropBorderColor then
+                    button:SetBackdropBorderColor(0.8, 0.7, 0.3, 1)
+                end
+            end)
+
+            button:SetScript("OnLeave", function(self)
+                -- Reset hover effect
+                if iconTexture then
+                    iconTexture:SetVertexColor(1, 1, 1, 1)
+                end
+                if button.SetBackdropBorderColor then
+                    button:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+                end
+            end)
+
+            -- Click toggles menu (left) or toggles config (right)
+            button:SetScript("OnClick", function(self, btn)
+                if btn == "LeftButton" then
+                    LDBModule:ToggleMenu(self)
+                elseif btn == "RightButton" then
+                    -- Toggle config panel
+                    local ACD = LibStub("AceConfigDialog-3.0")
+                    if ACD.OpenFrames and ACD.OpenFrames["KoalityOfLife"] then
+                        ACD:Close("KoalityOfLife")
+                    else
+                        KOL:OpenConfig()
+                    end
+                end
+            end)
+
+            -- Apply saved size
+            local size = KOL.db.profile.minimapButtonSize or 32
+            button:SetSize(size, size)
+
+            KOL:DebugPrint("LDB: Minimap button hooked with square style and custom menu", 2)
         end
     end)
+end
+
+-- Update minimap button size from config
+function LDBModule:UpdateMinimapButtonSize()
+    local button = LDBIcon.objects and LDBIcon.objects["!Koality-of-Life"]
+    if button then
+        local size = KOL.db.profile.minimapButtonSize or 32
+        button:SetSize(size, size)
+    end
 end
 
 -- Check if LDB plugin was created (for click/menu handlers)

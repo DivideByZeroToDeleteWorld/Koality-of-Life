@@ -1,20 +1,7 @@
--- ============================================================================
--- !Koality-of-Life: Binds UI Module
--- ============================================================================
--- ElvUI-style tree layout for binds management
--- Based on binds-mockup.lua with full backend integration
--- ============================================================================
-
 local KOL = KoalityOfLife
 
--- Initialize Binds namespace
 KOL.Binds = KOL.Binds or {}
 
--- ============================================================================
--- Helper Functions
--- ============================================================================
-
--- Count enabled/disabled binds in a group
 local function GetGroupBindCounts(groupId)
     local enabled, disabled = 0, 0
     for bindId, bind in pairs(KOL.db.profile.binds.keybindings) do
@@ -29,7 +16,6 @@ local function GetGroupBindCounts(groupId)
     return enabled, disabled
 end
 
--- Get all group values for dropdown
 local function GetAllGroupValues()
     local values = {}
     for groupId, group in pairs(KOL.db.profile.binds.groups) do
@@ -38,22 +24,15 @@ local function GetAllGroupValues()
     return values
 end
 
--- ============================================================================
--- Bind UI Generator
--- ============================================================================
-
--- Generate UI elements for a single bind
 local function GenerateBindUI(bindId, bind, orderStart)
     local args = {}
 
-    -- Header
     args[bindId .. "_header"] = {
         order = orderStart,
         type = "header",
         name = bind.name,
     }
 
-    -- Enable toggle
     args[bindId .. "_enable"] = {
         order = orderStart + 1,
         type = "toggle",
@@ -73,7 +52,6 @@ local function GenerateBindUI(bindId, bind, orderStart)
         end,
     }
 
-    -- Keybinding capture
     args[bindId .. "_key"] = {
         order = orderStart + 2,
         type = "keybinding",
@@ -93,7 +71,6 @@ local function GenerateBindUI(bindId, bind, orderStart)
         width = 0.05,
     }
 
-    -- Type selector
     args[bindId .. "_type"] = {
         order = orderStart + 4,
         type = "select",
@@ -118,7 +95,6 @@ local function GenerateBindUI(bindId, bind, orderStart)
         width = 0.05,
     }
 
-    -- Target input
     args[bindId .. "_target"] = {
         order = orderStart + 6,
         type = "input",
@@ -138,7 +114,6 @@ local function GenerateBindUI(bindId, bind, orderStart)
         width = 0.05,
     }
 
-    -- Delete button
     args[bindId .. "_delete"] = {
         order = orderStart + 8,
         type = "execute",
@@ -156,7 +131,6 @@ local function GenerateBindUI(bindId, bind, orderStart)
     return args
 end
 
--- Generate all binds for a specific group
 local function GenerateGroupBindsUI(groupId, startOrder)
     local args = {}
     local order = startOrder
@@ -174,11 +148,6 @@ local function GenerateGroupBindsUI(groupId, startOrder)
     return args
 end
 
--- ============================================================================
--- Group UI Generator
--- ============================================================================
-
--- Generate standard group layout (Combat, Social, Utility, custom groups)
 local function GenerateStandardGroup(groupId, groupName, groupColor, groupDesc)
     return {
         type = "group",
@@ -274,10 +243,8 @@ local function GenerateStandardGroup(groupId, groupName, groupColor, groupDesc)
                         return
                     end
 
-                    -- Generate unique ID
                     local bindId = bindName:lower():gsub("%s+", "_"):gsub("[^%w_]", "")
 
-                    -- Create the binding
                     if KOL.Binds:CreateKeybinding(bindId, {
                         name = bindName,
                         type = bindType,
@@ -286,10 +253,8 @@ local function GenerateStandardGroup(groupId, groupName, groupColor, groupDesc)
                         enabled = true,
                     }) then
                         KOL:PrintTag(GREEN("Created keybinding: ") .. COLOR("PASTEL_YELLOW", bindName))
-                        -- Clear inputs
                         KOL.Binds["newBindName_" .. groupId] = ""
                         KOL.Binds["newBindTarget_" .. groupId] = ""
-                        -- Refresh UI
                         LibStub("AceConfigRegistry-3.0"):NotifyChange("KoalityOfLife")
                     end
                 end,
@@ -303,28 +268,22 @@ local function GenerateStandardGroup(groupId, groupName, groupColor, groupDesc)
     }
 end
 
--- ============================================================================
--- Main UI Registration
--- ============================================================================
-
 function KOL.Binds:InitializeUI()
     if not KOL.configOptions then
         KOL:DebugPrint("Binds UI: Waiting for main UI to initialize...")
         return
     end
 
-    -- Only add tab if devMode is enabled (hidden in production)
     if not (KOL.db and KOL.db.profile and KOL.db.profile.devMode) then
         KOL:DebugPrint("Binds UI: Skipped (devMode disabled)")
         return
     end
 
-    -- Create main binds config with tree layout
     KOL.configOptions.args.binds = {
         type = "group",
         name = "|cFF66FFBBBinds|r",
         order = 7,
-        childGroups = "tree",  -- ElvUI-style left navigation
+        childGroups = "tree",
         args = {
             header = {
                 order = 1,
@@ -390,7 +349,6 @@ function KOL.Binds:InitializeUI()
                         return
                     end
 
-                    -- Generate ID
                     local groupId = groupName:lower():gsub("%s+", "_"):gsub("[^%w_]", "")
 
                     if KOL.db.profile.binds.groups[groupId] then
@@ -398,7 +356,6 @@ function KOL.Binds:InitializeUI()
                         return
                     end
 
-                    -- Create group in database
                     KOL.db.profile.binds.groups[groupId] = {
                         name = groupName,
                         color = groupColor,
@@ -407,18 +364,13 @@ function KOL.Binds:InitializeUI()
 
                     KOL:PrintTag(GREEN("Created group: ") .. COLOR("PASTEL_YELLOW", groupName))
 
-                    -- Clear inputs
                     KOL.Binds.newGroupName = ""
                     KOL.Binds.newGroupColor = "PASTEL_YELLOW"
 
-                    -- Refresh UI
                     LibStub("AceConfigRegistry-3.0"):NotifyChange("KoalityOfLife")
                 end,
             },
 
-            -- ================================================================
-            -- GENERAL GROUP (with config options at top)
-            -- ================================================================
             generalGroup = {
                 order = 20,
                 type = "group",
@@ -481,7 +433,6 @@ function KOL.Binds:InitializeUI()
                         name = "\n",
                     },
 
-                    -- General binds section
                     header = {
                         order = 10,
                         type = "header",
@@ -495,7 +446,6 @@ function KOL.Binds:InitializeUI()
                             return "Default keybindings.\n\n|cFF88FF88Enabled:|r " .. enabled .. "  |  |cFFFF6666Disabled:|r " .. disabled .. "\n"
                         end,
                     },
-                    -- Add bind controls (same as other groups)
                     addBindName = {
                         order = 12,
                         type = "input",
@@ -561,15 +511,12 @@ function KOL.Binds:InitializeUI()
                     },
                 }
             },
-
-            -- Dynamically populate groups will happen on refresh
         }
     }
 
-    -- Add standard groups if they exist in database
     local groupOrders = {
         configs = 19,
-        general = 20,  -- Already added above
+        general = 20,
         combat = 30,
         social = 40,
         utility = 50,
@@ -591,7 +538,7 @@ function KOL.Binds:InitializeUI()
     }
 
     for groupId, groupData in pairs(KOL.db.profile.binds.groups) do
-        if groupId ~= "general" then  -- General already added with config options
+        if groupId ~= "general" then
             local order = groupOrders[groupId] or 60
             local color = groupColors[groupId] or "|cFFFFAA00"
             local desc = groupDescs[groupId] or ""
@@ -603,13 +550,11 @@ function KOL.Binds:InitializeUI()
                 desc
             )
 
-            -- Add existing binds
             local bindArgs = GenerateGroupBindsUI(groupId, 20)
             for k, v in pairs(bindArgs) do
                 KOL.configOptions.args.binds.args[groupId .. "Group"].args[k] = v
             end
 
-            -- Add delete button for custom groups
             if not groupData.isSystem then
                 KOL.configOptions.args.binds.args[groupId .. "Group"].args.deleteGroup = {
                     order = 2.5,
@@ -625,14 +570,12 @@ function KOL.Binds:InitializeUI()
                             return
                         end
 
-                        -- Delete all binds in this group first
                         for bindId, bind in pairs(KOL.db.profile.binds.keybindings) do
                             if bind.group == groupId then
                                 KOL.Binds:DeleteKeybinding(bindId)
                             end
                         end
 
-                        -- Delete group
                         KOL.db.profile.binds.groups[groupId] = nil
                         KOL:PrintTag(GREEN("Deleted group: ") .. groupData.name)
                         LibStub("AceConfigRegistry-3.0"):NotifyChange("KoalityOfLife")
@@ -642,15 +585,11 @@ function KOL.Binds:InitializeUI()
         end
     end
 
-    -- Add binds to general group
     local generalBindArgs = GenerateGroupBindsUI("general", 20)
     for k, v in pairs(generalBindArgs) do
         KOL.configOptions.args.binds.args.generalGroup.args[k] = v
     end
 
-    -- ================================================================
-    -- PROFILE MANAGER
-    -- ================================================================
     KOL.configOptions.args.binds.args.profilesGroup = {
         order = 70,
         type = "group",
@@ -686,7 +625,7 @@ function KOL.Binds:InitializeUI()
                         if profile.keybindings then
                             for _ in pairs(profile.keybindings) do bindCount = bindCount + 1 end
                         end
-                        text = text .. "  • " .. COLOR("PASTEL_YELLOW", profile.name) .. status .. " (" .. bindCount .. " binds)\n"
+                        text = text .. "  * " .. COLOR("PASTEL_YELLOW", profile.name) .. status .. " (" .. bindCount .. " binds)\n"
                     end
                     return text
                 end,
@@ -779,11 +718,6 @@ function KOL.Binds:InitializeUI()
     KOL:DebugPrint("Binds UI: Registered tree layout with " .. tostring(KOL.configOptions.args.binds and "success" or "failure"))
 end
 
--- ============================================================================
--- Initialization
--- ============================================================================
-
--- Register initialization callback
 KOL.InitializeBindsUI = function()
     KOL.Binds:InitializeUI()
 end

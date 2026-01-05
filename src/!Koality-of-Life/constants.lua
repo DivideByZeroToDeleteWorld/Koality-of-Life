@@ -1,60 +1,42 @@
--- ============================================================================
--- !Koality-of-Life: Constants (Optimized)
--- ============================================================================
--- This file contains global constants used throughout the addon.
--- Optimized to reduce memory usage while maintaining full functionality.
--- 
--- BEFORE: 500+ global variables causing memory pressure
--- AFTER: 11 critical variables + smart CHAR() function with 500+ characters
--- ============================================================================
+-- !Koality-of-Life: Constants
 
--- ============================================================================
--- CRITICAL PERFORMANCE CONSTANTS (Keep as variables for direct access)
--- These are the most frequently used characters in the codebase
--- ============================================================================
-
--- Font rendering (15 usages each - CRITICAL foundation)
+-- Font rendering
 CHAR_LIGATURESFONT = "Interface\\AddOns\\!Koality-of-Life\\media\\fonts\\SourceCodePro-Bold.ttf"
-CHAR_LIGATURESOUTLINE = "OUTLINE" -- Use outline for crisp rendering
+CHAR_LIGATURESOUTLINE = "OUTLINE"
 
--- UI Navigation (19 total usages - HIGH PRIORITY)
-CHAR_ARROW_UPFILLED = "▲"     -- 2 usages
-CHAR_ARROW_DOWNFILLED = "▼"   -- 8 usages (most used arrow)
-CHAR_ARROW_RIGHTFILLED = "▶"  -- 4 usages  
-CHAR_ARROW_LEFTFILLED = "◄"   -- 1 usage
+-- UI Navigation arrows
+CHAR_ARROW_UPFILLED = "▲"
+CHAR_ARROW_DOWNFILLED = "▼"
+CHAR_ARROW_RIGHTFILLED = "▶"
+CHAR_ARROW_LEFTFILLED = "◄"
 
--- UI Controls (6 usages - HIGH PRIORITY)
-CHAR_UI_MINIMIZE = "_"        -- 3 usages
-CHAR_UI_MAXIMIZE = "+"        -- 1 usage
-CHAR_UI_CLOSE = "✕"          -- 2 usages
+-- UI Controls
+CHAR_UI_MINIMIZE = "_"
+CHAR_UI_MAXIMIZE = "+"
+CHAR_UI_CLOSE = "✕"
 
--- Objective Tracking (8 usages - CRITICAL)
-CHAR_OBJECTIVE_BOX = "☐"      -- 4 usages
-CHAR_OBJECTIVE_COMPLETE = "☑" -- 4 usages
+-- Objective Tracking
+CHAR_OBJECTIVE_BOX = "☐"
+CHAR_OBJECTIVE_COMPLETE = "☑"
 
 -- Status Indicators
-CHAR_LIGHTNING = "⚡"          -- Hardmode indicator (filled/emoji style)
-CHAR_IDLE = "■"               -- Speed indicator: not moving at all (solid = stopped)
-CHAR_BASE = "○"               -- Speed indicator: moving at base speed (circle = stable/neutral)
+CHAR_LIGHTNING = "⚡"
+CHAR_IDLE = "■"
+CHAR_BASE = "○"
 
--- Text Formatting (separators for info displays)
-CHAR_SEPARATOR = "|"          -- Default: Simple pipe separator
-CHAR_SEPARATOR_1 = "•"        -- Bullet: clean, classic
-CHAR_SEPARATOR_2 = "◆"        -- Filled Diamond: stylish, bold
-CHAR_SEPARATOR_3 = "◊"        -- Empty Diamond: lighter, elegant
-CHAR_SEPARATOR_4 = "│"        -- Box Light Vertical: prettier pipe
-CHAR_SEPARATOR_5 = "∙"        -- Math Dot: subtle
-CHAR_SEPARATOR_6 = "—"        -- Em Dash: horizontal
-CHAR_SEPARATOR_7 = "·"        -- Middle Dot: very subtle
-CHAR_SEPARATOR_8 = "▪"        -- Small Square: compact
-CHAR_SEPARATOR_9 = "▸"        -- Small Triangle Right: directional
+-- Text Separators
+CHAR_SEPARATOR = "|"
+CHAR_SEPARATOR_1 = "•"
+CHAR_SEPARATOR_2 = "◆"
+CHAR_SEPARATOR_3 = "◊"
+CHAR_SEPARATOR_4 = "│"
+CHAR_SEPARATOR_5 = "∙"
+CHAR_SEPARATOR_6 = "—"
+CHAR_SEPARATOR_7 = "·"
+CHAR_SEPARATOR_8 = "▪"
+CHAR_SEPARATOR_9 = "▸"
 
--- ============================================================================
--- SMART CHARACTER ACCESS FUNCTION
--- Provides flexible access to ALL 500+ characters while minimizing memory usage
--- Usage: CHAR("search term") - supports fuzzy search and flexible naming
--- ============================================================================
-
+-- Character data for CHAR() function
 local CHAR_DATA = {
     ARROWS = {
         LEFT = "←", RIGHT = "→", UP = "↑", DOWN = "↓",
@@ -232,7 +214,6 @@ local CHAR_DATA = {
     },
 }
 
--- Performance optimization mapping for variable constants
 local VARIABLE_CONSTANTS = {
     ARROW_UPFILLED = "CHAR_ARROW_UPFILLED",
     ARROW_DOWNFILLED = "CHAR_ARROW_DOWNFILLED",
@@ -245,9 +226,7 @@ local VARIABLE_CONSTANTS = {
     OBJECTIVE_COMPLETE = "CHAR_OBJECTIVE_COMPLETE",
 }
 
--- Helper function to find exact matches
 function findExactMatch(searchTerm)
-    -- Check direct key matches in all groups
     for groupName, group in pairs(CHAR_DATA) do
         for key, char in pairs(group) do
             if key == searchTerm or groupName .. "_" .. key == searchTerm then
@@ -258,17 +237,14 @@ function findExactMatch(searchTerm)
     return nil
 end
 
--- Helper function to find fuzzy matches
 function findFuzzyMatches(searchTerm)
     local results = {}
     local terms = {}
-    
-    -- Split search into words
+
     for word in string.gmatch(searchTerm, "[^%s]+") do
         table.insert(terms, word)
     end
-    
-    -- Search through all groups
+
     for groupName, group in pairs(CHAR_DATA) do
         for key, char in pairs(group) do
             local score = calculateMatchScore(key, groupName, terms)
@@ -277,52 +253,42 @@ function findFuzzyMatches(searchTerm)
             end
         end
     end
-    
-    -- Sort by score and return
+
     table.sort(results, function(a, b) return a.score > b.score end)
     return results
 end
 
--- Calculate match score for fuzzy search
 function calculateMatchScore(key, groupName, searchTerms)
     local score = 0
     local fullKey = groupName .. "_" .. key
-    
+
     for _, term in ipairs(searchTerms) do
         if string.find(key, term, 1, true) then
-            score = score + 10  -- Key match
+            score = score + 10
         end
         if string.find(groupName, term, 1, true) then
-            score = score + 5   -- Group match
+            score = score + 5
         end
         if string.find(fullKey, term, 1, true) then
-            score = score + 3   -- Full key match
+            score = score + 3
         end
     end
-    
+
     return score
 end
 
--- ============================================================================
--- SMART CHARACTER ACCESS FUNCTION
--- Usage: CHAR("search term") - supports fuzzy search and flexible naming
--- ============================================================================
--- Search function that returns results array (for UI display)
 function CHAR_SEARCH(searchTerm)
     if not searchTerm or searchTerm == "" then
         return {}
     end
 
-    -- Normalize input
     local normalized = string.upper(string.gsub(searchTerm, "[_-%s]+", " "))
 
-    -- Step 1: Exact Match Check (Fastest Path)
     local exactResult = findExactMatch(normalized)
     if exactResult then
         return {exactResult}
     end
 
-    -- Step 2: Fuzzy Search (Only if no exact match)
     local fuzzyResults = findFuzzyMatches(normalized)
     return fuzzyResults
 end
@@ -332,13 +298,10 @@ function CHAR(searchTerm)
         return ""
     end
 
-    -- Normalize input
     local normalized = string.upper(string.gsub(searchTerm, "[_-%s]+", " "))
 
-    -- Step 1: Exact Match Check (Fastest Path)
     local exactResult = findExactMatch(normalized)
     if exactResult then
-        -- Performance tip - CRITICAL user feedback (Level 0)
         local varName = VARIABLE_CONSTANTS[exactResult.key]
         if varName then
             KoalityOfLife:DebugPrint("CHAR(): Performance tip - Use '" .. varName .. "' for better performance", 0)
@@ -346,20 +309,15 @@ function CHAR(searchTerm)
         return exactResult.char
     end
 
-    -- Step 2: Fuzzy Search (Only if no exact match)
     local fuzzyResults = findFuzzyMatches(normalized)
 
-    -- Step 3: Handle Results
     if #fuzzyResults == 0 then
-        -- CRITICAL - user needs to know this failed (Level 0)
         KoalityOfLife:DebugPrint("CHAR(): No match found for: " .. searchTerm, 0)
         return ""
     elseif #fuzzyResults == 1 then
-        -- Optional confirmation (Level 4)
         KoalityOfLife:DebugPrint("CHAR(): Fuzzy match '" .. fuzzyResults[1].key .. "' for '" .. searchTerm .. "'", 4)
         return fuzzyResults[1].char
     else
-        -- CRITICAL - user needs clarification (Level 0)
         KoalityOfLife:DebugPrint("CHAR(): Multiple matches for '" .. searchTerm .. "' - please specify:", 0)
         for i, result in ipairs(fuzzyResults) do
             KoalityOfLife:DebugPrint("  - " .. result.key .. " (" .. result.char .. ")", 0)

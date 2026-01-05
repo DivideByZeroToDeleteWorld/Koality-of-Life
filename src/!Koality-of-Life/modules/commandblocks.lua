@@ -1,31 +1,16 @@
--- ============================================================================
--- !Koality-of-Life: Command Blocks Module
--- ============================================================================
--- Independent system for creating, managing, and executing Lua code blocks
--- that can be used by other modules (MacroUpdater, Content Tracker, etc.)
--- ============================================================================
-
 local KOL = KoalityOfLife
 local LSM = LibStub("LibSharedMedia-3.0")
-
--- ============================================================================
--- Command Blocks System
--- ============================================================================
 
 KOL.CommandBlocks = {}
 local CommandBlocks = KOL.CommandBlocks
 
--- Store compiled command blocks
 local compiledBlocks = {}
 
--- Initialize
 function CommandBlocks:Initialize()
-    -- Ensure database structure exists
     if not KOL.db.profile.commandBlocks then
         KOL.db.profile.commandBlocks = {}
     end
 
-    -- Compile all existing blocks on load
     for name, block in pairs(KOL.db.profile.commandBlocks) do
         self:Compile(name, block.code)
     end
@@ -33,21 +18,14 @@ function CommandBlocks:Initialize()
     KOL:DebugPrint("CommandBlocks: Module initialized", 1)
 end
 
--- ============================================================================
--- Core Functions
--- ============================================================================
-
--- Compile a command block from code string
 function CommandBlocks:Compile(name, code)
     if not code or code == "" then
         KOL:DebugPrint("CommandBlocks: Cannot compile empty block: " .. name, 1)
         return false
     end
 
-    -- Wrap code in a function
     local funcStr = "return function()\n" .. code .. "\nend"
 
-    -- Compile it
     local loadFunc = loadstring or load
     local compiledChunk, compileError = loadFunc(funcStr)
 
@@ -56,7 +34,6 @@ function CommandBlocks:Compile(name, code)
         return false
     end
 
-    -- Execute to get the function
     local success, func = pcall(compiledChunk)
     if not success then
         KOL:PrintTag(RED("Error:") .. " Failed to create command block function '" .. name .. "': " .. tostring(func))
@@ -68,7 +45,6 @@ function CommandBlocks:Compile(name, code)
     return true
 end
 
--- Execute a command block and get its return value
 function CommandBlocks:Execute(name)
     local func = compiledBlocks[name]
     if not func then
@@ -85,14 +61,12 @@ function CommandBlocks:Execute(name)
     return result
 end
 
--- Save a command block
 function CommandBlocks:Save(name, code, description)
     if not name or name == "" then
         KOL:PrintTag(RED("Error:") .. " Command block name cannot be empty")
         return false
     end
 
-    -- Save to database
     if not KOL.db.profile.commandBlocks then
         KOL.db.profile.commandBlocks = {}
     end
@@ -103,14 +77,12 @@ function CommandBlocks:Save(name, code, description)
         created = time(),
     }
 
-    -- Try to compile it
     self:Compile(name, code)
 
     KOL:DebugPrint("CommandBlocks: Saved: " .. YELLOW(name), 1)
     return true
 end
 
--- Delete a command block
 function CommandBlocks:Delete(name)
     if KOL.db.profile.commandBlocks and KOL.db.profile.commandBlocks[name] then
         KOL.db.profile.commandBlocks[name] = nil
@@ -121,12 +93,10 @@ function CommandBlocks:Delete(name)
     return false
 end
 
--- Get list of all command blocks
 function CommandBlocks:GetAll()
     return KOL.db.profile.commandBlocks or {}
 end
 
--- Get a specific command block
 function CommandBlocks:Get(name)
     if KOL.db.profile.commandBlocks then
         return KOL.db.profile.commandBlocks[name]
@@ -134,14 +104,9 @@ function CommandBlocks:Get(name)
     return nil
 end
 
--- Check if a command block exists
 function CommandBlocks:Exists(name)
     return KOL.db.profile.commandBlocks and KOL.db.profile.commandBlocks[name] ~= nil
 end
-
--- ============================================================================
--- Command Block Editor UI
--- ============================================================================
 
 local editorFrame = nil
 
@@ -153,11 +118,9 @@ function CommandBlocks:ShowEditor()
 end
 
 function CommandBlocks:CreateEditor()
-    -- Get font settings
     local fontPath = LSM:Fetch("font", KOL.db.profile.generalFont or "Friz Quadrata TT")
     local fontOutline = KOL.db.profile.generalFontOutline or "NONE"
 
-    -- Use UI Factory to create styled frame with NO title bar
     local frame = KOL.UIFactory:CreateStyledFrame(UIParent, "KOL_CommandBlockEditor", 700, 550, {
         bgColor = {r = 0.05, g = 0.05, b = 0.05, a = 0.98},
         borderColor = {r = 0.3, g = 0.3, b = 0.3, a = 1},
@@ -167,7 +130,6 @@ function CommandBlocks:CreateEditor()
     })
     frame:SetPoint("CENTER")
 
-    -- Create close button in top-right (deep red, no title bar)
     local closeBtn = CreateFrame("Button", nil, frame)
     closeBtn:SetSize(20, 20)
     closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -4, -4)
@@ -178,8 +140,8 @@ function CommandBlocks:CreateEditor()
         edgeSize = 1,
         insets = { left = 0, right = 0, top = 0, bottom = 0 }
     })
-    closeBtn:SetBackdropColor(0.4, 0.1, 0.1, 0.9)  -- Deep red background
-    closeBtn:SetBackdropBorderColor(0.25, 0.05, 0.05, 1)  -- Darker red border
+    closeBtn:SetBackdropColor(0.4, 0.1, 0.1, 0.9)
+    closeBtn:SetBackdropBorderColor(0.25, 0.05, 0.05, 1)
 
     local closeBtnText = KOL.UIFactory:CreateGlyph(closeBtn, CHAR_UI_CLOSE, {r = 0.9, g = 0.9, b = 0.9}, 12)
     closeBtnText:SetPoint("CENTER", 0, 0)
@@ -194,13 +156,11 @@ function CommandBlocks:CreateEditor()
     end)
     closeBtn:SetScript("OnClick", function() frame:Hide() end)
 
-    -- Block Name label
     local nameLabel = frame:CreateFontString(nil, "OVERLAY")
     nameLabel:SetFont(fontPath, 11, fontOutline)
     nameLabel:SetPoint("TOPLEFT", 10, -10)
     nameLabel:SetText("|cFFFFFFFFBlock Name:|r")
 
-    -- Block Name Dropdown Display
     local nameDropdown = CreateFrame("Button", nil, frame)
     nameDropdown:SetSize(260, 22)
     nameDropdown:SetPoint("LEFT", nameLabel, "RIGHT", 10, 0)
@@ -234,12 +194,10 @@ function CommandBlocks:CreateEditor()
         nameDropdownArrow:SetGlyph(nil, {r = 0.5, g = 0.5, b = 0.5})
     end)
 
-    -- Store references
     frame.nameDropdown = nameDropdown
     frame.nameDropdownText = nameDropdownText
     frame.currentBlockName = nil
 
-    -- Description input
     local descLabel = frame:CreateFontString(nil, "OVERLAY")
     descLabel:SetFont(fontPath, 11, fontOutline)
     descLabel:SetPoint("TOPLEFT", 10, -40)
@@ -263,13 +221,11 @@ function CommandBlocks:CreateEditor()
     descInput:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     frame.descInput = descInput
 
-    -- Code editor label
     local codeLabel = frame:CreateFontString(nil, "OVERLAY")
     codeLabel:SetFont(fontPath, 11, fontOutline)
     codeLabel:SetPoint("TOPLEFT", 10, -70)
     codeLabel:SetText("|cFFFFFFFFLua Code:|r |cFFAAAA00(must return a string)|r")
 
-    -- Scroll frame for code editor
     local scrollFrame = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", 10, -90)
     scrollFrame:SetPoint("BOTTOMRIGHT", -30, 50)
@@ -283,7 +239,6 @@ function CommandBlocks:CreateEditor()
     scrollFrame:SetBackdropColor(0.08, 0.08, 0.08, 1)
     scrollFrame:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
 
-    -- Code edit box
     local codeEditBox = CreateFrame("EditBox", nil, scrollFrame)
     codeEditBox:SetMultiLine(true)
     codeEditBox:SetMaxLetters(0)
@@ -333,16 +288,13 @@ function CommandBlocks:CreateEditor()
     scrollFrame:SetScrollChild(codeEditBox)
     frame.codeEditBox = codeEditBox
 
-    -- Skin the scrollbar
     KOL:SkinUIPanelScrollFrame(scrollFrame)
 
-    -- Enable FAIAP syntax highlighting
     if KoalityOfLife.indent and KoalityOfLife.indent.enable then
         KoalityOfLife.indent.enable(codeEditBox)
         KOL:DebugPrint("CommandBlocks: FAIAP syntax highlighting enabled", 3)
     end
 
-    -- Helper function to load a command block into the editor
     local function LoadCommandBlock(blockName)
         local blocks = CommandBlocks:GetAll()
         local blockData = blocks[blockName]
@@ -363,7 +315,6 @@ function CommandBlocks:CreateEditor()
         end
     end
 
-    -- Helper function to create dropdown menu for command block names
     local function ShowBlockNameDropdown(anchor)
         local blocks = CommandBlocks:GetAll()
         local items = {}
@@ -383,7 +334,6 @@ function CommandBlocks:CreateEditor()
         ShowBlockNameDropdown(self)
     end)
 
-    -- Create styled button helper
     local function CreateStyledButton(parent, width, height, text)
         local btn = CreateFrame("Button", nil, parent)
         btn:SetSize(width, height)
@@ -413,7 +363,6 @@ function CommandBlocks:CreateEditor()
         return btn
     end
 
-    -- Action buttons at bottom
     local saveBtn = CreateStyledButton(frame, 100, 30, "Save")
     saveBtn:SetPoint("BOTTOMLEFT", 10, 10)
     saveBtn:SetScript("OnClick", function()
@@ -440,7 +389,6 @@ function CommandBlocks:CreateEditor()
             return
         end
 
-        -- Try to compile and execute
         local tempName = "__TEST_BLOCK__"
         if CommandBlocks:Save(tempName, code, "Test block") then
             local result = CommandBlocks:Execute(tempName)
@@ -473,11 +421,9 @@ function CommandBlocks:CreateEditor()
         end
     end)
 
-    -- New button
     local newBtn = CreateStyledButton(frame, 100, 30, "New")
     newBtn:SetPoint("BOTTOMRIGHT", -10, 10)
     newBtn:SetScript("OnClick", function()
-        -- Show popup to create new block
         StaticPopupDialogs["KOL_NEW_COMMAND_BLOCK"] = {
             text = "Enter name for new command block:",
             button1 = "Create",
@@ -503,7 +449,6 @@ function CommandBlocks:CreateEditor()
     return frame
 end
 
--- Initialize on load
 KOL:RegisterEventCallback("PLAYER_ENTERING_WORLD", function()
     CommandBlocks:Initialize()
 end, "CommandBlocks")

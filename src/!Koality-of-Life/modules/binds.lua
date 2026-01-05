@@ -1,45 +1,21 @@
--- !Koality-of-Life: Binds System
--- ============================================================================
--- Keybinding management system with support for:
---   - Custom keybindings with conflict detection
---   - Multiple action types (internal, synastria, commandblock)
---   - Group organization and profiles
---   - Per-character input memory
---   - Import/export functionality
--- ============================================================================
-
 local KOL = KoalityOfLife
-
--- ============================================================================
--- Module Initialization
--- ============================================================================
 
 KOL.Binds = {}
 local Binds = KOL.Binds
 
--- ============================================================================
--- Private Variables
--- ============================================================================
-
-local secureButtons = {} -- Store secure button frames for keybindings
+local secureButtons = {}
 local activeProfile = "default"
-local captureMode = false -- Flag for keybinding capture mode
-local pendingBind = nil -- Currently capturing keybinding data
-local inputDialog = nil -- Current input dialog frame
-local pendingInput = nil -- Pending input collection data
-local searchFilter = "" -- Current search filter
-local keybindingEditor = nil -- Keybinding editor frame
-local batchDialog = nil -- Batch operations dialog frame
+local captureMode = false
+local pendingBind = nil
+local inputDialog = nil
+local pendingInput = nil
+local searchFilter = ""
+local keybindingEditor = nil
+local batchDialog = nil
 
--- ============================================================================
--- Public API Functions
--- ============================================================================
-
--- Initialize the Binds system
 function Binds:Initialize()
     KOL:DebugPrint("Binds: Initializing keybinding system")
-    
-    -- Validate database structure
+
     if not KOL.db.profile.binds then
         KOL.db.profile.binds = {
             enabled = true,
@@ -63,27 +39,24 @@ function Binds:Initialize()
             }
         }
     end
-    
-    -- Register slash command
+
     KOL:RegisterSlashCommand("kbc", function(input) self:HandleSlashCommand(input) end, "Keybinding manager commands", "module")
-    
+
     KOL:DebugPrint("Binds: Initialization complete")
 end
 
--- Initialize on PLAYER_ENTERING_WORLD
 KOL:RegisterEventCallback("PLAYER_ENTERING_WORLD", function()
     if KOL.Binds and KOL.Binds.Initialize then
         KOL.Binds:Initialize()
     end
 end)
 
--- Open the keybinding manager interface
 function Binds:OpenManager()
     if not KOL.db.profile.binds.enabled then
         KOL:PrintTag(RED("Binds system is disabled. Enable it in the config panel."))
         return
     end
-    
+
     KOL:PrintTag(PASTEL_YELLOW("Keybinding Manager") .. " - Phase 2 Interface")
     KOL:Print("Available commands:")
     KOL:Print("  /kbc - Open this manager")
@@ -94,26 +67,24 @@ function Binds:OpenManager()
     KOL:Print("  /kol config - Open full config panel")
 end
 
--- Start keybinding capture mode
 function Binds:StartKeyCapture(bindId)
     if InCombatLockdown() then
         KOL:PrintTag(RED("Cannot capture keybindings in combat"))
         return false
     end
-    
+
     local bind = KOL.db.profile.binds.keybindings[bindId]
     if not bind then
         KOL:PrintTag(RED("Keybinding not found: ") .. bindId)
         return false
     end
-    
+
     captureMode = true
     pendingBind = bindId
-    
+
     KOL:PrintTag(PASTEL_YELLOW("Key Capture Mode") .. " - Press the key you want to bind to " .. GREEN(bind.name))
     KOL:Print("Press ESC to cancel capture")
-    
-    -- Create temporary capture frame
+
     local captureFrame = CreateFrame("Frame", "KOL_BindsCaptureFrame", UIParent)
     captureFrame:SetAllPoints()
     captureFrame:SetFrameStrata("DIALOG")
@@ -125,25 +96,22 @@ function Binds:StartKeyCapture(bindId)
     captureFrame:SetScript("OnMouseDown", function(self, button)
         self:HandleMouseCapture(button)
     end)
-    
+
     captureFrame.HandleKeyCapture = function(self, key)
         if not captureMode then return end
-        
+
         if key == "ESCAPE" then
             Binds:CancelKeyCapture()
             return
         end
-        
-        -- Build full key string with modifiers
+
         local fullKey = Binds:BuildKeyString(key)
-        
-        -- Check for conflicts and warn user
+
         local conflict = Binds:CheckKeyConflict(fullKey, bindId)
         if conflict then
             if conflict.id == "WOW" then
                 KOL:PrintTag(YELLOW("Warning: ") .. fullKey .. " is already used by " .. conflict.name)
                 KOL:Print("This binding will be overwritten. Continue? (Press key again to confirm, ESC to cancel)")
-                -- Don't cancel - let user press again to confirm
                 return
             else
                 KOL:PrintTag(RED("Key conflict: ") .. fullKey .. " is already bound to " .. PASTEL_YELLOW(conflict.name))
@@ -152,33 +120,29 @@ function Binds:StartKeyCapture(bindId)
                 return
             end
         end
-        
-        -- Apply the keybinding
+
         if Binds:ApplyKeybinding(bindId, fullKey) then
             KOL:PrintTag(GREEN("Successfully bound: ") .. PASTEL_YELLOW(bind.name) .. " → " .. GREEN(fullKey))
         end
-        
+
         Binds:CancelKeyCapture()
     end
-    
+
     captureFrame.HandleMouseCapture = function(self, button)
         if not captureMode then return end
-        
+
         if button == "RightButton" then
             Binds:CancelKeyCapture()
             return
         end
-        
-        -- Handle mouse buttons
+
         local fullKey = Binds:BuildKeyString("BUTTON" .. button)
-        
-        -- Check for conflicts and warn user
+
         local conflict = Binds:CheckKeyConflict(fullKey, bindId)
         if conflict then
             if conflict.id == "WOW" then
                 KOL:PrintTag(YELLOW("Warning: ") .. fullKey .. " is already used by " .. conflict.name)
                 KOL:Print("This binding will be overwritten. Continue? (Click again to confirm, Right-click to cancel)")
-                -- Don't cancel - let user click again to confirm
                 return
             else
                 KOL:PrintTag(RED("Key conflict: ") .. fullKey .. " is already bound to " .. PASTEL_YELLOW(conflict.name))
@@ -187,103 +151,93 @@ function Binds:StartKeyCapture(bindId)
                 return
             end
         end
-        
-        -- Apply the keybinding
+
         if Binds:ApplyKeybinding(bindId, fullKey) then
             KOL:PrintTag(GREEN("Successfully bound: ") .. PASTEL_YELLOW(bind.name) .. " → " .. GREEN(fullKey))
         end
-        
+
         Binds:CancelKeyCapture()
     end
-    
+
     self.captureFrame = captureFrame
     return true
 end
 
--- Cancel keybinding capture mode
 function Binds:CancelKeyCapture()
     captureMode = false
     pendingBind = nil
-    
+
     if self.captureFrame then
         self.captureFrame:Hide()
         self.captureFrame = nil
     end
-    
+
     KOL:PrintTag(YELLOW("Key capture cancelled"))
 end
 
--- Build full key string with modifiers
 function Binds:BuildKeyString(key)
     local modifiers = {}
-    
+
     if IsShiftKeyDown() then table.insert(modifiers, "SHIFT") end
     if IsControlKeyDown() then table.insert(modifiers, "CTRL") end
     if IsAltKeyDown() then table.insert(modifiers, "ALT") end
-    
+
     local fullKey = table.concat(modifiers, "-")
     if fullKey ~= "" then
         fullKey = fullKey .. "-" .. key
     else
         fullKey = key
     end
-    
+
     return fullKey
 end
 
--- Check for key conflicts
 function Binds:CheckKeyConflict(key, excludeBindId)
-    -- Check existing binds
     for bindId, bind in pairs(KOL.db.profile.binds.keybindings) do
         if bindId ~= excludeBindId and bind.enabled and bind.key == key then
             return {id = bindId, name = bind.name}
         end
     end
-    
-    -- Check default WoW bindings and warn user
+
     local existingAction = GetBindingAction(key)
     if existingAction and existingAction ~= "" then
         return {id = "WOW", name = "WoW Default: " .. existingAction}
     end
-    
+
     return nil
 end
 
--- Apply keybinding to secure button
 function Binds:ApplyKeybinding(bindId, key)
     if InCombatLockdown() then
         KOL:PrintTag(RED("Cannot modify keybindings in combat"))
         return false
     end
-    
+
     local bind = KOL.db.profile.binds.keybindings[bindId]
     if not bind then
         return false
     end
-    
-    -- Remove old binding if exists
+
     if bind.key and bind.key ~= "" then
         SetBinding(bind.key)
     end
-    
-    -- IMPORTANT: Remove this key from any OTHER binds (including our own)
+
+    -- IMPORTANT: Remove this key from any OTHER binds (including our own) to prevent conflicts
     local clearedBinds = {}
     for otherBindId, otherBind in pairs(KOL.db.profile.binds.keybindings) do
         if otherBindId ~= bindId and otherBind.key == key then
-            otherBind.key = "" -- Clear the key from database
+            otherBind.key = ""
             table.insert(clearedBinds, otherBind.name)
         end
     end
-    
-    -- Notify user about cleared bindings
+
     if #clearedBinds > 0 then
         KOL:PrintTag(YELLOW("Cleared key from existing binds: ") .. table.concat(clearedBinds, ", "))
     end
-    
-    -- Create or update secure button
+
     local buttonName = "KOL_Binds_Button_" .. bindId:gsub("[^%w_]", "_")
     local secureButton = secureButtons[buttonName]
-    
+
     if not secureButton then
         secureButton = CreateFrame("Button", buttonName, UIParent, "SecureActionButtonTemplate")
         secureButton:Hide()
@@ -291,27 +245,21 @@ function Binds:ApplyKeybinding(bindId, key)
         secureButton:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -100, -100)
         secureButtons[buttonName] = secureButton
     end
-    
-    -- Configure button based on action type
+
     if bind.type == "internal" then
-        -- Internal actions use custom script
         secureButton:SetAttribute("type", "macro")
         secureButton:SetAttribute("macrotext", "/script KoalityOfLife.Binds:ExecuteKeybinding('" .. bindId .. "')")
     elseif bind.type == "synastria" then
-        -- Synastria commands use macro
         secureButton:SetAttribute("type", "macro")
         secureButton:SetAttribute("macrotext", "." .. bind.target)
     elseif bind.type == "commandblock" then
-        -- Command blocks use custom script
         secureButton:SetAttribute("type", "macro")
         secureButton:SetAttribute("macrotext", "/script KoalityOfLife.Binds:ExecuteKeybinding('" .. bindId .. "')")
     end
-    
-    -- Apply binding (this overwrites any existing binding)
+
     local success = SetBindingClick(key, buttonName, "LeftButton")
-    
+
     if success then
-        -- Update database
         bind.key = key
         return true
     else
@@ -320,58 +268,48 @@ function Binds:ApplyKeybinding(bindId, key)
     end
 end
 
--- Remove keybinding
 function Binds:RemoveKeybinding(bindId)
     if InCombatLockdown() then
         KOL:PrintTag(RED("Cannot modify keybindings in combat"))
         return false
     end
-    
+
     local bind = KOL.db.profile.binds.keybindings[bindId]
     if not bind then
         return false
     end
-    
-    -- Remove binding (this clears it, doesn't restore anything)
+
     if bind.key and bind.key ~= "" then
         SetBinding(bind.key)
     end
-    
-    -- Clear key from database
+
     bind.key = ""
-    
+
     KOL:PrintTag(GREEN("Removed keybinding for: ") .. PASTEL_YELLOW(bind.name))
     return true
 end
 
--- Check if a bind requires input
 function Binds:BindRequiresInput(bind)
-    -- For now, we'll use a simple heuristic - command blocks and synastria commands might need input
-    -- This can be enhanced later with explicit input requirements in the bind data
+    -- Use heuristic: command blocks and synastria commands with placeholders might need input
     return bind.type == "commandblock" or (bind.type == "synastria" and bind.target:find("%{"))
 end
 
--- Enhanced question dialog system for parameterized commands
 function Binds:ShowAdvancedInputDialog(bindId, bind)
     if inputDialog then
         inputDialog:Hide()
     end
-    
-    -- Parse parameter requirements from target
+
     local paramConfig = self:ParseParameterRequirements(bind.target)
-    
-    -- Get character name for per-character storage
+
     local charName = UnitName("player") .. " - " .. GetRealmName()
-    
-    -- Initialize character inputs storage
+
     if not KOL.db.profile.binds.characterInputs then
         KOL.db.profile.binds.characterInputs = {}
     end
     if not KOL.db.profile.binds.characterInputs[charName] then
         KOL.db.profile.binds.characterInputs[charName] = {}
     end
-    
-    -- Create enhanced dialog frame
+
     inputDialog = CreateFrame("Frame", "KOL_BindsAdvancedInputDialog", UIParent)
     inputDialog:SetFrameStrata("DIALOG")
     inputDialog:SetWidth(500)
@@ -389,32 +327,26 @@ function Binds:ShowAdvancedInputDialog(bindId, bind)
     inputDialog:RegisterForDrag("LeftButton")
     inputDialog:SetScript("OnDragStart", function() inputDialog:StartMoving() end)
     inputDialog:SetScript("OnDragStop", function() inputDialog:StopMovingOrSizing() end)
-    
-    -- Title
+
     local title = inputDialog:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOP", inputDialog, "TOP", 0, -16)
     title:SetText("Parameters Required")
-    
-    -- Description
+
     local desc = inputDialog:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     desc:SetPoint("TOP", title, "BOTTOM", 0, -10)
     desc:SetWidth(460)
     desc:SetJustifyH("LEFT")
     desc:SetText("Enter parameters for " .. PASTEL_YELLOW(bind.name) .. ":")
-    
-    -- Store input fields for validation
+
     local inputFields = {}
-    
-    -- Create input fields for each parameter
+
     for i, param in ipairs(paramConfig) do
         local yOffset = -60 - ((i - 1) * 60)
-        
-        -- Parameter label
+
         local label = inputDialog:CreateFontString(nil, "ARTWORK", "GameFontNormal")
         label:SetPoint("TOPLEFT", inputDialog, "TOPLEFT", 20, yOffset)
         label:SetText(param.name .. (param.required and " " .. RED("*") or ""))
-        
-        -- Parameter description
+
         if param.description then
             local paramDesc = inputDialog:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
             paramDesc:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -2)
@@ -422,14 +354,12 @@ function Binds:ShowAdvancedInputDialog(bindId, bind)
             paramDesc:SetJustifyH("LEFT")
             paramDesc:SetText(param.description)
         end
-        
-        -- Input field
+
         local inputBox = CreateFrame("EditBox", nil, inputDialog, "InputBoxTemplate")
         inputBox:SetWidth(300)
         inputBox:SetHeight(32)
         inputBox:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -20)
-        
-        -- Set default/last value
+
         local lastValue = ""
         if KOL.db.profile.binds.settings.rememberInputs then
             lastValue = KOL.db.profile.binds.characterInputs[charName][bindId .. "_" .. param.name] or param.default or ""
@@ -437,25 +367,22 @@ function Binds:ShowAdvancedInputDialog(bindId, bind)
             lastValue = param.default or ""
         end
         inputBox:SetText(lastValue)
-        
-        -- Validation feedback
+
         local validationText = inputDialog:CreateFontString(nil, "ARTWORK", "GameFontRedSmall")
         validationText:SetPoint("LEFT", inputBox, "RIGHT", 10, 0)
         validationText:SetText("")
         validationText:Hide()
-        
-        -- Store field info
+
         inputFields[param.name] = {
             box = inputBox,
             config = param,
             validation = validationText
         }
-        
-        -- Add validation on text change
+
         inputBox:SetScript("OnTextChanged", function()
             local value = inputBox:GetText()
             local isValid, errorMsg = self:ValidateParameter(value, param)
-            
+
             if not isValid then
                 validationText:SetText(errorMsg)
                 validationText:Show()
@@ -466,8 +393,7 @@ function Binds:ShowAdvancedInputDialog(bindId, bind)
             end
         end)
     end
-    
-    -- Buttons
+
     local okButton = CreateFrame("Button", nil, inputDialog, "UIPanelButtonTemplate")
     okButton:SetWidth(120)
     okButton:SetHeight(25)
@@ -476,12 +402,11 @@ function Binds:ShowAdvancedInputDialog(bindId, bind)
     okButton:SetScript("OnClick", function()
         local params = {}
         local isValid = true
-        
-        -- Validate all parameters
+
         for paramName, field in pairs(inputFields) do
             local value = field.box:GetText()
             local valid, errorMsg = self:ValidateParameter(value, field.config)
-            
+
             if not valid then
                 field.validation:SetText(errorMsg)
                 field.validation:Show()
@@ -490,22 +415,20 @@ function Binds:ShowAdvancedInputDialog(bindId, bind)
                 params[paramName] = value
             end
         end
-        
+
         if isValid then
-            -- Store inputs if remember is enabled
             if KOL.db.profile.binds.settings.rememberInputs then
                 for paramName, value in pairs(params) do
                     KOL.db.profile.binds.characterInputs[charName][bindId .. "_" .. paramName] = value
                 end
             end
-            
-            -- Execute with parameters
+
             self:ExecuteKeybindingWithParameters(bindId, bind, params)
             inputDialog:Hide()
             inputDialog = nil
         end
     end)
-    
+
     local cancelButton = CreateFrame("Button", nil, inputDialog, "UIPanelButtonTemplate")
     cancelButton:SetWidth(120)
     cancelButton:SetHeight(25)
@@ -515,26 +438,23 @@ function Binds:ShowAdvancedInputDialog(bindId, bind)
         inputDialog:Hide()
         inputDialog = nil
     end)
-    
+
     inputDialog:Show()
-    
-    -- Focus first input field
+
     if #paramConfig > 0 then
         inputFields[paramConfig[1].name].box:SetFocus()
     end
 end
 
--- Parse parameter requirements from target string
 function Binds:ParseParameterRequirements(target)
     local params = {}
-    
-    -- Parse {param:type:description:default} format
+
     for paramStr in target:gmatch("{([^}]+)}") do
         local parts = {}
         for part in paramStr:gmatch("[^:]+") do
             table.insert(parts, part)
         end
-        
+
         local param = {
             name = parts[1] or "param",
             type = parts[2] or "string",
@@ -542,18 +462,16 @@ function Binds:ParseParameterRequirements(target)
             default = parts[4] or "",
             required = true
         }
-        
-        -- Check if optional (starts with ?)
+
         if param.name:sub(1, 1) == "?" then
             param.name = param.name:sub(2)
             param.required = false
         end
-        
-        -- Set validation based on type
+
         if param.type == "number" then
             param.validate = function(value) return tonumber(value) ~= nil, "Must be a number" end
         elseif param.type == "integer" then
-            param.validate = function(value) 
+            param.validate = function(value)
                 local num = tonumber(value)
                 return num and math.floor(num) == num, "Must be an integer"
             end
@@ -568,18 +486,17 @@ function Binds:ParseParameterRequirements(target)
             end
         elseif param.type == "channel" then
             param.validate = function(value)
-                local validChannels = {["say"] = true, ["yell"] = true, ["party"] = true, 
+                local validChannels = {["say"] = true, ["yell"] = true, ["party"] = true,
                                      ["guild"] = true, ["officer"] = true, ["raid"] = true}
                 return validChannels[value:lower()], "Invalid channel name"
             end
         else
             param.validate = function(value) return true, "" end
         end
-        
+
         table.insert(params, param)
     end
-    
-    -- If no parameters found, create a simple string input
+
     if #params == 0 then
         table.insert(params, {
             name = "input",
@@ -590,11 +507,10 @@ function Binds:ParseParameterRequirements(target)
             validate = function(value) return value and value ~= "", "Input cannot be empty" end
         })
     end
-    
+
     return params
 end
 
--- Validate individual parameter
 function Binds:ValidateParameter(value, param)
     if not value or value == "" then
         if param.required then
@@ -603,25 +519,20 @@ function Binds:ValidateParameter(value, param)
             return true, ""
         end
     end
-    
-    -- Use custom validation if provided
+
     if param.validate then
         return param.validate(value)
     end
-    
-    -- Default validation
+
     return true, ""
 end
 
--- Execute keybinding with parameters
 function Binds:ExecuteKeybindingWithParameters(bindId, bind, params)
-    -- Replace parameters in target string
     local processedTarget = bind.target
     for paramName, value in pairs(params) do
         processedTarget = processedTarget:gsub("{" .. paramName .. "[^}]*}", value)
     end
-    
-    -- Create temporary bind with processed target
+
     local tempBind = {
         name = bind.name,
         type = bind.type,
@@ -629,27 +540,21 @@ function Binds:ExecuteKeybindingWithParameters(bindId, bind, params)
         context = bind.context,
         enabled = bind.enabled
     }
-    
-    -- Execute the processed bind
+
     return self:ExecuteKeybinding(bindId, nil, tempBind)
 end
 
--- Enhanced input dialog (fallback for simple cases)
 function Binds:ShowInputDialog(bindId, bind)
-    -- Check if this bind needs advanced parameter handling
     if bind.target:find("{") then
         return self:ShowAdvancedInputDialog(bindId, bind)
     end
-    
-    -- Use simple dialog for basic input
+
     if inputDialog then
         inputDialog:Hide()
     end
-    
-    -- Get character name for per-character storage
+
     local charName = UnitName("player") .. " - " .. GetRealmName()
-    
-    -- Get last input for this bind and character
+
     local lastInput = ""
     if KOL.db.profile.binds.settings.rememberInputs then
         if not KOL.db.profile.binds.characterInputs then
@@ -660,8 +565,7 @@ function Binds:ShowInputDialog(bindId, bind)
         end
         lastInput = KOL.db.profile.binds.characterInputs[charName][bindId] or ""
     end
-    
-    -- Create dialog frame
+
     inputDialog = CreateFrame("Frame", "KOL_BindsInputDialog", UIParent)
     inputDialog:SetFrameStrata("DIALOG")
     inputDialog:SetWidth(400)
@@ -674,27 +578,23 @@ function Binds:ShowInputDialog(bindId, bind)
         insets = {left = 11, right = 12, top = 12, bottom = 11}
     })
     inputDialog:SetBackdropBorderColor(0.5, 0.5, 0.5)
-    
-    -- Title
+
     local title = inputDialog:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOP", inputDialog, "TOP", 0, -16)
     title:SetText("Input Required")
-    
-    -- Question text
+
     local question = inputDialog:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     question:SetPoint("TOP", title, "BOTTOM", 0, -16)
     question:SetWidth(380)
     question:SetText("Enter input for " .. PASTEL_YELLOW(bind.name) .. ":")
-    
-    -- Input box
+
     local inputBox = CreateFrame("EditBox", nil, inputDialog, "InputBoxTemplate")
     inputBox:SetWidth(300)
     inputBox:SetHeight(32)
     inputBox:SetPoint("TOP", question, "BOTTOM", 0, -16)
     inputBox:SetAutoFocus(true)
     inputBox:SetText(lastInput)
-    
-    -- OK button
+
     local okButton = CreateFrame("Button", nil, inputDialog, "UIPanelButtonTemplate")
     okButton:SetWidth(100)
     okButton:SetHeight(25)
@@ -706,8 +606,7 @@ function Binds:ShowInputDialog(bindId, bind)
         inputDialog:Hide()
         inputDialog = nil
     end)
-    
-    -- Cancel button
+
     local cancelButton = CreateFrame("Button", nil, inputDialog, "UIPanelButtonTemplate")
     cancelButton:SetWidth(100)
     cancelButton:SetHeight(25)
@@ -717,49 +616,43 @@ function Binds:ShowInputDialog(bindId, bind)
         inputDialog:Hide()
         inputDialog = nil
     end)
-    
-    -- Handle Enter key
+
     inputBox:SetScript("OnEnterPressed", function()
         local inputText = inputBox:GetText()
         self:HandleInputDialog(bindId, bind, inputText)
         inputDialog:Hide()
         inputDialog = nil
     end)
-    
-    -- Handle Escape key
+
     inputBox:SetScript("OnEscapePressed", function()
         inputDialog:Hide()
         inputDialog = nil
     end)
-    
+
     inputDialog:Show()
     inputBox:SetFocus()
 end
 
--- Handle input dialog result
 function Binds:HandleInputDialog(bindId, bind, input)
-    -- Store input if remember inputs is enabled
     if KOL.db.profile.binds.settings.rememberInputs and input and input ~= "" then
         local charName = UnitName("player") .. " - " .. GetRealmName()
-        
+
         if not KOL.db.profile.binds.characterInputs then
             KOL.db.profile.binds.characterInputs = {}
         end
         if not KOL.db.profile.binds.characterInputs[charName] then
             KOL.db.profile.binds.characterInputs[charName] = {}
         end
-        
+
         KOL.db.profile.binds.characterInputs[charName][bindId] = input
     end
-    
-    -- Execute the keybinding with the input
+
     self:ExecuteKeybinding(bindId, input)
 end
 
--- List all profiles
 function Binds:ListProfiles()
     KOL:PrintTag(PASTEL_YELLOW("Binds Profiles:"))
-    
+
     for profileId, profile in pairs(KOL.db.profile.binds.profiles) do
         local status = profileId == activeProfile and GREEN("[ACTIVE]") or ""
         local bindCount = 0
@@ -768,100 +661,92 @@ function Binds:ListProfiles()
                 bindCount = bindCount + 1
             end
         end
-        
-        KOL:Print(string.format("  %s %s - %d keybindings", 
-            PASTEL_YELLOW(profile.name), 
+
+        KOL:Print(string.format("  %s %s - %d keybindings",
+            PASTEL_YELLOW(profile.name),
             status,
             bindCount))
     end
-    
+
     KOL:Print("Current profile: " .. GREEN(activeProfile))
 end
 
--- Switch to a different profile
 function Binds:SwitchProfile(profileId)
     if not KOL.db.profile.binds.profiles[profileId] then
         KOL:PrintTag(RED("Profile not found: ") .. profileId)
         return false
     end
-    
+
     if profileId == activeProfile then
         KOL:PrintTag(YELLOW("Already using profile: ") .. profileId)
         return true
     end
-    
-    -- Remove current keybindings
+
     self:RemoveAllKeybindings()
-    
-    -- Switch profile
+
     activeProfile = profileId
     KOL.db.profile.binds.activeProfile = profileId
-    
-    -- Apply new profile keybindings
+
     self:ReapplyAllKeybindings()
-    
+
     KOL:PrintTag(GREEN("Switched to profile: ") .. PASTEL_YELLOW(KOL.db.profile.binds.profiles[profileId].name))
     return true
 end
 
--- Create a new profile
 function Binds:CreateProfile(name)
     if not name or name == "" then
         KOL:PrintTag(RED("Profile name cannot be empty"))
         return false
     end
-    
+
     local profileId = name:lower():gsub("%s+", "_"):gsub("[^%w_]", "")
-    
+
     if KOL.db.profile.binds.profiles[profileId] then
         KOL:PrintTag(RED("Profile already exists: ") .. name)
         return false
     end
-    
-    -- Create profile
+
     KOL.db.profile.binds.profiles[profileId] = {
         name = name,
         groups = {},
         keybindings = {},
     }
-    
+
     KOL:PrintTag(GREEN("Created profile: ") .. PASTEL_YELLOW(name))
     return true
 end
 
--- Delete a profile
 function Binds:DeleteProfile(profileId)
     if profileId == "default" then
         KOL:PrintTag(RED("Cannot delete the default profile"))
         return false
     end
-    
+
     if not KOL.db.profile.binds.profiles[profileId] then
         KOL:PrintTag(RED("Profile not found: ") .. profileId)
         return false
     end
-    
+
     if profileId == activeProfile then
         KOL:PrintTag(RED("Cannot delete the active profile. Switch to another profile first."))
         return false
     end
-    
+
     local profileName = KOL.db.profile.binds.profiles[profileId].name
     KOL.db.profile.binds.profiles[profileId] = nil
-    
+
     KOL:PrintTag(GREEN("Deleted profile: ") .. PASTEL_YELLOW(profileName))
     return true
 end
 
--- Export profile to string
 function Binds:ExportProfile(profileId)
     profileId = profileId or activeProfile
-    
+
     if not KOL.db.profile.binds.profiles[profileId] then
         KOL:PrintTag(RED("Profile not found: ") .. profileId)
         return false
     end
-    
+
     local profile = KOL.db.profile.binds.profiles[profileId]
     local exportData = {
         version = "1.0",
@@ -869,8 +754,7 @@ function Binds:ExportProfile(profileId)
         groups = {},
         keybindings = {},
     }
-    
-    -- Export groups
+
     for groupId, group in pairs(KOL.db.profile.binds.groups) do
         exportData.groups[groupId] = {
             name = group.name,
@@ -878,8 +762,7 @@ function Binds:ExportProfile(profileId)
             isSystem = group.isSystem or false,
         }
     end
-    
-    -- Export keybindings
+
     for bindId, bind in pairs(profile.keybindings) do
         exportData.keybindings[bindId] = {
             name = bind.name,
@@ -892,39 +775,35 @@ function Binds:ExportProfile(profileId)
             order = bind.order,
         }
     end
-    
-    -- Convert to string (simple JSON-like format)
+
     local exportString = self:SerializeProfile(exportData)
-    
-    -- Show to user
+
     KOL:PrintTag(PASTEL_YELLOW("Profile Export: ") .. profile.name)
     KOL:Print("Copy the text below:")
     KOL:Print("--- START EXPORT ---")
     KOL:Print(exportString)
     KOL:Print("--- END EXPORT ---")
-    
+
     return true
 end
 
--- Import profile from string
 function Binds:ImportProfile()
     KOL:PrintTag(PASTEL_YELLOW("Profile Import"))
     KOL:Print("Paste the exported profile data in chat and press Enter:")
     KOL:Print("Type " .. RED("/kbc cancel") .. " to cancel import")
-    
-    -- Set up temporary input handler
+
     local importHandler = CreateFrame("Frame")
     importHandler:RegisterEvent("CHAT_MSG_ADDON")
-    
+
     local function OnAddonMessage(self, event, prefix, message, channel, sender)
         if prefix == "KOL_BINDS_IMPORT" then
             importHandler:UnregisterEvent("CHAT_MSG_ADDON")
-            
+
             if message == "CANCEL" then
                 KOL:PrintTag(YELLOW("Import cancelled"))
                 return
             end
-            
+
             local success, errorMsg = pcall(function()
                 local profileData = self:DeserializeProfile(message)
                 if profileData then
@@ -933,16 +812,15 @@ function Binds:ImportProfile()
                     error("Invalid profile data format")
                 end
             end)
-            
+
             if not success then
                 KOL:PrintTag(RED("Import failed: ") .. tostring(errorMsg))
             end
         end
     end
-    
+
     importHandler:SetScript("OnEvent", OnAddonMessage)
-    
-    -- Register temporary slash command for cancel
+
     KOL:RegisterSlashCommand("kbc", function(input)
         if string.lower(input or "") == "cancel" then
             SendAddonMessage("KOL_BINDS_IMPORT", "CANCEL", "WHISPER", UnitName("player"))
@@ -950,65 +828,60 @@ function Binds:ImportProfile()
     end, "temp_import_cancel", "module")
 end
 
--- Serialize profile data to string
 function Binds:SerializeProfile(data)
     local parts = {}
-    
+
     table.insert(parts, "KOL_BINDS_PROFILE:" .. data.version)
     table.insert(parts, "NAME:" .. data.profileName)
-    
-    -- Serialize groups
+
     for groupId, group in pairs(data.groups) do
-        local groupStr = string.format("GROUP:%s|%s|%s|%s", 
+        local groupStr = string.format("GROUP:%s|%s|%s|%s",
             groupId, group.name, group.color, tostring(group.isSystem))
         table.insert(parts, groupStr)
     end
-    
-    -- Serialize keybindings
+
     for bindId, bind in pairs(data.keybindings) do
-        local bindStr = string.format("BIND:%s|%s|%s|%s|%s|%s|%s|%s|%s", 
-            bindId, bind.name, bind.type, bind.target, 
-            bind.key, table.concat(bind.modifiers, ","), 
+        local bindStr = string.format("BIND:%s|%s|%s|%s|%s|%s|%s|%s|%s",
+            bindId, bind.name, bind.type, bind.target,
+            bind.key, table.concat(bind.modifiers, ","),
             bind.group, tostring(bind.enabled), tostring(bind.order))
         table.insert(parts, bindStr)
     end
-    
+
     return table.concat(parts, "\n")
 end
 
--- Deserialize profile data from string
 function Binds:DeserializeProfile(str)
     if not str or str == "" then
         return nil
     end
-    
+
     local lines = {}
     for line in str:gmatch("[^\r\n]+") do
         table.insert(lines, line)
     end
-    
+
     if #lines == 0 then
         return nil
     end
-    
-    -- Check header
+
     local header = lines[1]
     if not header:find("^KOL_BINDS_PROFILE:") then
         return nil
     end
-    
+
     local version = header:sub(19)
-    
+
     local data = {
         version = version,
         profileName = "",
         groups = {},
         keybindings = {},
     }
-    
+
     for i = 2, #lines do
         local line = lines[i]
-        
+
         if line:find("^NAME:") then
             data.profileName = line:sub(6)
         elseif line:find("^GROUP:") then
@@ -1016,7 +889,7 @@ function Binds:DeserializeProfile(str)
             for part in line:sub(7):gmatch("[^|]+") do
                 table.insert(parts, part)
             end
-            
+
             if #parts >= 4 then
                 data.groups[parts[1]] = {
                     name = parts[2],
@@ -1029,7 +902,7 @@ function Binds:DeserializeProfile(str)
             for part in line:sub(6):gmatch("[^|]+") do
                 table.insert(parts, part)
             end
-            
+
             if #parts >= 9 then
                 local modifiers = {}
                 if parts[6] ~= "" then
@@ -1037,7 +910,7 @@ function Binds:DeserializeProfile(str)
                         table.insert(modifiers, mod)
                     end
                 end
-                
+
                 data.keybindings[parts[1]] = {
                     name = parts[2],
                     type = parts[3],
@@ -1051,108 +924,95 @@ function Binds:DeserializeProfile(str)
             end
         end
     end
-    
+
     return data
 end
 
--- Enhanced profile validation before import
 function Binds:ValidateImportData(data)
     if not data then
         return false, "No data provided"
     end
-    
+
     if not data.profileName or data.profileName == "" then
         return false, "Missing profile name"
     end
-    
+
     if type(data.profileName) ~= "string" then
         return false, "Invalid profile name type"
     end
-    
-    -- Validate profile name length
+
     if string.len(data.profileName) > 50 then
         return false, "Profile name too long (max 50 characters)"
     end
-    
-    -- Validate groups if present
+
     if data.groups then
         if type(data.groups) ~= "table" then
             return false, "Invalid groups data type"
         end
-        
+
         for groupId, group in pairs(data.groups) do
             if not group.name or group.name == "" then
                 return false, "Group missing name: " .. tostring(groupId)
             end
-            
+
             if not group.color or group.color == "" then
                 return false, "Group missing color: " .. group.name
             end
-            
-            -- Validate color exists (from all color palettes)
+
             local validColors = {
-                -- Standard colors (Colors.STANDARD)
                 ["RED"] = true, ["GREEN"] = true, ["BLUE"] = true, ["YELLOW"] = true,
                 ["ORANGE"] = true, ["PURPLE"] = true, ["CYAN"] = true, ["PINK"] = true,
                 ["WHITE"] = true, ["GRAY"] = true, ["STANDARD_GRAY"] = true,
-                -- Pastel standard colors (Colors.STANDARD)
                 ["PASTEL_RED"] = true, ["PASTEL_PINK"] = true, ["PASTEL_YELLOW"] = true,
-                -- Extended pastel palette (Colors.PASTEL)
                 ["MINT"] = true, ["LAVENDER"] = true, ["PEACH"] = true, ["SKY"] = true,
                 ["ROSE"] = true, ["LIME"] = true, ["CORAL"] = true, ["AQUA"] = true,
                 ["CREAM"] = true, ["IVORY"] = true, ["PEARL"] = true,
-                -- Nuclear colors (Colors.NUCLEAR in ui-factory.lua)
                 ["NUCLEAR_RED"] = true, ["NUCLEAR_BLUE"] = true, ["NUCLEAR_SKY_BLUE"] = true,
                 ["NUCLEAR_PURPLE"] = true, ["NUCLEAR_GREEN"] = true, ["NUCLEAR_PINK"] = true,
                 ["NUCLEAR_WHITE"] = true, ["NUCLEAR_WINTER"] = true, ["NUCLEAR_GREY"] = true,
                 ["NUCLEAR_ORANGE"] = true,
             }
-            
+
             if not validColors[group.color] then
                 return false, "Invalid color for group " .. group.name .. ": " .. group.color
             end
         end
     end
-    
-    -- Validate keybindings if present
+
     if data.keybindings then
         if type(data.keybindings) ~= "table" then
             return false, "Invalid keybindings data type"
         end
-        
+
         local bindCount = 0
         for bindId, bind in pairs(data.keybindings) do
             bindCount = bindCount + 1
-            
-            -- Limit number of keybindings
+
             if bindCount > 200 then
                 return false, "Too many keybindings (max 200)"
             end
-            
+
             if not bind.name or bind.name == "" then
                 return false, "Keybinding missing name: " .. tostring(bindId)
             end
-            
+
             if not bind.type or bind.type == "" then
                 return false, "Keybinding missing type: " .. bind.name
             end
-            
+
             if not bind.target or bind.target == "" then
                 return false, "Keybinding missing target: " .. bind.name
             end
-            
-            -- Validate type
+
             local validTypes = {["internal"] = true, ["synastria"] = true, ["commandblock"] = true}
             if not validTypes[bind.type] then
                 return false, "Invalid type for keybinding " .. bind.name .. ": " .. bind.type
             end
-            
-            -- Validate target length
+
             if string.len(bind.target) > 200 then
                 return false, "Target too long for keybinding " .. bind.name .. " (max 200 characters)"
             end
-            
-            -- Validate context if present
+
             if bind.context then
                 if type(bind.context) == "string" then
                     local validContexts = {
@@ -1182,37 +1042,32 @@ function Binds:ValidateImportData(data)
             end
         end
     end
-    
+
     return true, "Valid"
 end
 
--- Enhanced import with validation and preview
 function Binds:ImportProfileWithValidation(importString)
     KOL:PrintTag(PASTEL_YELLOW("Enhanced Profile Import"))
-    
-    -- Parse the import string
+
     local success, data = pcall(function()
         return self:DeserializeProfile(importString)
     end)
-    
+
     if not success then
         KOL:PrintTag(RED("Failed to parse import data: ") .. tostring(data))
         return false
     end
-    
-    -- Validate the data
+
     local valid, errorMsg = self:ValidateImportData(data)
     if not valid then
         KOL:PrintTag(RED("Import validation failed: ") .. errorMsg)
         return false
     end
-    
-    -- Show import preview
+
     self:ShowImportPreview(data)
     return true
 end
 
--- Show import preview dialog
 function Binds:ShowImportPreview(data)
     local previewDialog = CreateFrame("Frame", "KOL_BindsImportPreview", UIParent)
     previewDialog:SetFrameStrata("DIALOG")
@@ -1231,58 +1086,53 @@ function Binds:ShowImportPreview(data)
     previewDialog:RegisterForDrag("LeftButton")
     previewDialog:SetScript("OnDragStart", function() previewDialog:StartMoving() end)
     previewDialog:SetScript("OnDragStop", function() previewDialog:StopMovingOrSizing() end)
-    
-    -- Title
+
     local title = previewDialog:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOP", previewDialog, "TOP", 0, -16)
     title:SetText("Import Preview")
-    
-    -- Profile info
+
     local profileInfo = previewDialog:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     profileInfo:SetPoint("TOPLEFT", previewDialog, "TOPLEFT", 20, -50)
     profileInfo:SetWidth(410)
     profileInfo:SetJustifyH("LEFT")
     profileInfo:SetText(WHITE("Profile Name: ") .. PASTEL_YELLOW(data.profileName))
-    
-    -- Statistics
+
     local groupCount = data.groups and 0 or 0
     if data.groups then
         for _ in pairs(data.groups) do
             groupCount = groupCount + 1
         end
     end
-    
+
     local bindCount = data.keybindings and 0 or 0
     if data.keybindings then
         for _ in pairs(data.keybindings) do
             bindCount = bindCount + 1
         end
     end
-    
+
     local stats = previewDialog:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     stats:SetPoint("TOPLEFT", profileInfo, "BOTTOMLEFT", 0, -10)
     stats:SetWidth(410)
     stats:SetJustifyH("LEFT")
     stats:SetText(WHITE("Contains: ") .. GREEN(groupCount) .. " groups, " .. GREEN(bindCount) .. " keybindings")
-    
-    -- Warning text
+
     local warning = previewDialog:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
     warning:SetPoint("TOPLEFT", stats, "BOTTOMLEFT", 0, -15)
     warning:SetWidth(410)
     warning:SetJustifyH("LEFT")
     warning:SetText(ORANGE("Warning: This will create a new profile and may add new groups. Existing keybindings will not be affected."))
-    
-    -- Sample keybindings
+
     if data.keybindings and bindCount > 0 then
         local sampleLabel = previewDialog:CreateFontString(nil, "ARTWORK", "GameFontNormal")
         sampleLabel:SetPoint("TOPLEFT", warning, "BOTTOMLEFT", 0, -15)
         sampleLabel:SetText(WHITE("Sample Keybindings:"))
-        
+
         local sampleText = previewDialog:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
         sampleText:SetPoint("TOPLEFT", sampleLabel, "BOTTOMLEFT", 0, -5)
         sampleText:SetWidth(410)
         sampleText:SetJustifyH("LEFT")
-        
+
         local samples = {}
         local count = 0
         for bindId, bind in pairs(data.keybindings) do
@@ -1291,15 +1141,14 @@ function Binds:ShowImportPreview(data)
                 count = count + 1
             end
         end
-        
+
         if bindCount > 3 then
             table.insert(samples, "... and " .. (bindCount - 3) .. " more")
         end
-        
+
         sampleText:SetText(table.concat(samples, "\n"))
     end
-    
-    -- Import button
+
     local importButton = CreateFrame("Button", nil, previewDialog, "UIPanelButtonTemplate")
     importButton:SetWidth(120)
     importButton:SetHeight(25)
@@ -1311,8 +1160,7 @@ function Binds:ShowImportPreview(data)
             previewDialog = nil
         end
     end)
-    
-    -- Cancel button
+
     local cancelButton = CreateFrame("Button", nil, previewDialog, "UIPanelButtonTemplate")
     cancelButton:SetWidth(120)
     cancelButton:SetHeight(25)
@@ -1322,22 +1170,20 @@ function Binds:ShowImportPreview(data)
         previewDialog:Hide()
         previewDialog = nil
     end)
-    
+
     previewDialog:Show()
 end
 
--- Enhanced export with metadata and validation
 function Binds:ExportProfileWithValidation(profileId)
     profileId = profileId or activeProfile
-    
+
     if not KOL.db.profile.binds.profiles[profileId] then
         KOL:PrintTag(RED("Profile not found: ") .. profileId)
         return false
     end
-    
+
     local profile = KOL.db.profile.binds.profiles[profileId]
-    
-    -- Create enhanced export data with metadata
+
     local exportData = {
         version = "2.0",
         exportDate = date("%Y-%m-%d %H:%M:%S"),
@@ -1353,8 +1199,7 @@ function Binds:ExportProfileWithValidation(profileId)
             gameVersion = GetBuildInfo(),
         }
     }
-    
-    -- Export groups with validation
+
     for groupId, group in pairs(KOL.db.profile.binds.groups) do
         exportData.groups[groupId] = {
             name = group.name,
@@ -1363,8 +1208,7 @@ function Binds:ExportProfileWithValidation(profileId)
         }
         exportData.metadata.totalGroups = exportData.metadata.totalGroups + 1
     end
-    
-    -- Export keybindings with enhanced data
+
     for bindId, bind in pairs(profile.keybindings or KOL.db.profile.binds.keybindings) do
         exportData.keybindings[bindId] = {
             name = bind.name,
@@ -1375,26 +1219,23 @@ function Binds:ExportProfileWithValidation(profileId)
             group = bind.group,
             enabled = bind.enabled,
             order = bind.order,
-            context = bind.context, -- Include context in export
+            context = bind.context,
             createdDate = bind.createdDate,
             lastUsed = bind.lastUsed,
         }
         exportData.metadata.totalKeybindings = exportData.metadata.totalKeybindings + 1
     end
-    
-    -- Convert to enhanced string format
+
     local exportString = self:SerializeProfileEnhanced(exportData)
-    
-    -- Show enhanced export dialog
+
     self:ShowExportDialog(exportData, exportString)
-    
+
     return true
 end
 
--- Enhanced serialization with metadata
 function Binds:SerializeProfileEnhanced(data)
     local parts = {}
-    
+
     table.insert(parts, "KOL_BINDS_PROFILE_V2:" .. data.version)
     table.insert(parts, "EXPORT_DATE:" .. data.exportDate)
     table.insert(parts, "EXPORT_VERSION:" .. data.exportVersion)
@@ -1405,29 +1246,26 @@ function Binds:SerializeProfileEnhanced(data)
         data.metadata.exportType,
         data.metadata.gameVersion or "Unknown"
     ))
-    
-    -- Serialize groups
+
     for groupId, group in pairs(data.groups) do
-        local groupStr = string.format("GROUP:%s|%s|%s|%s", 
+        local groupStr = string.format("GROUP:%s|%s|%s|%s",
             groupId, group.name, group.color, tostring(group.isSystem))
         table.insert(parts, groupStr)
     end
-    
-    -- Serialize keybindings with enhanced data
+
     for bindId, bind in pairs(data.keybindings) do
         local contextStr = bind.context and (type(bind.context) == "table" and table.concat(bind.context, ",") or bind.context) or ""
-        local bindStr = string.format("BIND:%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s", 
-            bindId, bind.name, bind.type, bind.target, 
-            bind.key, table.concat(bind.modifiers, ","), 
+        local bindStr = string.format("BIND:%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s",
+            bindId, bind.name, bind.type, bind.target,
+            bind.key, table.concat(bind.modifiers, ","),
             bind.group, tostring(bind.enabled), tostring(bind.order),
             contextStr, bind.createdDate or "", bind.lastUsed or "")
         table.insert(parts, bindStr)
     end
-    
+
     return table.concat(parts, "\n")
 end
 
--- Show export dialog with copy functionality
 function Binds:ShowExportDialog(exportData, exportString)
     local exportDialog = CreateFrame("Frame", "KOL_BindsExportDialog", UIParent)
     exportDialog:SetFrameStrata("DIALOG")
@@ -1446,13 +1284,11 @@ function Binds:ShowExportDialog(exportData, exportString)
     exportDialog:RegisterForDrag("LeftButton")
     exportDialog:SetScript("OnDragStart", function() exportDialog:StartMoving() end)
     exportDialog:SetScript("OnDragStop", function() exportDialog:StopMovingOrSizing() end)
-    
-    -- Title
+
     local title = exportDialog:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOP", exportDialog, "TOP", 0, -16)
     title:SetText("Profile Export")
-    
-    -- Export info
+
     local infoText = exportDialog:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     infoText:SetPoint("TOPLEFT", exportDialog, "TOPLEFT", 20, -50)
     infoText:SetWidth(560)
@@ -1468,21 +1304,18 @@ function Binds:ShowExportDialog(exportData, exportString)
         exportData.exportDate,
         WHITE("Version:"),
         exportData.exportVersion))
-    
-    -- Instructions
+
     local instructions = exportDialog:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
     instructions:SetPoint("TOPLEFT", infoText, "BOTTOMLEFT", 0, -10)
     instructions:SetWidth(560)
     instructions:SetJustifyH("LEFT")
     instructions:SetText(GRAY("Select all text below (Ctrl+A) and copy (Ctrl+C) to share this profile."))
-    
-    -- Scroll frame for export text
+
     local scrollFrame = CreateFrame("ScrollFrame", nil, exportDialog, "UIPanelScrollFrameTemplate")
     scrollFrame:SetWidth(560)
     scrollFrame:SetHeight(300)
     scrollFrame:SetPoint("TOPLEFT", instructions, "BOTTOMLEFT", 0, -10)
-    
-    -- Edit box for export text
+
     local editBox = CreateFrame("EditBox", nil, scrollFrame)
     editBox:SetWidth(560)
     editBox:SetHeight(300)
@@ -1494,10 +1327,9 @@ function Binds:ShowExportDialog(exportData, exportString)
         exportDialog:Hide()
         exportDialog = nil
     end)
-    
+
     scrollFrame:SetScrollChild(editBox)
-    
-    -- Select all button
+
     local selectButton = CreateFrame("Button", nil, exportDialog, "UIPanelButtonTemplate")
     selectButton:SetWidth(100)
     selectButton:SetHeight(25)
@@ -1507,8 +1339,7 @@ function Binds:ShowExportDialog(exportData, exportString)
         editBox:HighlightText()
         editBox:SetFocus()
     end)
-    
-    -- Close button
+
     local closeButton = CreateFrame("Button", nil, exportDialog, "UIPanelButtonTemplate")
     closeButton:SetWidth(100)
     closeButton:SetHeight(25)
@@ -1518,29 +1349,26 @@ function Binds:ShowExportDialog(exportData, exportString)
         exportDialog:Hide()
         exportDialog = nil
     end)
-    
+
     exportDialog:Show()
     editBox:HighlightText()
 end
 
--- Process imported profile data (enhanced version)
 function Binds:ProcessImportedProfile(data)
     if not data or not data.profileName then
         KOL:PrintTag(RED("Invalid profile data"))
         return false
     end
-    
-    -- Generate unique profile ID
+
     local profileId = data.profileName:lower():gsub("%s+", "_"):gsub("[^%w_]", "")
     local counter = 1
     local originalId = profileId
-    
+
     while KOL.db.profile.binds.profiles[profileId] do
         profileId = originalId .. "_" .. counter
         counter = counter + 1
     end
-    
-    -- Create profile
+
     KOL.db.profile.binds.profiles[profileId] = {
         name = data.profileName,
         groups = {},
@@ -1548,10 +1376,9 @@ function Binds:ProcessImportedProfile(data)
         importDate = date("%Y-%m-%d %H:%M:%S"),
         importVersion = data.exportVersion or "Unknown",
     }
-    
-    -- Import groups
+
     for groupId, group in pairs(data.groups) do
-        if not group.isSystem then -- Don't import system groups
+        if not group.isSystem then
             KOL.db.profile.binds.groups[groupId] = {
                 name = group.name,
                 color = group.color,
@@ -1560,8 +1387,7 @@ function Binds:ProcessImportedProfile(data)
             KOL.db.profile.binds.profiles[profileId].groups[groupId] = true
         end
     end
-    
-    -- Import keybindings with enhanced data
+
     for bindId, bind in pairs(data.keybindings) do
         local importedBind = {
             name = bind.name,
@@ -1572,50 +1398,48 @@ function Binds:ProcessImportedProfile(data)
             group = bind.group,
             enabled = bind.enabled,
             order = bind.order,
-            context = bind.context, -- Import context
+            context = bind.context,
             createdDate = bind.createdDate,
             lastUsed = bind.lastUsed,
             importedDate = date("%Y-%m-%d %H:%M:%S"),
         }
         KOL.db.profile.binds.profiles[profileId].keybindings[bindId] = importedBind
     end
-    
+
     KOL:PrintTag(GREEN("Successfully imported profile: ") .. PASTEL_YELLOW(data.profileName))
     KOL:Print("Use " .. YELLOW("/kbc profile switch " .. profileId) .. " to activate it")
-    
+
     return true
 end
 
--- Get keybinding list for config panel
 function Binds:GetConfigKeybindingList()
     local text = GRAY("Keybindings:") .. "\n"
     local count = 0
-    
+
     for bindId, bind in pairs(KOL.db.profile.binds.keybindings) do
-        -- Apply search filter
-        if searchFilter == "" or 
+        if searchFilter == "" or
            bind.name:lower():find(searchFilter, 1, true) or
            bind.type:lower():find(searchFilter, 1, true) then
-            
+
             local status = bind.enabled and GREEN("✓") or RED("✗")
             local key = bind.key and bind.key ~= "" and GREEN(bind.key) or GRAY("[unbound]")
             local group = KOL.db.profile.binds.groups[bind.group]
             local groupColor = group and KOL.Colors and KOL.Colors[group.color] or WHITE
             local groupName = group and group.name or bind.group
             local requiresInput = self:BindRequiresInput(bind) and PASTEL_PINK("[input]") or ""
-            
-            text = text .. string.format("  %s %s%s - %s (%s%s) %s\n", 
-                status, 
-                PASTEL_YELLOW(bind.name), 
+
+            text = text .. string.format("  %s %s%s - %s (%s%s) %s\n",
+                status,
+                PASTEL_YELLOW(bind.name),
                 requiresInput,
                 key,
                 groupColor, groupName,
                 GRAY("[Edit: /kbc edit " .. bindId .. "]"))
-            
+
             count = count + 1
         end
     end
-    
+
     if count == 0 then
         if searchFilter ~= "" then
             text = text .. GRAY("  No keybindings match filter: " .. searchFilter)
@@ -1623,16 +1447,15 @@ function Binds:GetConfigKeybindingList()
             text = text .. GRAY("  No keybindings configured")
         end
     end
-    
+
     text = text .. "\n" .. GRAY("Total: ") .. PASTEL_YELLOW(tostring(count)) .. " keybindings"
-    
+
     return text
 end
 
--- Get profile list for config panel
 function Binds:GetConfigProfileList()
     local text = GRAY("Profiles:") .. "\n"
-    
+
     for profileId, profile in pairs(KOL.db.profile.binds.profiles) do
         local status = profileId == (activeProfile or "default") and GREEN("[ACTIVE]") or ""
         local bindCount = 0
@@ -1641,29 +1464,27 @@ function Binds:GetConfigProfileList()
                 bindCount = bindCount + 1
             end
         end
-        
-        text = text .. string.format("  %s %s - %d keybindings%s\n", 
-            PASTEL_YELLOW(profile.name), 
+
+        text = text .. string.format("  %s %s - %d keybindings%s\n",
+            PASTEL_YELLOW(profile.name),
             status,
             bindCount,
             profileId ~= "default" and " " .. GRAY("[Delete: /kbc profile delete " .. profileId .. "]") or "")
     end
-    
+
     text = text .. "\n" .. GRAY("Current: ") .. GREEN(activeProfile or "default")
-    
+
     return text
 end
 
--- Show keybinding editor
 function Binds:ShowKeybindingEditor(bindId)
     if keybindingEditor then
         keybindingEditor:Hide()
     end
-    
+
     local isEdit = bindId ~= nil
     local bind = bindId and KOL.db.profile.binds.keybindings[bindId]
-    
-    -- Create editor frame
+
     keybindingEditor = CreateFrame("Frame", "KOL_BindsEditor", UIParent)
     keybindingEditor:SetFrameStrata("DIALOG")
     keybindingEditor:SetWidth(500)
@@ -1681,42 +1502,37 @@ function Binds:ShowKeybindingEditor(bindId)
     keybindingEditor:RegisterForDrag("LeftButton")
     keybindingEditor:SetScript("OnDragStart", function() keybindingEditor:StartMoving() end)
     keybindingEditor:SetScript("OnDragStop", function() keybindingEditor:StopMovingOrSizing() end)
-    
-    -- Title
+
     local title = keybindingEditor:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOP", keybindingEditor, "TOP", 0, -16)
     title:SetText(isEdit and "Edit Keybinding" or "Create New Keybinding")
-    
-    -- Name input
+
     local nameLabel = keybindingEditor:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     nameLabel:SetPoint("TOPLEFT", keybindingEditor, "TOPLEFT", 20, -60)
     nameLabel:SetText("Name:")
-    
+
     local nameInput = CreateFrame("EditBox", nil, keybindingEditor, "InputBoxTemplate")
     nameInput:SetWidth(300)
     nameInput:SetHeight(32)
     nameInput:SetPoint("TOPLEFT", nameLabel, "BOTTOMLEFT", 0, -5)
     nameInput:SetText(bind and bind.name or "")
-    
-    -- Type selection
+
     local typeLabel = keybindingEditor:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     typeLabel:SetPoint("TOPLEFT", nameInput, "BOTTOMLEFT", 0, -15)
     typeLabel:SetText("Type:")
-    
+
     local typeDropdown = CreateFrame("Frame", nil, keybindingEditor, "UIDropDownMenuTemplate")
     typeDropdown:SetWidth(150)
     typeDropdown:SetPoint("TOPLEFT", typeLabel, "BOTTOMLEFT", 0, -5)
-    
-    -- Type options
+
     local typeOptions = {
         {text = "Internal Action", value = "internal"},
         {text = "Synastria Command", value = "synastria"},
         {text = "Command Block", value = "commandblock"},
     }
-    
+
     local selectedType = bind and bind.type or "internal"
-    
-    -- Initialize dropdown
+
     UIDropDownMenu_SetWidth(typeDropdown, 150)
     UIDropDownMenu_Initialize(typeDropdown, function()
         for _, option in ipairs(typeOptions) do
@@ -1733,40 +1549,37 @@ function Binds:ShowKeybindingEditor(bindId)
             UIDropDownMenu_AddButton(info)
         end
     end)
-    
-    UIDropDownMenu_SetSelectedName(typeDropdown, 
+
+    UIDropDownMenu_SetSelectedName(typeDropdown,
         (selectedType == "internal" and "Internal Action") or
         (selectedType == "synastria" and "Synastria Command") or
         "Command Block")
-    
-    -- Target input
+
     local targetLabel = keybindingEditor:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     targetLabel:SetPoint("TOPLEFT", typeDropdown, "BOTTOMLEFT", 0, -15)
     targetLabel:SetText("Target:")
-    
+
     local targetInput = CreateFrame("EditBox", nil, keybindingEditor, "InputBoxTemplate")
     targetInput:SetWidth(300)
     targetInput:SetHeight(32)
     targetInput:SetPoint("TOPLEFT", targetLabel, "BOTTOMLEFT", 0, -5)
     targetInput:SetText(bind and bind.target or "")
-    
-    -- Group selection
+
     local groupLabel = keybindingEditor:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     groupLabel:SetPoint("TOPLEFT", targetInput, "BOTTOMLEFT", 0, -15)
     groupLabel:SetText("Group:")
-    
+
     local groupDropdown = CreateFrame("Frame", nil, keybindingEditor, "UIDropDownMenuTemplate")
     groupDropdown:SetWidth(150)
     groupDropdown:SetPoint("TOPLEFT", groupLabel, "BOTTOMLEFT", 0, -5)
-    
-    -- Group options
+
     local groupOptions = {}
     for groupId, group in pairs(KOL.db.profile.binds.groups) do
         table.insert(groupOptions, {text = group.name, value = groupId})
     end
-    
+
     local selectedGroup = bind and bind.group or "general"
-    
+
     UIDropDownMenu_SetWidth(groupDropdown, 150)
     UIDropDownMenu_Initialize(groupDropdown, function()
         for _, option in ipairs(groupOptions) do
@@ -1783,8 +1596,7 @@ function Binds:ShowKeybindingEditor(bindId)
             UIDropDownMenu_AddButton(info)
         end
     end)
-    
-    -- Find the group name for selected group
+
     local selectedGroupName = "General"
     for _, option in ipairs(groupOptions) do
         if option.value == selectedGroup then
@@ -1793,14 +1605,12 @@ function Binds:ShowKeybindingEditor(bindId)
         end
     end
     UIDropDownMenu_SetSelectedName(groupDropdown, selectedGroupName)
-    
-    -- Enabled checkbox
+
     local enabledCheck = CreateFrame("CheckButton", nil, keybindingEditor, "UICheckButtonTemplate")
     enabledCheck:SetPoint("TOPLEFT", groupDropdown, "BOTTOMLEFT", 0, -15)
     enabledCheck.text:SetText("Enabled")
     enabledCheck:SetChecked(bind and bind.enabled ~= false)
-    
-    -- Buttons
+
     local saveButton = CreateFrame("Button", nil, keybindingEditor, "UIPanelButtonTemplate")
     saveButton:SetWidth(100)
     saveButton:SetHeight(25)
@@ -1809,28 +1619,26 @@ function Binds:ShowKeybindingEditor(bindId)
     saveButton:SetScript("OnClick", function()
         local name = nameInput:GetText():trim()
         local target = targetInput:GetText():trim()
-        
+
         if name == "" then
             KOL:PrintTag(RED("Name cannot be empty"))
             return
         end
-        
+
         if target == "" then
             KOL:PrintTag(RED("Target cannot be empty"))
             return
         end
-        
+
         if isEdit then
-            -- Update existing bind
             bind.name = name
             bind.type = selectedType
             bind.target = target
             bind.group = selectedGroup
             bind.enabled = enabledCheck:GetChecked()
-            
+
             KOL:PrintTag(GREEN("Updated keybinding: ") .. PASTEL_YELLOW(name))
         else
-            -- Create new bind
             local newBindId = name:lower():gsub("%s+", "_"):gsub("[^%w_]", "")
             self:CreateKeybinding(newBindId, {
                 name = name,
@@ -1839,17 +1647,16 @@ function Binds:ShowKeybindingEditor(bindId)
                 group = selectedGroup,
                 enabled = enabledCheck:GetChecked()
             })
-            
+
             KOL:PrintTag(GREEN("Created keybinding: ") .. PASTEL_YELLOW(name))
         end
-        
+
         keybindingEditor:Hide()
         keybindingEditor = nil
-        
-        -- Refresh config
+
         LibStub("AceConfigRegistry-3.0"):NotifyChange("KoalityOfLife")
     end)
-    
+
     local cancelButton = CreateFrame("Button", nil, keybindingEditor, "UIPanelButtonTemplate")
     cancelButton:SetWidth(100)
     cancelButton:SetHeight(25)
@@ -1859,9 +1666,8 @@ function Binds:ShowKeybindingEditor(bindId)
         keybindingEditor:Hide()
         keybindingEditor = nil
     end)
-    
+
     if isEdit then
-        -- Add delete button for edits
         local deleteButton = CreateFrame("Button", nil, keybindingEditor, "UIPanelButtonTemplate")
         deleteButton:SetWidth(100)
         deleteButton:SetHeight(25)
@@ -1875,17 +1681,15 @@ function Binds:ShowKeybindingEditor(bindId)
             end
         end)
     end
-    
+
     keybindingEditor:Show()
 end
 
--- Show batch operations dialog
 function Binds:ShowBatchDialog()
     if batchDialog then
         batchDialog:Hide()
     end
-    
-    -- Create batch dialog frame
+
     batchDialog = CreateFrame("Frame", "KOL_BindsBatchDialog", UIParent)
     batchDialog:SetFrameStrata("DIALOG")
     batchDialog:SetWidth(450)
@@ -1903,21 +1707,19 @@ function Binds:ShowBatchDialog()
     batchDialog:RegisterForDrag("LeftButton")
     batchDialog:SetScript("OnDragStart", function() batchDialog:StartMoving() end)
     batchDialog:SetScript("OnDragStop", function() batchDialog:StopMovingOrSizing() end)
-    
-    -- Title
+
     local title = batchDialog:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOP", batchDialog, "TOP", 0, -16)
     title:SetText("Batch Operations")
-    
-    -- Operation selection
+
     local operationLabel = batchDialog:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     operationLabel:SetPoint("TOPLEFT", batchDialog, "TOPLEFT", 20, -60)
     operationLabel:SetText("Operation:")
-    
+
     local operationDropdown = CreateFrame("Frame", nil, batchDialog, "UIDropDownMenuTemplate")
     operationDropdown:SetWidth(200)
     operationDropdown:SetPoint("TOPLEFT", operationLabel, "BOTTOMLEFT", 0, -5)
-    
+
     local operationOptions = {
         {text = "Enable All", value = "enable"},
         {text = "Disable All", value = "disable"},
@@ -1927,9 +1729,9 @@ function Binds:ShowBatchDialog()
         {text = "Disable by Type", value = "disable_type"},
         {text = "Remove All Keys", value = "unbind_all"},
     }
-    
+
     local selectedOperation = "enable"
-    
+
     UIDropDownMenu_SetWidth(operationDropdown, 200)
     UIDropDownMenu_Initialize(operationDropdown, function()
         for _, option in ipairs(operationOptions) do
@@ -1946,25 +1748,23 @@ function Binds:ShowBatchDialog()
             UIDropDownMenu_AddButton(info)
         end
     end)
-    
+
     UIDropDownMenu_SetSelectedName(operationDropdown, "Enable All")
-    
-    -- Target selection (for group/type operations)
+
     local targetLabel = batchDialog:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     targetLabel:SetPoint("TOPLEFT", operationDropdown, "BOTTOMLEFT", 0, -15)
     targetLabel:SetText("Target:")
-    
+
     local targetDropdown = CreateFrame("Frame", nil, batchDialog, "UIDropDownMenuTemplate")
     targetDropdown:SetWidth(200)
     targetDropdown:SetPoint("TOPLEFT", targetLabel, "BOTTOMLEFT", 0, -5)
-    
+
     local targetOptions = {}
     local selectedTarget = ""
-    
-    -- Update target options based on operation
+
     local function UpdateTargetOptions()
         targetOptions = {}
-        
+
         if selectedOperation == "enable_group" or selectedOperation == "disable_group" then
             for groupId, group in pairs(KOL.db.profile.binds.groups) do
                 table.insert(targetOptions, {text = group.name, value = groupId})
@@ -1974,8 +1774,7 @@ function Binds:ShowBatchDialog()
             table.insert(targetOptions, {text = "Synastria", value = "synastria"})
             table.insert(targetOptions, {text = "Command Block", value = "commandblock"})
         end
-        
-        -- Update dropdown
+
         UIDropDownMenu_Initialize(targetDropdown, function()
             for _, option in ipairs(targetOptions) do
                 local info = {
@@ -1991,17 +1790,16 @@ function Binds:ShowBatchDialog()
                 UIDropDownMenu_AddButton(info)
             end
         end)
-        
+
         if #targetOptions > 0 then
             UIDropDownMenu_SetSelectedName(targetDropdown, targetOptions[1].text)
             UIDropDownMenu_SetSelectedValue(targetDropdown, targetOptions[1].value)
             selectedTarget = targetOptions[1].value
         end
     end
-    
+
     UpdateTargetOptions()
-    
-    -- Execute button
+
     local executeButton = CreateFrame("Button", nil, batchDialog, "UIPanelButtonTemplate")
     executeButton:SetWidth(120)
     executeButton:SetHeight(25)
@@ -2009,7 +1807,7 @@ function Binds:ShowBatchDialog()
     executeButton:SetText("Execute")
     executeButton:SetScript("OnClick", function()
         local affectedCount = 0
-        
+
         if selectedOperation == "enable" then
             for bindId, bind in pairs(KOL.db.profile.binds.keybindings) do
                 if not bind.enabled then
@@ -2018,7 +1816,7 @@ function Binds:ShowBatchDialog()
                 end
             end
             KOL:PrintTag(GREEN("Enabled ") .. affectedCount .. " keybindings")
-            
+
         elseif selectedOperation == "disable" then
             for bindId, bind in pairs(KOL.db.profile.binds.keybindings) do
                 if bind.enabled then
@@ -2027,7 +1825,7 @@ function Binds:ShowBatchDialog()
                 end
             end
             KOL:PrintTag(GREEN("Disabled ") .. affectedCount .. " keybindings")
-            
+
         elseif selectedOperation == "enable_group" then
             for bindId, bind in pairs(KOL.db.profile.binds.keybindings) do
                 if bind.group == selectedTarget and not bind.enabled then
@@ -2036,7 +1834,7 @@ function Binds:ShowBatchDialog()
                 end
             end
             KOL:PrintTag(GREEN("Enabled ") .. affectedCount .. " keybindings in group: " .. selectedTarget)
-            
+
         elseif selectedOperation == "disable_group" then
             for bindId, bind in pairs(KOL.db.profile.binds.keybindings) do
                 if bind.group == selectedTarget and bind.enabled then
@@ -2045,7 +1843,7 @@ function Binds:ShowBatchDialog()
                 end
             end
             KOL:PrintTag(GREEN("Disabled ") .. affectedCount .. " keybindings in group: " .. selectedTarget)
-            
+
         elseif selectedOperation == "enable_type" then
             for bindId, bind in pairs(KOL.db.profile.binds.keybindings) do
                 if bind.type == selectedTarget and not bind.enabled then
@@ -2054,7 +1852,7 @@ function Binds:ShowBatchDialog()
                 end
             end
             KOL:PrintTag(GREEN("Enabled ") .. affectedCount .. " keybindings of type: " .. selectedTarget)
-            
+
         elseif selectedOperation == "disable_type" then
             for bindId, bind in pairs(KOL.db.profile.binds.keybindings) do
                 if bind.type == selectedTarget and bind.enabled then
@@ -2063,7 +1861,7 @@ function Binds:ShowBatchDialog()
                 end
             end
             KOL:PrintTag(GREEN("Disabled ") .. affectedCount .. " keybindings of type: " .. selectedTarget)
-            
+
         elseif selectedOperation == "unbind_all" then
             for bindId, bind in pairs(KOL.db.profile.binds.keybindings) do
                 if bind.key and bind.key ~= "" then
@@ -2073,14 +1871,12 @@ function Binds:ShowBatchDialog()
             end
             KOL:PrintTag(GREEN("Removed keys from ") .. affectedCount .. " keybindings")
         end
-        
-        -- Refresh config
+
         LibStub("AceConfigRegistry-3.0"):NotifyChange("KoalityOfLife")
         batchDialog:Hide()
         batchDialog = nil
     end)
-    
-    -- Cancel button
+
     local cancelButton = CreateFrame("Button", nil, batchDialog, "UIPanelButtonTemplate")
     cancelButton:SetWidth(120)
     cancelButton:SetHeight(25)
@@ -2090,19 +1886,17 @@ function Binds:ShowBatchDialog()
         batchDialog:Hide()
         batchDialog = nil
     end)
-    
-    -- Update target dropdown when operation changes
+
     operationDropdown:SetScript("OnShow", function()
         UpdateTargetOptions()
     end)
-    
+
     batchDialog:Show()
 end
 
--- List all keybindings
 function Binds:ListKeybindings()
     KOL:PrintTag(PASTEL_YELLOW("Keybindings:"))
-    
+
     local count = 0
     for bindId, bind in pairs(KOL.db.profile.binds.keybindings) do
         local status = bind.enabled and GREEN("✓") or RED("✗")
@@ -2111,38 +1905,35 @@ function Binds:ListKeybindings()
         local groupColor = group and KOL.Colors and KOL.Colors[group.color] or WHITE
         local groupName = group and group.name or bind.group
         local requiresInput = self:BindRequiresInput(bind) and PASTEL_PINK("[input]") or ""
-        
-        KOL:Print(string.format("  %s %s%s - %s (%s%s|r)", 
-            status, 
-            PASTEL_YELLOW(bind.name), 
+
+        KOL:Print(string.format("  %s %s%s - %s (%s%s|r)",
+            status,
+            PASTEL_YELLOW(bind.name),
             requiresInput,
             key,
             groupColor, groupName))
-        
+
         count = count + 1
     end
-    
+
     if count == 0 then
         KOL:Print(GRAY("  No keybindings configured"))
     end
-    
+
     KOL:Print("Total: " .. PASTEL_YELLOW(tostring(count)) .. " keybindings")
 end
 
--- Create a new keybinding
 function Binds:CreateKeybinding(bindId, data)
     if not bindId or not data then
         KOL:DebugPrint("Binds: CreateKeybinding - missing parameters", 0)
         return false
     end
-    
-    -- Validate required fields
+
     if not data.name or not data.type or not data.target then
         KOL:PrintTag(RED("Error:") .. " Keybinding missing required fields (name, type, target)")
         return false
     end
-    
-    -- Validate action type
+
     local validTypes = {"internal", "synastria", "commandblock"}
     local isValidType = false
     for _, type in ipairs(validTypes) do
@@ -2151,13 +1942,12 @@ function Binds:CreateKeybinding(bindId, data)
             break
         end
     end
-    
+
     if not isValidType then
         KOL:PrintTag(RED("Error:") .. " Invalid action type: " .. tostring(data.type))
         return false
     end
-    
-    -- Create the keybinding
+
     KOL.db.profile.binds.keybindings[bindId] = {
         name = data.name,
         type = data.type,
@@ -2165,33 +1955,31 @@ function Binds:CreateKeybinding(bindId, data)
         key = data.key or "",
         modifiers = data.modifiers or {},
         group = data.group or "general",
-        enabled = data.enabled ~= false, -- Default to enabled
+        enabled = data.enabled ~= false,
         order = data.order or 100,
         lastInput = data.lastInput or "",
     }
-    
+
     KOL:PrintTag(GREEN("Created keybinding:") .. " " .. PASTEL_YELLOW(data.name))
     return true
 end
 
--- Execute a keybinding action
 function Binds:ExecuteKeybinding(bindId, input)
     if not KOL.db.profile.binds.enabled then
         return false
     end
-    
+
     local bind = KOL.db.profile.binds.keybindings[bindId]
     if not bind then
         KOL:DebugPrint("ExecuteKeybinding: bind not found - " .. tostring(bindId))
         return false
     end
-    
+
     if not bind.enabled then
         KOL:DebugPrint("ExecuteKeybinding: bind disabled - " .. bind.name)
         return false
     end
-    
-    -- Context validation
+
     local contextResult = self:ValidateContext(bind)
     if not contextResult.valid then
         if KOL.db.profile.binds.settings.showNotifications then
@@ -2199,28 +1987,24 @@ function Binds:ExecuteKeybinding(bindId, input)
         end
         return false
     end
-    
-    -- Combat check
+
     if not KOL.db.profile.binds.showInCombat and UnitAffectingCombat("player") then
         if KOL.db.profile.binds.settings.showNotifications then
             KOL:PrintTag(RED("Cannot use keybinding in combat: ") .. bind.name)
         end
         return false
     end
-    
-    -- Check if this bind requires input
+
     if self:BindRequiresInput(bind) then
         if not input then
-            -- Show input dialog
             self:ShowInputDialog(bindId, bind)
-            return true -- Don't execute yet, wait for input
+            return true
         end
     end
-    
+
     local success = false
     local errorMsg = nil
-    
-    -- Execute based on action type with error handling
+
     if bind.type == "internal" then
         success, errorMsg = self:ExecuteInternalAction(bind.target, input)
     elseif bind.type == "synastria" then
@@ -2230,8 +2014,7 @@ function Binds:ExecuteKeybinding(bindId, input)
     else
         errorMsg = "Unknown action type: " .. tostring(bind.type)
     end
-    
-    -- Handle results
+
     if success then
         if KOL.db.profile.binds.settings.showNotifications then
             KOL:PrintTag(GREEN("Executed:") .. " " .. PASTEL_YELLOW(bind.name))
@@ -2244,15 +2027,13 @@ function Binds:ExecuteKeybinding(bindId, input)
         end
         KOL:DebugPrint("Failed to execute: " .. bind.name .. " (" .. bind.type .. ":" .. bind.target .. ") - " .. tostring(errorMsg))
     end
-    
+
     return success
 end
 
--- Execute internal action (direct API calls)
 function Binds:ExecuteInternalAction(target, input)
-    -- Internal actions for opening interface panels
     local internalActions = {
-        ["interface_game"] = function() 
+        ["interface_game"] = function()
             if InterfaceOptionsFrame_OpenToCategory then
                 InterfaceOptionsFrame_OpenToCategory("Game")
                 return true
@@ -2260,7 +2041,7 @@ function Binds:ExecuteInternalAction(target, input)
                 return false, "InterfaceOptionsFrame_OpenToCategory not available"
             end
         end,
-        ["interface_sound"] = function() 
+        ["interface_sound"] = function()
             if InterfaceOptionsFrame_OpenToCategory then
                 InterfaceOptionsFrame_OpenToCategory("Sound")
                 return true
@@ -2268,7 +2049,7 @@ function Binds:ExecuteInternalAction(target, input)
                 return false, "InterfaceOptionsFrame_OpenToCategory not available"
             end
         end,
-        ["interface_video"] = function() 
+        ["interface_video"] = function()
             if InterfaceOptionsFrame_OpenToCategory then
                 InterfaceOptionsFrame_OpenToCategory("Video")
                 return true
@@ -2276,7 +2057,7 @@ function Binds:ExecuteInternalAction(target, input)
                 return false, "InterfaceOptionsFrame_OpenToCategory not available"
             end
         end,
-        ["interface_keyboard"] = function() 
+        ["interface_keyboard"] = function()
             if InterfaceOptionsFrame_OpenToCategory then
                 InterfaceOptionsFrame_OpenToCategory("Keybindings")
                 return true
@@ -2285,7 +2066,7 @@ function Binds:ExecuteInternalAction(target, input)
             end
         end,
     }
-    
+
     local action = internalActions[target]
     if action then
         local success, errorMsg = pcall(action)
@@ -2299,21 +2080,18 @@ function Binds:ExecuteInternalAction(target, input)
     end
 end
 
--- Execute synastria action (secure button macro)
 function Binds:ExecuteSynastriaAction(target, input)
     if not target or target == "" then
         return false, "Empty synastria command"
     end
-    
-    -- Build command with input if provided
+
     local command = "." .. target
     if input and input ~= "" then
         command = command .. " " .. input
     end
-    
-    -- Create or update secure button for this action
+
     local buttonName = "KOL_Binds_Synastria_" .. target:gsub("[^%w_]", "_")
-    
+
     if not secureButtons[buttonName] then
         secureButtons[buttonName] = CreateFrame("Button", buttonName, UIParent, "SecureActionButtonTemplate")
         secureButtons[buttonName]:SetAttribute("type", "macro")
@@ -2321,15 +2099,13 @@ function Binds:ExecuteSynastriaAction(target, input)
         secureButtons[buttonName]:SetSize(1, 1)
         secureButtons[buttonName]:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -100, -100)
     end
-    
-    -- Set the macro text
+
     secureButtons[buttonName]:SetAttribute("macrotext", command)
-    
-    -- Execute the action with error handling
+
     local success, errorMsg = pcall(function()
         secureButtons[buttonName]:Click()
     end)
-    
+
     if success then
         return true
     else
@@ -2337,17 +2113,16 @@ function Binds:ExecuteSynastriaAction(target, input)
     end
 end
 
--- Execute command block action
 function Binds:ExecuteCommandBlockAction(target, input)
     if not target or target == "" then
         return false, "Empty command block name"
     end
-    
+
     if KOL.CommandBlocks and KOL.CommandBlocks.Execute then
         local success, result = pcall(function()
             return KOL.CommandBlocks:Execute(target, input)
         end)
-        
+
         if success then
             return result ~= nil, result
         else
@@ -2358,25 +2133,22 @@ function Binds:ExecuteCommandBlockAction(target, input)
     end
 end
 
--- Get all keybindings for a specific group
 function Binds:GetKeybindingsByGroup(groupName)
     local bindings = {}
-    
+
     for bindId, bind in pairs(KOL.db.profile.binds.keybindings) do
         if bind.group == groupName then
             bindings[bindId] = bind
         end
     end
-    
+
     return bindings
 end
 
--- Get all available groups
 function Binds:GetAllGroups()
     return KOL.db.profile.binds.groups
 end
 
--- Delete a keybinding
 function Binds:DeleteKeybinding(bindId)
     if KOL.db.profile.binds.keybindings[bindId] then
         local name = KOL.db.profile.binds.keybindings[bindId].name
@@ -2389,17 +2161,16 @@ function Binds:DeleteKeybinding(bindId)
     end
 end
 
--- Handle slash commands
 function Binds:HandleSlashCommand(input)
     input = strtrim(input or "")
     local args = {}
-    
+
     for word in string.gmatch(input, "%S+") do
         table.insert(args, word)
     end
-    
+
     local cmd = args[1] and string.lower(args[1]) or ""
-    
+
     if cmd == "" or cmd == "help" then
         self:OpenManager()
     elseif cmd == "add" then
@@ -2409,15 +2180,14 @@ function Binds:HandleSlashCommand(input)
             KOL:Print("Example: /kbc add \"Open Game Settings\" internal interface_game general")
             return
         end
-        
+
         local name = args[2]
         local actionType = args[3]
         local target = args[4]
         local group = args[5] or "general"
-        
-        -- Generate unique bind ID
+
         local bindId = name:lower():gsub("%s+", "_"):gsub("[^%w_]", "")
-        
+
         if self:CreateKeybinding(bindId, {
             name = name,
             type = actionType,
@@ -2427,53 +2197,52 @@ function Binds:HandleSlashCommand(input)
             KOL:PrintTag(GREEN("Created keybinding: ") .. PASTEL_YELLOW(name))
             KOL:Print("Use " .. YELLOW("/kbc bind " .. bindId) .. " to assign a key")
         end
-        
+
     elseif cmd == "bind" then
         if #args < 2 then
             KOL:PrintTag(RED("Usage:") .. " /kbc bind <bindId>")
             KOL:Print("Use " .. YELLOW("/kbc list") .. " to see available bind IDs")
             return
         end
-        
+
         local bindId = args[2]
         self:StartKeyCapture(bindId)
-        
+
     elseif cmd == "unbind" then
         if #args < 2 then
             KOL:PrintTag(RED("Usage:") .. " /kbc unbind <bindId>")
             return
         end
-        
+
         local bindId = args[2]
         self:RemoveKeybinding(bindId)
-        
+
     elseif cmd == "delete" then
         if #args < 2 then
             KOL:PrintTag(RED("Usage:") .. " /kbc delete <bindId>")
             return
         end
-        
+
         local bindId = args[2]
         if self:DeleteKeybinding(bindId) then
-            -- Also remove keybinding if it exists
             self:RemoveKeybinding(bindId)
         end
-        
+
     elseif cmd == "edit" then
         if #args < 2 then
             KOL:PrintTag(RED("Usage:") .. " /kbc edit <bindId>")
             return
         end
-        
+
         local bindId = args[2]
         self:ShowKeybindingEditor(bindId)
-        
+
     elseif cmd == "deletegroup" then
         if #args < 2 then
             KOL:PrintTag(RED("Usage:") .. " /kbc deletegroup <groupId>")
             return
         end
-        
+
         local groupId = args[2]
         if KOL.db.profile.binds.groups[groupId] and not KOL.db.profile.binds.groups[groupId].isSystem then
             local groupName = KOL.db.profile.binds.groups[groupId].name
@@ -2483,77 +2252,63 @@ function Binds:HandleSlashCommand(input)
         else
             KOL:PrintTag(RED("Cannot delete group: ") .. groupId)
         end
-        
+
     elseif cmd == "batch" then
         self:ShowBatchDialog()
-        
+
     else
         KOL:PrintTag(RED("Unknown command: ") .. cmd)
         KOL:Print("Use " .. YELLOW("/kbc") .. " for help")
     end
 end
 
--- ============================================================================
--- Event Handlers
--- ============================================================================
-
 function Binds:OnEnable()
     KOL:DebugPrint("Binds: OnEnable called")
-    
-    -- Re-apply all keybindings on enable
+
     self:ReapplyAllKeybindings()
 end
 
 function Binds:OnDisable()
     KOL:DebugPrint("Binds: OnDisable called")
-    
-    -- Remove all keybindings on disable
+
     self:RemoveAllKeybindings()
 end
 
--- Re-apply all keybindings (useful for reloads)
 function Binds:ReapplyAllKeybindings()
     if InCombatLockdown() then
         KOL:DebugPrint("Cannot reapply keybindings in combat")
         return
     end
-    
+
     for bindId, bind in pairs(KOL.db.profile.binds.keybindings) do
         if bind.enabled and bind.key and bind.key ~= "" then
             self:ApplyKeybinding(bindId, bind.key)
         end
     end
-    
+
     KOL:DebugPrint("Reapplied all keybindings")
 end
 
--- Remove all keybindings
 function Binds:RemoveAllKeybindings()
     if InCombatLockdown() then
         KOL:DebugPrint("Cannot remove keybindings in combat")
         return
     end
-    
+
     for bindId, bind in pairs(KOL.db.profile.binds.keybindings) do
         if bind.key and bind.key ~= "" then
             SetBinding(bind.key)
         end
     end
-    
+
     KOL:DebugPrint("Removed all keybindings")
 end
 
--- ============================================================================
--- Advanced Context Validation System
--- ============================================================================
-
--- Validate execution context for keybinding
 function Binds:ValidateContext(bind)
     if not bind or not bind.context then
-        -- No context restrictions = always valid
         return {valid = true, reason = ""}
     end
-    
+
     local contexts = {}
     if type(bind.context) == "string" then
         contexts[bind.context] = true
@@ -2562,106 +2317,101 @@ function Binds:ValidateContext(bind)
             contexts[ctx] = true
         end
     end
-    
-    -- Check each context requirement
+
     for context, _ in pairs(contexts) do
         local result = self:ValidateSingleContext(context)
         if not result.valid then
             return result
         end
     end
-    
+
     return {valid = true, reason = ""}
 end
 
--- Validate single context rule
 function Binds:ValidateSingleContext(context)
     local zoneType = self:GetCurrentZoneType()
     local inInstance = IsInInstance()
     local instanceType = select(2, IsInInstance())
-    
+
     if context == "any" then
         return {valid = true, reason = ""}
-        
+
     elseif context == "city" then
         local isCity = self:IsMajorCity()
         if not isCity then
             return {valid = false, reason = "Must be in a major city"}
         end
-        
+
     elseif context == "dungeon" then
         if not inInstance or instanceType ~= "scenario" and instanceType ~= "party" then
             return {valid = false, reason = "Must be in a 5-man dungeon"}
         end
-        
+
     elseif context == "raid" then
         if not inInstance or instanceType ~= "raid" then
             return {valid = false, reason = "Must be in a raid instance"}
         end
-        
+
     elseif context == "pvp" then
         if instanceType ~= "pvp" and instanceType ~= "arena" and not zoneType.isBattleground then
             return {valid = false, reason = "Must be in a PvP zone"}
         end
-        
+
     elseif context == "outdoor" then
         if inInstance then
             return {valid = false, reason = "Must be outdoors"}
         end
-        
+
     elseif context == "instance" then
         if not inInstance then
             return {valid = false, reason = "Must be in an instance"}
         end
-        
+
     elseif context == "nomount" then
         if IsMounted() then
             return {valid = false, reason = "Cannot be used while mounted"}
         end
-        
+
     elseif context == "noswimming" then
         if IsSwimming() then
             return {valid = false, reason = "Cannot be used while swimming"}
         end
-        
+
     elseif context == "combat_only" then
         if not UnitAffectingCombat("player") then
             return {valid = false, reason = "Must be in combat"}
         end
-        
+
     elseif context == "out_of_combat" then
         if UnitAffectingCombat("player") then
             return {valid = false, reason = "Must be out of combat"}
         end
-        
+
     elseif context == "flying" then
         if not IsFlying() then
             return {valid = false, reason = "Must be flying"}
         end
-        
+
     elseif context == "grounded" then
         if IsFlying() then
             return {valid = false, reason = "Cannot be used while flying"}
         end
-        
+
     else
         return {valid = false, reason = "Unknown context: " .. tostring(context)}
     end
-    
+
     return {valid = true, reason = ""}
 end
 
--- Get current zone type information
 function Binds:GetCurrentZoneType()
     local zoneName = GetRealZoneText()
     local subZoneName = GetSubZoneText()
     local inInstance = IsInInstance()
     local instanceType = select(2, IsInInstance())
-    
-    -- Major city detection
+
     local isCity = self:IsMajorCity()
-    
-    -- Battleground detection
+
     local isBattleground = false
     for i = 1, GetNumBattlegrounds() do
         local bgName = GetBattlegroundInfo(i)
@@ -2670,7 +2420,7 @@ function Binds:GetCurrentZoneType()
             break
         end
     end
-    
+
     return {
         name = zoneName,
         subZone = subZoneName,
@@ -2681,42 +2431,35 @@ function Binds:GetCurrentZoneType()
     }
 end
 
--- Check if current location is a major city
 function Binds:IsMajorCity()
     local zoneName = GetRealZoneText()
     local subZoneName = GetSubZoneText()
-    
-    -- List of major city zones and subzones (WotLK era)
+
     local majorCities = {
-        -- Alliance cities
         ["Stormwind City"] = true,
         ["Stormwind"] = true,
         ["Ironforge"] = true,
         ["Darnassus"] = true,
         ["The Exodar"] = true,
 
-        -- Horde cities
         ["Orgrimmar"] = true,
         ["Undercity"] = true,
         ["Thunder Bluff"] = true,
         ["Silvermoon City"] = true,
 
-        -- Neutral cities
         ["Shattrath City"] = true,
         ["Dalaran"] = true,
 
-        -- Major city subzones
         ["Trade District"] = true,
         ["Valley of Strength"] = true,
         ["The Drag"] = true,
         ["Dwarven District"] = true,
         ["Valley of Spirits"] = true,
     }
-    
+
     return majorCities[zoneName] == true or majorCities[subZoneName] == true
 end
 
--- Get available context options for UI
 function Binds:GetContextOptions()
     return {
         {text = "Anywhere", value = "any"},
@@ -2735,13 +2478,11 @@ function Binds:GetContextOptions()
     }
 end
 
--- Enhanced batch operations with context awareness
 function Binds:ShowEnhancedBatchDialog()
     if batchDialog then
         batchDialog:Hide()
     end
-    
-    -- Create enhanced batch dialog frame
+
     batchDialog = CreateFrame("Frame", "KOL_BindsEnhancedBatchDialog", UIParent)
     batchDialog:SetFrameStrata("DIALOG")
     batchDialog:SetWidth(500)
@@ -2759,21 +2500,19 @@ function Binds:ShowEnhancedBatchDialog()
     batchDialog:RegisterForDrag("LeftButton")
     batchDialog:SetScript("OnDragStart", function() batchDialog:StartMoving() end)
     batchDialog:SetScript("OnDragStop", function() batchDialog:StopMovingOrSizing() end)
-    
-    -- Title
+
     local title = batchDialog:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOP", batchDialog, "TOP", 0, -16)
     title:SetText("Enhanced Batch Operations")
-    
-    -- Operation selection
+
     local operationLabel = batchDialog:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     operationLabel:SetPoint("TOPLEFT", batchDialog, "TOPLEFT", 20, -60)
     operationLabel:SetText("Operation:")
-    
+
     local operationDropdown = CreateFrame("Frame", nil, batchDialog, "UIDropDownMenuTemplate")
     operationDropdown:SetWidth(200)
     operationDropdown:SetPoint("TOPLEFT", operationLabel, "BOTTOMLEFT", 0, -5)
-    
+
     local operationOptions = {
         {text = "Enable All", value = "enable"},
         {text = "Disable All", value = "disable"},
@@ -2786,9 +2525,9 @@ function Binds:ShowEnhancedBatchDialog()
         {text = "Remove All Keys", value = "unbind_all"},
         {text = "Set Context for Group", value = "set_context_group"},
     }
-    
+
     local selectedOperation = "enable"
-    
+
     UIDropDownMenu_SetWidth(operationDropdown, 200)
     UIDropDownMenu_Initialize(operationDropdown, function()
         for _, option in ipairs(operationOptions) do
@@ -2806,25 +2545,23 @@ function Binds:ShowEnhancedBatchDialog()
             UIDropDownMenu_AddButton(info)
         end
     end)
-    
+
     UIDropDownMenu_SetSelectedName(operationDropdown, "Enable All")
-    
-    -- Target selection
+
     local targetLabel = batchDialog:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     targetLabel:SetPoint("TOPLEFT", operationDropdown, "BOTTOMLEFT", 0, -15)
     targetLabel:SetText("Target:")
-    
+
     local targetDropdown = CreateFrame("Frame", nil, batchDialog, "UIDropDownMenuTemplate")
     targetDropdown:SetWidth(200)
     targetDropdown:SetPoint("TOPLEFT", targetLabel, "BOTTOMLEFT", 0, -5)
-    
+
     local targetOptions = {}
     local selectedTarget = ""
-    
-    -- Update target options based on operation
+
     local function UpdateTargetOptions()
         targetOptions = {}
-        
+
         if selectedOperation == "enable_group" or selectedOperation == "disable_group" or selectedOperation == "set_context_group" then
             for groupId, group in pairs(KOL.db.profile.binds.groups) do
                 table.insert(targetOptions, {text = group.name, value = groupId})
@@ -2836,8 +2573,7 @@ function Binds:ShowEnhancedBatchDialog()
         elseif selectedOperation == "enable_context" or selectedOperation == "disable_context" then
             targetOptions = self:GetContextOptions()
         end
-        
-        -- Update dropdown
+
         UIDropDownMenu_Initialize(targetDropdown, function()
             for _, option in ipairs(targetOptions) do
                 local info = {
@@ -2853,35 +2589,33 @@ function Binds:ShowEnhancedBatchDialog()
                 UIDropDownMenu_AddButton(info)
             end
         end)
-        
+
         if #targetOptions > 0 then
             UIDropDownMenu_SetSelectedName(targetDropdown, targetOptions[1].text)
             UIDropDownMenu_SetSelectedValue(targetDropdown, targetOptions[1].value)
             selectedTarget = targetOptions[1].value
         end
     end
-    
+
     UpdateTargetOptions()
-    
-    -- Preview section
+
     local previewLabel = batchDialog:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     previewLabel:SetPoint("TOPLEFT", targetDropdown, "BOTTOMLEFT", 0, -15)
     previewLabel:SetText("Preview:")
-    
+
     local previewText = batchDialog:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
     previewText:SetPoint("TOPLEFT", previewLabel, "BOTTOMLEFT", 0, -5)
     previewText:SetWidth(460)
     previewText:SetJustifyH("LEFT")
     previewText:SetText("Select an operation to preview affected keybindings")
-    
-    -- Update preview function
+
     local function UpdatePreview()
         local affectedCount = 0
         local affectedNames = {}
-        
+
         for bindId, bind in pairs(KOL.db.profile.binds.keybindings) do
             local willAffect = false
-            
+
             if selectedOperation == "enable" then
                 willAffect = not bind.enabled
             elseif selectedOperation == "disable" then
@@ -2899,11 +2633,11 @@ function Binds:ShowEnhancedBatchDialog()
             elseif selectedOperation == "disable_context" then
                 willAffect = bind.context == selectedTarget and bind.enabled
             end
-            
+
             if willAffect then
                 affectedCount = affectedCount + 1
                 table.insert(affectedNames, bind.name)
-                if affectedCount <= 5 then -- Show first 5 names
+                if affectedCount <= 5 then
                     if affectedCount == 1 then
                         previewText:SetText("Will affect: " .. PASTEL_YELLOW(bind.name))
                     else
@@ -2912,18 +2646,16 @@ function Binds:ShowEnhancedBatchDialog()
                 end
             end
         end
-        
+
         if affectedCount > 5 then
             previewText:SetText(previewText:GetText() .. " ... and " .. (affectedCount - 5) .. " more")
         elseif affectedCount == 0 then
             previewText:SetText("No keybindings will be affected")
         end
     end
-    
-    -- Update preview when operation or target changes
+
     batchDialog:SetScript("OnShow", UpdatePreview)
-    
-    -- Execute button
+
     local executeButton = CreateFrame("Button", nil, batchDialog, "UIPanelButtonTemplate")
     executeButton:SetWidth(120)
     executeButton:SetHeight(25)
@@ -2931,7 +2663,7 @@ function Binds:ShowEnhancedBatchDialog()
     executeButton:SetText("Execute")
     executeButton:SetScript("OnClick", function()
         local affectedCount = 0
-        
+
         if selectedOperation == "enable" then
             for bindId, bind in pairs(KOL.db.profile.binds.keybindings) do
                 if not bind.enabled then
@@ -2940,7 +2672,7 @@ function Binds:ShowEnhancedBatchDialog()
                 end
             end
             KOL:PrintTag(GREEN("Enabled ") .. affectedCount .. " keybindings")
-            
+
         elseif selectedOperation == "disable" then
             for bindId, bind in pairs(KOL.db.profile.binds.keybindings) do
                 if bind.enabled then
@@ -2949,7 +2681,7 @@ function Binds:ShowEnhancedBatchDialog()
                 end
             end
             KOL:PrintTag(GREEN("Disabled ") .. affectedCount .. " keybindings")
-            
+
         elseif selectedOperation == "enable_context" then
             for bindId, bind in pairs(KOL.db.profile.binds.keybindings) do
                 if bind.context == selectedTarget and not bind.enabled then
@@ -2958,7 +2690,7 @@ function Binds:ShowEnhancedBatchDialog()
                 end
             end
             KOL:PrintTag(GREEN("Enabled ") .. affectedCount .. " keybindings with context: " .. selectedTarget)
-            
+
         elseif selectedOperation == "disable_context" then
             for bindId, bind in pairs(KOL.db.profile.binds.keybindings) do
                 if bind.context == selectedTarget and bind.enabled then
@@ -2967,28 +2699,24 @@ function Binds:ShowEnhancedBatchDialog()
                 end
             end
             KOL:PrintTag(GREEN("Disabled ") .. affectedCount .. " keybindings with context: " .. selectedTarget)
-            
+
         elseif selectedOperation == "set_context_group" then
             for bindId, bind in pairs(KOL.db.profile.binds.keybindings) do
                 if bind.group == selectedTarget then
-                    bind.context = selectedTarget -- This would need a separate context selection
+                    bind.context = selectedTarget
                     affectedCount = affectedCount + 1
                 end
             end
             KOL:PrintTag(GREEN("Set context for ") .. affectedCount .. " keybindings in group: " .. selectedTarget)
-            
+
         else
-            -- Handle other operations (existing logic)
-            -- ... (copy existing batch operation logic)
         end
-        
-        -- Refresh config
+
         LibStub("AceConfigRegistry-3.0"):NotifyChange("KoalityOfLife")
         batchDialog:Hide()
         batchDialog = nil
     end)
-    
-    -- Cancel button
+
     local cancelButton = CreateFrame("Button", nil, batchDialog, "UIPanelButtonTemplate")
     cancelButton:SetWidth(120)
     cancelButton:SetHeight(25)
@@ -2998,13 +2726,8 @@ function Binds:ShowEnhancedBatchDialog()
         batchDialog:Hide()
         batchDialog = nil
     end)
-    
+
     batchDialog:Show()
 end
 
--- ============================================================================
--- Module Registration
--- ============================================================================
-
--- Store reference on KOL for access
 KOL.Binds = Binds

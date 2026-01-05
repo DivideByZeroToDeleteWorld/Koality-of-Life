@@ -1,60 +1,32 @@
--- ============================================================================
--- Batch Processing System
--- ============================================================================
--- Provides a smart batching system for queueing and processing actions
--- with configurable intervals and priorities.
---
--- Benefits:
---   - Fewer timers running (one per channel instead of many)
---   - Process multiple actions per tick
---   - Priority-based execution
---   - Dynamic interval adjustment
---   - Named actions for easy updates/removal
---
--- Usage:
---   KOL:BatchConfigure("channelName", { interval = 2.0, processMode = "all" })
---   KOL:BatchAdd("channelName", "actionName", function() ... end, priority)
---   KOL:BatchStart("channelName")
--- ============================================================================
-
--- Wait for KOL to be created, then get reference
 local KOL = KoalityOfLife
 
--- Create a simple table to hold batch system state (not an AceAddon module)
 local Batch = {
     channels = {}
 }
 
--- Store reference on KOL for access
 KOL.Batch = Batch
 
--- Generate unique action IDs
 local actionIDCounter = 0
 local function GenerateActionID()
     actionIDCounter = actionIDCounter + 1
     return "action_" .. actionIDCounter
 end
 
--- ============================================================================
--- Channel Management
--- ============================================================================
-
--- Create or get a batch channel
 function Batch:GetOrCreateChannel(channelName)
     if not self.channels[channelName] then
         self.channels[channelName] = {
             name = channelName,
-            queue = {},              -- All pending actions (table of {name, action, priority, id})
-            interval = 2.0,          -- How often this channel ticks (seconds)
-            elapsed = 0,             -- Time accumulator
-            isRunning = false,       -- Is this channel actively processing?
-            maxPerTick = nil,        -- nil = process ALL, or set a limit (e.g., 5)
-            processMode = "all",     -- "all", "priority", or "limit"
-            triggerMode = "interval", -- "interval" (timer), "binding" (keypress), "outofcombat" (on PLAYER_REGEN_ENABLED)
-            maxQueueSize = 50,       -- Maximum number of queued actions (prevent runaway growth)
-            frame = nil,             -- OnUpdate frame for this channel
-            keybinding = nil,        -- Keybinding string (e.g., "CTRL-SHIFT-M") for triggerMode = "binding"
-            bindingButton = nil,     -- Hidden button for keybinding trigger
+            queue = {},
+            interval = 2.0,
+            elapsed = 0,
+            isRunning = false,
+            maxPerTick = nil,
+            processMode = "all",
+            triggerMode = "interval",
+            maxQueueSize = 50,
+            frame = nil,
+            keybinding = nil,
+            bindingButton = nil,
         }
 
         KOL:DebugPrint("Batch: Channel created: " .. YELLOW(channelName), 1)
@@ -63,7 +35,6 @@ function Batch:GetOrCreateChannel(channelName)
     return self.channels[channelName]
 end
 
--- Configure a batch channel
 function KOL:BatchConfigure(channelName, config)
     local channel = Batch:GetOrCreateChannel(channelName)
 
@@ -98,7 +69,6 @@ function KOL:BatchConfigure(channelName, config)
         channel.triggerMode = config.triggerMode
         KOL:DebugPrint("Batch: [" .. channelName .. "] triggerMode set to: " .. config.triggerMode, 1)
 
-        -- If switching to binding mode, create/update keybinding
         if config.triggerMode == "binding" and config.keybinding then
             Batch:SetupKeybinding(channelName, config.keybinding)
         end
@@ -112,7 +82,6 @@ function KOL:BatchConfigure(channelName, config)
     return true
 end
 
--- Add an action to a batch channel
 function KOL:BatchAdd(channelName, actionName, action, priority)
     if not actionName or not action then
         KOL:PrintTag(RED("Error:") .. " BatchAdd requires actionName and action function")
@@ -121,7 +90,6 @@ function KOL:BatchAdd(channelName, actionName, action, priority)
 
     local channel = Batch:GetOrCreateChannel(channelName)
 
-    -- Check if action with this name already exists, remove it (prevents duplicates)
     local alreadyExists = false
     for i = #channel.queue, 1, -1 do
         if channel.queue[i].name == actionName then
@@ -131,22 +99,19 @@ function KOL:BatchAdd(channelName, actionName, action, priority)
         end
     end
 
-    -- Check queue size limit (only if not replacing existing)
     if not alreadyExists and #channel.queue >= channel.maxQueueSize then
         KOL:PrintTag(RED("Warning:") .. " Batch: [" .. channelName .. "] queue is full (" .. channel.maxQueueSize .. " items). Cannot add: " .. actionName)
         return false
     end
 
-    -- Create the action object
     local actionObj = {
         name = actionName,
         action = action,
-        priority = priority or 3,  -- Default to NORMAL (3)
+        priority = priority or 3,
         id = GenerateActionID(),
         addedTime = GetTime(),
     }
 
-    -- Add to queue
     table.insert(channel.queue, actionObj)
 
     KOL:DebugPrint("Batch: [" .. channelName .. "] added action: " .. YELLOW(actionName) .. " (priority " .. actionObj.priority .. ") - Queue: " .. #channel.queue .. "/" .. channel.maxQueueSize, 3)
@@ -154,7 +119,6 @@ function KOL:BatchAdd(channelName, actionName, action, priority)
     return true
 end
 
--- Remove a specific action from a channel
 function KOL:BatchRemove(channelName, actionName)
     local channel = Batch.channels[channelName]
     if not channel then
@@ -173,7 +137,6 @@ function KOL:BatchRemove(channelName, actionName)
     return false
 end
 
--- Clear all actions from a channel
 function KOL:BatchClear(channelName)
     local channel = Batch.channels[channelName]
     if not channel then
@@ -188,26 +151,22 @@ function KOL:BatchClear(channelName)
     return true
 end
 
--- Setup keybinding for a batch channel
 function Batch:SetupKeybinding(channelName, keybindingStr)
     local channel = self.channels[channelName]
     if not channel then
         return false
     end
 
-    -- Create hidden button if it doesn't exist
     if not channel.bindingButton then
         local buttonName = "KOL_BatchBinding_" .. channelName
         channel.bindingButton = CreateFrame("Button", buttonName, UIParent, "SecureActionButtonTemplate")
         channel.bindingButton:Hide()
         channel.bindingButton:SetScript("OnClick", function()
             KOL:DebugPrint("Batch: [" .. channelName .. "] keybinding triggered", 3)
-            -- Trigger one batch process cycle
             Batch:ProcessChannel(channel)
         end)
     end
 
-    -- Set the keybinding
     SetBindingClick(keybindingStr, channel.bindingButton:GetName())
     SaveBindings(GetCurrentBindingSet())
 
@@ -215,7 +174,6 @@ function Batch:SetupKeybinding(channelName, keybindingStr)
     return true
 end
 
--- Start a batch channel
 function KOL:BatchStart(channelName)
     local channel = Batch.channels[channelName]
     if not channel then
@@ -228,27 +186,21 @@ function KOL:BatchStart(channelName)
         return true
     end
 
-    -- Handle different trigger modes
     if channel.triggerMode == "binding" then
-        -- For binding mode, we don't auto-start, just wait for keybind press
         KOL:DebugPrint("Batch: [" .. YELLOW(channelName) .. "] waiting for keybinding trigger (" .. #channel.queue .. " actions queued)", 1)
         return true
 
     elseif channel.triggerMode == "outofcombat" then
-        -- For out of combat mode, register combat events
         if not Batch.outOfCombatRegistered then
-            -- Start channels when leaving combat
             KOL:RegisterEventCallback("PLAYER_REGEN_ENABLED", function()
                 Batch:ResumeOutOfCombatChannels()
             end, "Batch")
-            -- Pause channels when entering combat
             KOL:RegisterEventCallback("PLAYER_REGEN_DISABLED", function()
                 Batch:PauseOutOfCombatChannels()
             end, "Batch")
             Batch.outOfCombatRegistered = true
         end
 
-        -- If not in combat, start the timer immediately
         if not InCombatLockdown() then
             if not channel.frame then
                 channel.frame = CreateFrame("Frame")
@@ -262,13 +214,11 @@ function KOL:BatchStart(channelName)
             channel.elapsed = 0
             KOL:DebugPrint("Batch: [" .. channelName .. "] started (out of combat, " .. #channel.queue .. " actions queued)", 3)
         else
-            -- In combat, wait for combat to end
             KOL:DebugPrint("Batch: [" .. YELLOW(channelName) .. "] waiting for combat to end (" .. #channel.queue .. " actions queued)", 1)
         end
         return true
 
     else
-        -- Default: interval mode - use OnUpdate frame
         if not channel.frame then
             channel.frame = CreateFrame("Frame")
         end
@@ -285,7 +235,6 @@ function KOL:BatchStart(channelName)
     end
 end
 
--- Stop a batch channel
 function KOL:BatchStop(channelName)
     local channel = Batch.channels[channelName]
     if not channel then
@@ -308,13 +257,11 @@ function KOL:BatchStop(channelName)
     return true
 end
 
--- Resume all "outofcombat" mode channels when player exits combat
 function Batch:ResumeOutOfCombatChannels()
     for channelName, channel in pairs(self.channels) do
         if channel.triggerMode == "outofcombat" and #channel.queue > 0 and not channel.isRunning then
             KOL:DebugPrint("Batch: [" .. channelName .. "] resumed (left combat)", 3)
 
-            -- Start running this channel with OnUpdate
             if not channel.frame then
                 channel.frame = CreateFrame("Frame")
             end
@@ -329,13 +276,11 @@ function Batch:ResumeOutOfCombatChannels()
     end
 end
 
--- Pause all "outofcombat" mode channels when player enters combat
 function Batch:PauseOutOfCombatChannels()
     for channelName, channel in pairs(self.channels) do
         if channel.triggerMode == "outofcombat" and channel.isRunning then
             KOL:DebugPrint("Batch: [" .. channelName .. "] paused (entered combat)", 3)
 
-            -- Stop the OnUpdate frame
             if channel.frame then
                 channel.frame:SetScript("OnUpdate", nil)
             end
@@ -345,7 +290,6 @@ function Batch:PauseOutOfCombatChannels()
     end
 end
 
--- Get status of a batch channel
 function KOL:BatchStatus(channelName)
     local channel = Batch.channels[channelName]
     if not channel then
@@ -362,7 +306,6 @@ function KOL:BatchStatus(channelName)
     if #channel.queue > 0 then
         KOL:Print("  Queued Actions:")
 
-        -- Sort by priority for display
         local sortedQueue = {}
         for _, action in ipairs(channel.queue) do
             table.insert(sortedQueue, action)
@@ -377,7 +320,6 @@ function KOL:BatchStatus(channelName)
     end
 end
 
--- Process all queued actions immediately (flush)
 function KOL:BatchFlush(channelName)
     local channel = Batch.channels[channelName]
     if not channel then
@@ -390,25 +332,18 @@ function KOL:BatchFlush(channelName)
         return true
     end
 
-    -- Force process immediately
     Batch:ProcessChannelImmediate(channel)
 
     KOL:DebugPrint("Batch: [" .. channelName .. "] flushed", 3)
     return true
 end
 
--- ============================================================================
--- Processing Logic
--- ============================================================================
-
--- Process a channel based on its configuration
 function Batch:ProcessChannel(channel, elapsed)
     channel.elapsed = channel.elapsed + elapsed
 
     if channel.elapsed >= channel.interval then
         channel.elapsed = 0
 
-        -- If queue is empty, stop the channel
         if #channel.queue == 0 then
             channel.isRunning = false
             if channel.frame then
@@ -418,12 +353,10 @@ function Batch:ProcessChannel(channel, elapsed)
             return
         end
 
-        -- Process based on mode
         self:ProcessChannelImmediate(channel)
     end
 end
 
--- Process a channel immediately (used by both timer and flush)
 function Batch:ProcessChannelImmediate(channel)
     if #channel.queue == 0 then
         return
@@ -433,7 +366,6 @@ function Batch:ProcessChannelImmediate(channel)
     local maxToProcess = channel.maxPerTick or #channel.queue
 
     if channel.processMode == "all" then
-        -- Process ALL actions in the queue (queue persists)
         for i = 1, #channel.queue do
             local item = channel.queue[i]
             local success, err = pcall(item.action)
@@ -446,10 +378,9 @@ function Batch:ProcessChannelImmediate(channel)
         KOL:DebugPrint("Batch: [" .. channel.name .. "] processed " .. processCount .. " actions", 5)
 
     elseif channel.processMode == "priority" then
-        -- Sort by priority, then process all (or up to max)
         table.sort(channel.queue, function(a, b)
             if a.priority == b.priority then
-                return a.addedTime < b.addedTime  -- Earlier added = higher priority if same level
+                return a.addedTime < b.addedTime
             end
             return a.priority < b.priority
         end)
@@ -466,7 +397,6 @@ function Batch:ProcessChannelImmediate(channel)
         KOL:DebugPrint("Batch: [" .. channel.name .. "] processed " .. processCount .. " actions (priority mode)", 5)
 
     elseif channel.processMode == "limit" then
-        -- Process only up to maxPerTick, REMOVE from queue after processing
         for i = 1, math.min(maxToProcess, #channel.queue) do
             local item = table.remove(channel.queue, 1)
             local success, err = pcall(item.action)
@@ -480,12 +410,7 @@ function Batch:ProcessChannelImmediate(channel)
     end
 end
 
--- ============================================================================
--- Slash Commands
--- ============================================================================
-
 local function RegisterSlashCommands()
-    -- Register batch management commands
     KOL:RegisterSlashCommand("batch", function(...)
         local args = {...}
         local subCmd = args[1] and string.lower(args[1]) or ""
@@ -495,7 +420,6 @@ local function RegisterSlashCommands()
             if channelName then
                 KOL:BatchStatus(channelName)
             else
-                -- Show all channels
                 KOL:PrintTag("Batch Channels:")
                 local hasChannels = false
                 for name, channel in pairs(Batch.channels) do
@@ -509,7 +433,6 @@ local function RegisterSlashCommands()
                 end
             end
         elseif subCmd == "queue" then
-            -- Show all queued items across all channels
             KOL:PrintTag("Batch Queue Summary:")
             local totalQueued = 0
             local hasQueued = false
@@ -521,7 +444,6 @@ local function RegisterSlashCommands()
                     KOL:Print(" ")
                     KOL:Print(PASTEL_YELLOW(name) .. " (" .. #channel.queue .. "/" .. channel.maxQueueSize .. "):")
 
-                    -- Sort by priority
                     local sortedQueue = {}
                     for _, action in ipairs(channel.queue) do
                         table.insert(sortedQueue, action)
@@ -577,11 +499,6 @@ local function RegisterSlashCommands()
     end, "Batch system management commands")
 end
 
--- ============================================================================
--- Initialization
--- ============================================================================
-
--- Register slash commands immediately when file loads
 RegisterSlashCommands()
 
 KOL:DebugPrint("Batch: System loaded and ready", 1)

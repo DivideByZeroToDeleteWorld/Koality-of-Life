@@ -1,56 +1,36 @@
--- ============================================================================
 -- !Koality-of-Life: Main Systems
--- ============================================================================
--- This file contains all the main addon systems that depend on core.lua:
---   - Slash command registration system
---   - Event registration system
---   - Slash command handlers
---   - Debug functions
---   - Difficulty setting functions
---   - Event frame
--- ============================================================================
 
 local KOL = KoalityOfLife
 
--- Store registered slash commands
 KOL.slashCommands = {}
-
--- Store registered event callbacks
 KOL.eventCallbacks = {}
 
 -- ============================================================================
 -- Slash Command Registration System
 -- ============================================================================
 
--- Register a slash command that any module can use
--- Usage: KOL:RegisterSlashCommand("mycommand", functionToCall, "Description of command", "category")
--- Categories: nil/"module" (default), "test" (for test commands)
 function KOL:RegisterSlashCommand(command, func, description, category)
     if not command or not func then
         self:PrintTag(RED("Error:") .. " Invalid slash command registration", true)
         return false
     end
 
-    -- Normalize command to lowercase
     command = string.lower(command)
 
-    -- Check for duplicates
     if self.slashCommands[command] then
         self:DebugPrint("Slash command '" .. command .. "' is already registered. Overwriting.", 3)
     end
 
-    -- Register the command
     self.slashCommands[command] = {
         func = func,
         description = description or "No description available",
-        category = category or "module"  -- Default to "module" category
+        category = category or "module"
     }
 
     self:DebugPrint("System: Registered slash command: " .. YELLOW(command) .. " (category: " .. (category or "module") .. ")")
     return true
 end
 
--- Unregister a slash command
 function KOL:UnregisterSlashCommand(command)
     command = string.lower(command)
     if self.slashCommands[command] then
@@ -65,20 +45,16 @@ end
 -- Event Registration System
 -- ============================================================================
 
--- Register a callback for a WoW event that any module can use
--- Usage: KOL:RegisterEventCallback("PLAYER_ENTERING_WORLD", myFunction, "MyModule")
 function KOL:RegisterEventCallback(event, callback, moduleName)
     if not event or not callback then
         self:PrintTag(RED("Error:") .. " Invalid event callback registration", true)
         return false
     end
 
-    -- Initialize event callback list if needed
     if not self.eventCallbacks[event] then
         self.eventCallbacks[event] = {}
     end
 
-    -- Add callback to the event's list
     table.insert(self.eventCallbacks[event], {
         callback = callback,
         moduleName = moduleName or "Unknown"
@@ -86,7 +62,6 @@ function KOL:RegisterEventCallback(event, callback, moduleName)
 
     self:DebugPrint("Registered event callback: " .. YELLOW(event) .. " for " .. (moduleName or "Unknown"))
 
-    -- Register the event with our main frame if not already registered
     if self.eventFrame then
         self.eventFrame:RegisterEvent(event)
     end
@@ -94,7 +69,6 @@ function KOL:RegisterEventCallback(event, callback, moduleName)
     return true
 end
 
--- Unregister all callbacks for a specific module
 function KOL:UnregisterModuleEvents(moduleName)
     if not moduleName then return false end
 
@@ -115,7 +89,6 @@ function KOL:UnregisterModuleEvents(moduleName)
     return true
 end
 
--- Fire all registered callbacks for an event
 function KOL:FireEventCallbacks(event, ...)
     if not self.eventCallbacks[event] then
         return
@@ -134,49 +107,40 @@ end
 -- ============================================================================
 
 function KOL:OnEnable()
-    -- Initialize UI and config system
     if self.InitializeUI then
         self:InitializeUI()
     end
 
-    -- Register slash commands
     self:RegisterChatCommand("kol", "SlashCommand")
     self:RegisterChatCommand("koality", "SlashCommand")
-    self:RegisterChatCommand("kt", "TestSlashCommand")  -- Alias for test commands
-    self:RegisterChatCommand("kdc", function() self:ToggleDebugConsole() end)  -- Koality Debug Console
-    self:RegisterChatCommand("kcv", function() self:ToggleCharViewer() end)  -- Koality Character Viewer
-    self:RegisterChatCommand("kld", function() self:ToggleLimitDamage() end)  -- Koality Limit Damage
-    self:RegisterChatCommand("krs", function() self:ToggleRacial() end)  -- Koality Racial Swap
+    self:RegisterChatCommand("kt", "TestSlashCommand")
+    self:RegisterChatCommand("kdc", function() self:ToggleDebugConsole() end)
+    self:RegisterChatCommand("kcv", function() self:ToggleCharViewer() end)
+    self:RegisterChatCommand("kld", function() self:ToggleLimitDamage() end)
+    self:RegisterChatCommand("krs", function() self:ToggleRacial() end)
     self:RegisterChatCommand("kc", function(args)
         args = strtrim(args or ""):lower()
         if args == "showcase" then
-            -- Show UI showcase demo frame
             if KOL.UIFactory and KOL.UIFactory.ShowUIShowcase then
                 KOL.UIFactory:ShowUIShowcase()
             else
                 self:PrintTag("UIFactory not loaded yet!")
             end
         elseif args == "ld" or args == "limitdamage" then
-            -- Toggle Limit Damage
             self:ToggleLimitDamage()
         else
-            -- Open config panel
             self:OpenConfig()
         end
-    end)  -- Koality Config (with subcommands)
+    end)
     self:RegisterChatCommand("kcpt", function()
-        -- Open config and navigate to Progress Tracker
         self:OpenConfig()
-        -- Select the tracker tab
         LibStub("AceConfigDialog-3.0"):SelectGroup("KoalityOfLife", "tracker")
-    end)  -- Koality Config Progress Tracker
+    end)
     self:RegisterChatCommand("kmu", function()
         if KoalityOfLife.MacroUpdater then
             KoalityOfLife.MacroUpdater:ShowUI()
         end
-    end)  -- Koality Macro Updater
-
-    -- Register standalone difficulty commands
+    end)
     self:RegisterChatCommand("r25h", function() self:SetRaidDifficulty(4, "25 Man Heroic") end)
     self:RegisterChatCommand("r25n", function() self:SetRaidDifficulty(2, "25 Man Normal") end)
     self:RegisterChatCommand("r25", function() self:SetRaidDifficulty(2, "25 Man Normal") end)
@@ -189,7 +153,6 @@ function KOL:OnEnable()
     self:RegisterChatCommand("d5n", function() self:SetDungeonDifficulty(1, "5 Player Normal") end)
     self:RegisterChatCommand("d5", function() self:SetDungeonDifficulty(1, "5 Player Normal") end)
 
-    -- Reload UI shortcuts (force override any existing /rl command)
     SLASH_KOLRELOAD1 = "/rl"
     SLASH_KOLRELOAD2 = "/reloadui"
     SlashCmdList["KOLRELOAD"] = function() ReloadUI() end
@@ -226,7 +189,6 @@ function KOL:OnEnable()
         self:ShowPrints(args)
     end)
 
-    -- Watch Frame Debug/Dump command
     self:RegisterChatCommand("kwfd", function()
         if not self.Tracker then
             self:PrintTag("Tracker module not loaded")
@@ -257,7 +219,6 @@ function KOL:OnEnable()
         self:PrintTag("Instance Name: " .. (instanceData.name or "Unknown"))
         self:PrintTag(" ")
 
-        -- Current dimensions
         local width = frame:GetWidth()
         local height = frame:GetHeight()
         self:PrintTag("CURRENT DIMENSIONS:")
@@ -265,13 +226,11 @@ function KOL:OnEnable()
         self:PrintTag("  Height: " .. math.floor(height))
         self:PrintTag(" ")
 
-        -- Default dimensions from instance data
         self:PrintTag("DEFAULT DIMENSIONS (from instance data):")
         self:PrintTag("  frameWidth: " .. (instanceData.frameWidth or "not set"))
         self:PrintTag("  frameHeight: " .. (instanceData.frameHeight or "not set"))
         self:PrintTag(" ")
 
-        -- Per-instance settings
         self:PrintTag("PER-INSTANCE SETTINGS:")
         local config = self.db.profile.tracker
         if config.instances and config.instances[currentInstanceId] then
@@ -298,7 +257,6 @@ function KOL:OnEnable()
         self:PrintTag("  frameHeight: " .. (config.frameHeight or "not set"))
         self:PrintTag(" ")
 
-        -- Title calculation
         local titleText = frame.titleText and frame.titleText.text
         if titleText then
             local titleString = titleText:GetText() or ""
@@ -311,7 +269,6 @@ function KOL:OnEnable()
         end
         self:PrintTag(" ")
 
-        -- Frame position
         local point, relativeTo, relativePoint, xOfs, yOfs = frame:GetPoint()
         self:PrintTag("POSITION:")
         self:PrintTag("  Point: " .. (point or "unknown"))
@@ -320,7 +277,6 @@ function KOL:OnEnable()
         self:PrintTag("========================================")
     end)
 
-    -- Boss Recorder Commands
     self:RegisterChatCommand("kbre", function()
         if KoalityOfLife.BossRecorder then
             KoalityOfLife.BossRecorder:ExportAllSessions()
@@ -328,7 +284,7 @@ function KOL:OnEnable()
             self:PrintTag("|cFF00FF00Boss Recorder:|r Module not loaded")
         end
     end)
-    
+
     self:RegisterChatCommand("kbrl", function()
         if KoalityOfLife.BossRecorder then
             KoalityOfLife.BossRecorder:ListSessions()
@@ -336,7 +292,7 @@ function KOL:OnEnable()
             self:PrintTag("|cFF00FF00Boss Recorder:|r Module not loaded")
         end
     end)
-    
+
     self:RegisterChatCommand("kbrs", function()
         if KoalityOfLife.BossRecorder then
             KoalityOfLife.BossRecorder:ShowStatus()
@@ -344,7 +300,7 @@ function KOL:OnEnable()
             self:PrintTag("|cFF00FF00Boss Recorder:|r Module not loaded")
         end
     end)
-    
+
     self:RegisterChatCommand("kbr", function(input)
         if KoalityOfLife.BossRecorder then
             KoalityOfLife.BossRecorder:HandleBossRecordCommand(input or "")
@@ -352,8 +308,7 @@ function KOL:OnEnable()
             self:PrintTag("|cFF00FF00Boss Recorder:|r Module not loaded")
         end
     end)
-    
-    -- Full bossrecord commands (for completeness)
+
     self:RegisterChatCommand("bossrecord", function(input)
         if KoalityOfLife.BossRecorder then
             KoalityOfLife.BossRecorder:HandleBossRecordCommand(input or "")
@@ -370,7 +325,6 @@ function KOL:OnEnable()
         end
     end)
 
-    -- Event Monitor Commands
     self:RegisterChatCommand("kwe", function(input)
         input = string.lower(string.trim(input or ""))
         if input == "start" then
@@ -394,7 +348,6 @@ function KOL:OnEnable()
 end
 
 function KOL:OnDisable()
-    -- Cleanup if needed
 end
 
 -- ============================================================================
@@ -410,14 +363,10 @@ function KOL:SlashCommand(input)
     end
 
     local cmd = args[1] and string.lower(args[1]) or ""
-
-    -- Remove the command from args, leaving only parameters
     table.remove(args, 1)
 
-    -- Check if it's a registered command
     if cmd ~= "" and self.slashCommands[cmd] then
         local commandData = self.slashCommands[cmd]
-        -- Call the registered function with the remaining arguments, with error handling
         local success, errorMsg = pcall(function()
             commandData.func(unpack(args))
         end)
@@ -427,7 +376,6 @@ function KOL:SlashCommand(input)
         return
     end
 
-    -- Built-in commands (these don't need registration)
     if not cmd or cmd == "" or cmd == "help" then
         self:PrintHelp()
     elseif cmd == "config" or cmd == "options" then
@@ -437,7 +385,6 @@ function KOL:SlashCommand(input)
     elseif cmd == "debug" then
         self:ToggleDebug(args[1], args[2])
     elseif cmd == "themes" then
-        -- Simple themes debug command
         self:PrintTag("=== THEMES DEBUG ===")
         
         if KOL.Themes then
@@ -474,9 +421,8 @@ function KOL:SlashCommand(input)
             self:ShowCharViewer(searchTerm, results)
         end
     elseif cmd == "theme" then
-        -- Handle theme commands
         local action = args[1] and string.lower(args[1]) or "info"
-        
+
         if not KOL.Themes then
             self:PrintTag("Theme system not available")
             return
@@ -541,7 +487,6 @@ function KOL:SlashCommand(input)
             self:PrintTag("  export - Export current theme")
         end
     elseif cmd == "devmode" or cmd == "dev" then
-        -- Toggle developer mode (shows hidden config tabs)
         local action = args[1] and string.lower(args[1]) or nil
 
         if action == "on" then
@@ -562,7 +507,6 @@ function KOL:SlashCommand(input)
             self:PrintTag("Hidden config tabs are now hidden. Reload UI to apply changes.")
         end
     elseif cmd == "testimg" then
-        -- Test image display for debugging texture paths
         local testFrame = _G["KOL_TestImageFrame"]
         if testFrame then
             testFrame:Show()
@@ -579,7 +523,6 @@ function KOL:SlashCommand(input)
         testFrame:SetScript("OnDragStart", testFrame.StartMoving)
         testFrame:SetScript("OnDragStop", testFrame.StopMovingOrSizing)
 
-        -- Background and Border (WotLK style)
         testFrame:SetBackdrop({
             bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
             edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -589,12 +532,10 @@ function KOL:SlashCommand(input)
         testFrame:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
         testFrame:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
 
-        -- Title
         local title = testFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         title:SetPoint("TOP", 0, -15)
         title:SetText("Image Test")
 
-        -- Image 1: Known working image (splash)
         local img1Path = "Interface\\AddOns\\!Koality-of-Life\\media\\images\\kol-splash"
         local img1 = testFrame:CreateTexture(nil, "ARTWORK")
         img1:SetSize(48, 48)
@@ -606,7 +547,6 @@ function KOL:SlashCommand(input)
         label1:SetPoint("TOP", img1, "BOTTOM", 0, -2)
         label1:SetText("|cFF00FF00kol-splash|r")
 
-        -- Image 2: stevefurwin_normal
         local img2Path = "Interface\\AddOns\\!Koality-of-Life\\media\\images\\stevefurwin_normal"
         local img2 = testFrame:CreateTexture(nil, "ARTWORK")
         img2:SetSize(48, 48)
@@ -617,7 +557,6 @@ function KOL:SlashCommand(input)
         label2:SetPoint("TOP", img2, "BOTTOM", 0, -2)
         label2:SetText("|cFFFFFF00normal|r")
 
-        -- Image 3: stevefurwin_buildmanager
         local img3Path = "Interface\\AddOns\\!Koality-of-Life\\media\\images\\stevefurwin_buildmanager"
         local img3 = testFrame:CreateTexture(nil, "ARTWORK")
         img3:SetSize(48, 48)
@@ -628,14 +567,12 @@ function KOL:SlashCommand(input)
         label3:SetPoint("TOP", img3, "BOTTOM", 0, -2)
         label3:SetText("|cFFFFFF00buildmanager|r")
 
-        -- Close button
         local closeBtn = CreateFrame("Button", nil, testFrame, "UIPanelCloseButton")
         closeBtn:SetPoint("TOPRIGHT", -2, -2)
         closeBtn:SetScript("OnClick", function() testFrame:Hide() end)
 
         self:PrintTag("Test image frame opened - showing 3 images")
     elseif cmd == "cmds" or cmd == "commands" then
-        -- Debug: List all registered slash commands
         self:PrintTag("=== REGISTERED COMMANDS ===")
         local count = 0
         for cmdName, cmdData in pairs(self.slashCommands) do
@@ -650,7 +587,6 @@ function KOL:SlashCommand(input)
     end
 end
 
--- Test slash command handler (/kt)
 function KOL:TestSlashCommand(input)
     input = string.trim(input or "")
     local args = {}
@@ -660,21 +596,14 @@ function KOL:TestSlashCommand(input)
     end
 
     local cmd = args[1] and string.lower(args[1]) or ""
-
-    -- Remove the command from args, leaving only parameters
     table.remove(args, 1)
 
-    -- Check if it's a registered TEST command
     if cmd ~= "" and self.slashCommands[cmd] and self.slashCommands[cmd].category == "test" then
         local commandData = self.slashCommands[cmd]
-        -- Call the registered function with the remaining arguments
         commandData.func(unpack(args))
         return
     end
 
-
-
-    -- Show available test commands
     if not cmd or cmd == "" or cmd == "help" then
         self:PrintTag(PASTEL_PINK("Test Commands:"))
 
@@ -757,13 +686,7 @@ function KOL:PrintHelp()
 end
 
 function KOL:ToggleDebug(arg1, arg2)
-    -- /kol debug - toggle on/off
-    -- /kol debug on - turn on
-    -- /kol debug off - turn off
-    -- /kol debug level 3 or /kol debug l 3 - set level
-
     if not arg1 then
-        -- Simple toggle
         self.db.profile.debug = not self.db.profile.debug
         local status = self.db.profile.debug and GREEN("enabled") or RED("disabled")
         local level = self.db.profile.debugLevel or 1
@@ -813,12 +736,7 @@ function KOL:ToggleDebug(arg1, arg2)
 end
 
 function KOL:ShowPrints(arg1)
-    -- /ksp - Toggle print visibility
-    -- /ksp 0 - Turn off (default)
-    -- /ksp 1 - Turn on
-
     if not arg1 then
-        -- Simple toggle
         self.db.profile.showPrints = not self.db.profile.showPrints
         local status = self.db.profile.showPrints and GREEN("enabled") or RED("disabled")
         self:PrintTag("Print visibility " .. status, true)
@@ -842,21 +760,16 @@ function KOL:ShowPrints(arg1)
 end
 
 function KOL:OpenConfig()
-    -- Open the config dialog (handled by ui.lua)
     LibStub("AceConfigDialog-3.0"):Open("KoalityOfLife")
 
-    -- Narrow the tree panel width for Synastria sub-tab (default is 175, we want ~120)
     C_Timer.After(0.1, function()
         local ACD = LibStub("AceConfigDialog-3.0")
         local frame = ACD.OpenFrames["KoalityOfLife"]
         if frame then
-            -- Find tree groups in the frame hierarchy and narrow them
             local function NarrowTreeGroups(widget)
                 if widget.SetTreeWidth then
-                    -- This is a TreeGroup widget - narrow it
-                    widget:SetTreeWidth(120, false)  -- 120px, not resizable
+                    widget:SetTreeWidth(120, false)
                 end
-                -- Recurse into children
                 if widget.children then
                     for _, child in ipairs(widget.children) do
                         NarrowTreeGroups(child)
@@ -867,16 +780,12 @@ function KOL:OpenConfig()
         end
     end)
 
-    -- Start auto-refresh timer for performance stats (updates every 2 seconds)
     if not KOL.statsRefreshTimer then
         KOL.statsRefreshTimer = C_Timer.NewTicker(2, function()
-            -- Check if config dialog is still open
             local ACD = LibStub("AceConfigDialog-3.0")
             if ACD.OpenFrames["KoalityOfLife"] then
-                -- Notify config registry to refresh (updates dynamic stats)
                 LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
             else
-                -- Config closed, cancel timer
                 if KOL.statsRefreshTimer then
                     KOL.statsRefreshTimer:Cancel()
                     KOL.statsRefreshTimer = nil
@@ -1005,10 +914,8 @@ end
 -- ============================================================================
 -- Difficulty Setting Functions
 -- ============================================================================
--- Note: DebugPrint is now in core.lua so it's available early to all modules
 
 function KOL:SetRaidDifficulty(difficulty, diffName)
-    -- Check if we're in a group/raid and if we have permission
     if IsInGroup() or IsInRaid() then
         if not IsRaidLeader() and not IsRaidOfficer() then
             self:PrintTag(RED("Error:") .. " You must be raid leader or assistant to change raid difficulty")
@@ -1016,14 +923,12 @@ function KOL:SetRaidDifficulty(difficulty, diffName)
         end
     end
 
-    -- Set the difficulty
     SetRaidDifficulty(difficulty)
     self:PrintTag("Raid difficulty set to: " .. YELLOW(diffName))
     self:DebugPrint("SetRaidDifficulty(" .. difficulty .. ") called")
 end
 
 function KOL:SetDungeonDifficulty(difficulty, diffName)
-    -- Check if we're in a group and if we have permission
     if IsInGroup() then
         if not IsPartyLeader() then
             self:PrintTag(RED("Error:") .. " You must be party leader to change dungeon difficulty")
@@ -1031,7 +936,6 @@ function KOL:SetDungeonDifficulty(difficulty, diffName)
         end
     end
 
-    -- Set the difficulty
     SetDungeonDifficulty(difficulty)
     self:PrintTag("Dungeon difficulty set to: " .. YELLOW(diffName))
     self:DebugPrint("SetDungeonDifficulty(" .. difficulty .. ") called")
@@ -1042,23 +946,17 @@ end
 -- ============================================================================
 
 function KOL:ToggleLimitDamage()
-    -- Toggle the saved setting
     self.db.profile.limitDamage = not self.db.profile.limitDamage
     local isEnabled = self.db.profile.limitDamage
 
-    -- Block the server's response message (we print our own formatted version)
     self:BlockNextChatMessage("^Changed Misc Options: Limit damage")
 
-    -- Call the Chromie server function
     if ChangePerkOption then
         ChangePerkOption("Misc Options", "Limit damage", isEnabled, true)
     end
 
-    -- Print formatted status message
-    -- Output: [Koality-of-Life] Changed [Limit Damage] to [YES/NO]
     print(self.Colors:FormatSettingChange("Limit Damage", isEnabled))
 
-    -- Refresh config dialog if open
     LibStub("AceConfigRegistry-3.0"):NotifyChange("KoalityOfLife")
 end
 
@@ -1066,7 +964,6 @@ end
 -- Tweaks: Racial Swap
 -- ============================================================================
 
--- Valid race/class combinations for WoW 3.3.5a (Chromie server)
 KOL.RacialData = {
     validCombos = {
         ["WARRIOR"] = {"Human", "Dwarf", "Night Elf", "Gnome", "Draenei", "Orc", "Undead", "Tauren", "Troll"},
@@ -1080,7 +977,6 @@ KOL.RacialData = {
         ["WARLOCK"] = {"Human", "Gnome", "Orc", "Undead", "Blood Elf"},
         ["DRUID"] = {"Night Elf", "Tauren"},
     },
-    -- Short display names for compact UI
     shortNames = {
         ["Human"] = "Human",
         ["Dwarf"] = "Dwarf",
@@ -1095,23 +991,19 @@ KOL.RacialData = {
     },
 }
 
--- Get valid racials for the player's class
 function KOL:GetValidRacials()
     local _, class = UnitClass("player")
     return self.RacialData.validCombos[class] or {}
 end
 
--- Get short name for a racial
 function KOL:GetRacialShortName(race)
     return self.RacialData.shortNames[race] or race
 end
 
--- Get the current racial (from saved vars or default)
 function KOL:GetCurrentRacial()
     return self.db.profile.currentRacial or self.db.profile.racialPrimary or "Unknown"
 end
 
--- Initialize racial defaults for player's class if not set
 function KOL:InitializeRacialDefaults()
     local validRaces = self:GetValidRacials()
     if #validRaces >= 2 then
@@ -1131,11 +1023,9 @@ function KOL:InitializeRacialDefaults()
     end
 end
 
--- Set a specific racial
 function KOL:SetRacial(race, silent)
     if not race then return end
 
-    -- Validate the racial is valid for this class
     local validRaces = self:GetValidRacials()
     local isValid = false
     for _, validRace in ipairs(validRaces) do
@@ -1150,36 +1040,28 @@ function KOL:SetRacial(race, silent)
         return
     end
 
-    -- Update saved setting
     self.db.profile.currentRacial = race
 
-    -- Block the server's response message
     self:BlockNextChatMessage("^Changed Extra Racial Skill:")
 
-    -- Call the Chromie server function
     if ChangePerkOption then
         ChangePerkOption("Extra Racial Skill", race, true, silent or false)
     end
 
-    -- Print formatted status message (unless silent)
     if not silent then
         print(self.Colors:FormatSettingChange("Racial", race))
     end
 
-    -- Refresh config dialog if open
     LibStub("AceConfigRegistry-3.0"):NotifyChange("KoalityOfLife")
 end
 
--- Toggle between primary and secondary racials
 function KOL:ToggleRacial()
-    -- Initialize defaults if needed
     self:InitializeRacialDefaults()
 
     local primary = self.db.profile.racialPrimary
     local secondary = self.db.profile.racialSecondary
     local current = self:GetCurrentRacial()
 
-    -- Toggle to the other racial
     if current == primary then
         self:SetRacial(secondary)
     else
@@ -1191,9 +1073,7 @@ end
 -- Event Frame
 -- ============================================================================
 
--- Create main event handling frame
 KOL.eventFrame = CreateFrame("Frame")
 KOL.eventFrame:SetScript("OnEvent", function(self, event, ...)
-    -- Fire all registered callbacks for this event
     KOL:FireEventCallbacks(event, ...)
 end)

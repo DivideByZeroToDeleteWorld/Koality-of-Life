@@ -1,137 +1,113 @@
--- ============================================================================
 -- !Koality-of-Life: Core Essentials
--- ============================================================================
--- This file contains ONLY the absolute bare minimum needed for everything else:
---   - KOL addon object creation
---   - Database initialization
---   - Color functions (used everywhere)
---   - Mission-critical print functions (PrintTag, DebugPrint)
---
--- IMPORTANT: All functions here are available immediately to ALL modules
--- because core.lua loads FIRST in the .toc file.
---
--- Everything else (slash commands, events, etc.) is in main.lua
--- ============================================================================
+-- Loads FIRST - provides KOL, DB, PrintTag, DebugPrint
+-- Everything else (slash commands, events) is in main.lua
 
 local addonName = "!Koality-of-Life"
+local version = KOL_VERSION or "Unknown"
 
--- Get version from TOC file
-local version = GetAddOnMetadata(addonName, "Version") or "Unknown"
-
--- Create main addon using AceAddon-3.0
 KoalityOfLife = LibStub("AceAddon-3.0"):NewAddon("KoalityOfLife", "AceConsole-3.0", "AceEvent-3.0")
 local KOL = KoalityOfLife
 
--- Store version for other modules to access
 KOL.version = version
 KOL.addonName = addonName
 
 -- ============================================================================
--- Emergency Error Handler - Print ALL Lua errors to chat
+-- Error Handler - Captures ALL Lua errors for the Errors viewer
 -- ============================================================================
--- This allows seeing errors even when BugSack/other error frames are blocked
+
 local originalErrorHandler = geterrorhandler()
-local errorPrintEnabled = true  -- Set to false to disable chat error printing
+local errorPrintEnabled = true
 
 seterrorhandler(function(err)
-    -- Always print KoL errors to chat for debugging
+    if KOL.Errors and KOL.Errors.AddError then
+        KOL.Errors:AddError(err)
+    end
+
     if errorPrintEnabled and err then
         local errStr = tostring(err)
-        -- Only print KoL-related errors (or all if you want)
         if string.find(errStr, "Koality") or string.find(errStr, "KOL") or string.find(errStr, "!Koality") then
             print("|cFFFF0000[KOL ERROR]|r " .. errStr)
         end
     end
-    -- Call original handler (BugSack etc)
     return originalErrorHandler(err)
 end)
 
--- Function to toggle error printing
 function KOL:ToggleErrorPrinting(enabled)
     errorPrintEnabled = enabled
     print("|cFFFFCC00[KoL]|r Error printing to chat: " .. (enabled and "|cFF00FF00ON|r" or "|cFFFF0000OFF|r"))
 end
 
--- Default database structure
+-- ============================================================================
+-- Default Database Structure
+-- ============================================================================
+
 local defaults = {
     profile = {
         enabled = true,
         debug = false,
-        debugLevel = 1,  -- 1 = minimal, 5 = maximum verbosity
-        debugFont = "JetBrains Mono",  -- Default monospace font for debug console
+        debugLevel = 1,
+        debugFont = "JetBrains Mono",
         debugFontOutline = "THICKOUTLINE",
-        debugMaxLines = 1000,  -- Maximum lines to keep in debug console (default: 1000, max: 10000)
-        watchDeathsLevel = 0,  -- 0 = disabled, 1 = bosses only, 2 = elites+bosses, 3 = all mobs
-        showPrints = false,  -- Controls PrintTag visibility (separate from debug)
-        showSplash = true,  -- Show splash screen on login
-        limitDamage = false,  -- Tweaks: Limit Damage perk option (Chromie server)
+        debugMaxLines = 1000,
+        watchDeathsLevel = 0,
+        showPrints = false,
+        showSplash = true,
+        limitDamage = false,
 
-        -- Racial Swap: Toggle between two saved racials (Chromie server)
-        racialPrimary = nil,    -- Primary racial (set per class on first use)
-        racialSecondary = nil,  -- Secondary racial (set per class on first use)
-        currentRacial = nil,    -- Currently active racial
+        racialPrimary = nil,
+        racialSecondary = nil,
+        currentRacial = nil,
 
-        -- Command Blocks: Reusable code snippets that return values
         commandBlocks = {},
 
-        -- Macro Updater: Auto-update macros out of combat
         macroUpdater = {
-            macros = {},  -- { ["MacroName"] = { enabled = bool, commandBlock = "name", lastUpdated = time } }
+            macros = {},
         },
-        -- Binds System: Configurable keybinding management
+
         binds = {
             enabled = true,
             showInCombat = false,
             groups = {
                 configs = {name = "Configs", color = "STANDARD_GRAY", isSystem = true},
                 general = {name = "General", color = "PASTEL_YELLOW", isSystem = true},
-                -- User groups added dynamically
             },
             keybindings = {},
             profiles = {
                 ["default"] = {
                     name = "Default Profile",
-                    groups = {}, -- Group states per profile
-                    keybindings = {}, -- Bind overrides per profile
+                    groups = {},
+                    keybindings = {},
                 }
             },
             settings = {
                 rememberInputs = true,
-                instantProfileSwitch = false, -- Requires reload
+                instantProfileSwitch = false,
                 showNotifications = true,
             }
         },
 
-        -- Tracker: Progress tracking for dungeons/raids
         tracker = {
-            -- Font settings (defaults to Source Code Pro Bold for proper glyph support)
             baseFont = "Source Code Pro Bold",
             baseFontSize = 12,
             fontScale = 1.0,
-            -- Filter settings
             dungeonFilterExpansion = "",
             dungeonFilterDifficulty = "all",
             selectedDungeonInstance = "",
             raidFilterExpansion = "",
             raidFilterDifficulty = "all",
             selectedRaidInstance = "",
-            -- Auto-show watch frames when entering zones (default: ON)
             autoShow = true,
         },
 
-        -- Themes: UI theme management
         themes = {
             active = "Furwin",
-            themes = {},  -- Registered themes stored here
+            themes = {},
         },
-
     },
     global = {
-        -- Build Manager: Perk/talent build management (shared across all characters)
         buildManager = {
-            -- Misc Perks config: perks set to false will be DISABLED, everything else enabled
-            miscPerksDisabled = {},  -- { ["Perk Name"] = true } means this perk will be disabled
-            miscSubOptionsDisabled = {},  -- { ["Category:Option"] = true } means this sub-option disabled
+            miscPerksDisabled = {},
+            miscSubOptionsDisabled = {},
         },
     }
 }
@@ -145,13 +121,10 @@ function KOL:Print(msg)
 end
 
 function KOL:ColorPrint(msg)
-    -- Just pass through - colors are pre-formatted in the string
     DEFAULT_CHAT_FRAME:AddMessage(tostring(msg))
 end
 
 function KOL:PrintTag(msg, force)
-    -- Only print if showPrints is enabled (suppresses chat spam when turned off)
-    -- force = true bypasses this check for critical messages
     if not force and self.db and self.db.profile and not self.db.profile.showPrints then
         return
     end
@@ -160,17 +133,10 @@ function KOL:PrintTag(msg, force)
     DEFAULT_CHAT_FRAME:AddMessage("[" .. rainbowTag .. "] " .. tostring(msg))
 end
 
--- Debug print function with levels
--- Level 0: CRITICAL - Always prints to BOTH chat AND debug console, bypassing all filters (for critical diagnostic info)
--- Level 1: Basic debug (default)
--- Level 2: Unused (reserved)
--- Level 3: Moderate detail (skip repetitive/aggressive logs)
--- Level 4: Unused (reserved)
--- Level 5: Maximum verbosity (everything)
+-- Debug levels: 0=CRITICAL (always), 1=basic, 3=moderate, 5=verbose
 function KOL:DebugPrint(msg, level)
-    level = level or 1  -- Default to level 1 if not specified
+    level = level or 1
 
-    -- Level 0: CRITICAL - Always print to chat, bypass all debug settings
     if level == 0 then
         self:PrintTag("|cFFFF0000[DEBUG][CRITICAL]|r " .. tostring(msg))
         return
@@ -179,17 +145,16 @@ function KOL:DebugPrint(msg, level)
     if self.db and self.db.profile and self.db.profile.debug then
         local currentLevel = self.db.profile.debugLevel or 1
 
-        -- Only print if message level is within current debug level
         if level <= currentLevel then
             local levelColor = ""
             if level == 1 then
-                levelColor = "|cFFFF6600"  -- Orange
+                levelColor = "|cFFFF6600"
             elseif level == 3 then
-                levelColor = "|cFFFFAA00"  -- Yellow-orange
+                levelColor = "|cFFFFAA00"
             elseif level == 5 then
-                levelColor = "|cFFFFFF00"  -- Yellow
+                levelColor = "|cFFFFFF00"
             else
-                levelColor = "|cFFFF6600"  -- Default orange
+                levelColor = "|cFFFF6600"
             end
 
             self:PrintTag("|cFFFF6600[DEBUG]|r" .. levelColor .. "[" .. level .. "]|r " .. tostring(msg))
@@ -200,14 +165,10 @@ end
 -- ============================================================================
 -- Global Color Functions
 -- ============================================================================
--- Color functions are now defined in modules/colors.lua
--- This provides user-customizable colors and a unified color system
 
--- ColorOutput function - handles unlimited arguments and outputs colored text
 function ColorOutput(...)
     local output = ""
 
-    -- Concatenate all arguments
     for i = 1, select("#", ...) do
         local arg = select(i, ...)
         if arg ~= nil then
@@ -215,16 +176,13 @@ function ColorOutput(...)
         end
     end
 
-    -- Output through KOL:Print to ensure proper color rendering
     if KoalityOfLife and KoalityOfLife.Print then
         KoalityOfLife:Print(output)
     else
-        -- Fallback if addon isn't loaded yet
         DEFAULT_CHAT_FRAME:AddMessage(output)
     end
 end
 
--- Create a shorter alias for convenience
 CO = ColorOutput
 
 -- ============================================================================
@@ -232,12 +190,10 @@ CO = ColorOutput
 -- ============================================================================
 
 function KOL:OnInitialize()
-    -- Initialize database with AceDB-3.0
     self.db = LibStub("AceDB-3.0"):New("KoalityOfLifeDB", defaults, true)
 
     self:DebugPrint("Core: Database initialized", 2)
 
-    -- Initialize themes module after database is ready
     if self.Themes and self.Themes.Initialize then
         self:DebugPrint("Core: Calling Themes:Initialize()", 2)
         self.Themes:Initialize()
@@ -245,11 +201,8 @@ function KOL:OnInitialize()
         self:DebugPrint("Core: Themes module not available", 1)
     end
 
-    -- Initialize objective tracking system
     if self.InitializeObjectives then
         self:InitializeObjectives()
         self:DebugPrint("Core: Objective tracking initialized", 2)
     end
 end
-
--- Note: OnEnable, OnDisable, and other lifecycle functions are in main.lua

@@ -1,44 +1,31 @@
--- !Koality-of-Life: Data Module
--- Handles game data queries and lookups
-
 local addonName = "!Koality-of-Life"
 local KOL = KoalityOfLife
 
--- ============================================================================
--- Zone and Instance Information
--- ============================================================================
-
--- GetZoneDetails - Comprehensive zone and instance information
--- Returns a table with zone details including type and difficulty
 function KOL:GetZoneDetails()
     local name, instanceType, difficulty, difficultyName, maxPlayers, dynamicDifficulty, isDynamic = GetInstanceInfo()
-    
-    -- Get subzone and zone text for better location detail
+
     local subzone = GetSubZoneText() or ""
     local zone = GetZoneText() or ""
-    
-    -- Build display name with format: "Subzone [Zone]" or just "Zone"
+
     local displayName = name
     if instanceType == "none" then
-        -- In open world, use subzone and zone
         if subzone ~= "" and subzone ~= zone then
             displayName = subzone .. " [" .. zone .. "]"
         else
             displayName = zone
         end
     else
-        -- In instances, optionally add zone context
         if zone ~= "" and zone ~= name then
             displayName = name .. " [" .. zone .. "]"
         end
     end
-    
+
     local details = {
-        name = displayName,              -- Pretty formatted name
-        rawName = name,                  -- Original GetInstanceInfo name
-        subzone = subzone,               -- Subzone text (e.g., "Dalaran")
-        zone = zone,                     -- Zone text (e.g., "Northrend")
-        instanceType = instanceType,     -- "none", "party", "raid", "arena", "pvp"
+        name = displayName,
+        rawName = name,
+        subzone = subzone,
+        zone = zone,
+        instanceType = instanceType,
         difficulty = difficulty,
         difficultyName = difficultyName,
         maxPlayers = maxPlayers,
@@ -46,30 +33,26 @@ function KOL:GetZoneDetails()
         isDungeon = false,
         isRaid = false,
         isHeroic = false,
-        raidSize = nil,                  -- 10 or 25 for raids
-        prettyDifficulty = "Normal"      -- Human-readable difficulty
+        raidSize = nil,
+        prettyDifficulty = "Normal"
     }
-    
-    -- Determine if we're in an instance
+
     if instanceType ~= "none" and instanceType ~= "pvp" and instanceType ~= "arena" then
         details.isInstance = true
-        
-        -- Determine instance type
+
         if instanceType == "party" then
             details.isDungeon = true
-            
-            -- Dungeon difficulty
+
             if difficulty == 1 then
                 details.prettyDifficulty = "Normal Dungeon"
             elseif difficulty == 2 then
                 details.prettyDifficulty = "Heroic Dungeon"
                 details.isHeroic = true
             end
-            
+
         elseif instanceType == "raid" then
             details.isRaid = true
-            
-            -- Raid difficulty (ICC era)
+
             if difficulty == 1 then
                 details.prettyDifficulty = "10-Player Normal"
                 details.raidSize = 10
@@ -87,14 +70,12 @@ function KOL:GetZoneDetails()
             end
         end
     else
-        -- Not in an instance
         details.prettyDifficulty = "Open World"
     end
-    
+
     return details
 end
 
--- Zone command - displays zone information
 function KOL:ZoneCommand()
     local z = self:GetZoneDetails()
     self:PrintTag("Zone Information:")
@@ -106,39 +87,32 @@ function KOL:ZoneCommand()
     end
 end
 
--- Quick check if player is in an instance
 function KOL:IsInInstance()
     local _, instanceType = GetInstanceInfo()
     return instanceType ~= "none" and instanceType ~= "pvp" and instanceType ~= "arena"
 end
 
--- Quick check if player is in a dungeon
 function KOL:IsInDungeon()
     local _, instanceType = GetInstanceInfo()
     return instanceType == "party"
 end
 
--- Quick check if player is in a raid
 function KOL:IsInRaid()
     local _, instanceType = GetInstanceInfo()
     return instanceType == "raid"
 end
 
--- Quick check if current instance is heroic difficulty
 function KOL:IsHeroic()
     local _, instanceType, difficulty = GetInstanceInfo()
     if instanceType == "party" then
-        return difficulty == 2  -- Heroic dungeon
+        return difficulty == 2
     elseif instanceType == "raid" then
-        return difficulty == 3 or difficulty == 4  -- 10H or 25H raid
+        return difficulty == 3 or difficulty == 4
     end
     return false
 end
 
--- ============================================================================
--- Global Helper Function for Easy Access from Macros
--- Example: /run local z = GetZoneDetails(); CO(z.name, " - ", YELLOW(z.prettyDifficulty))
--- ============================================================================
+-- Global helper for macro access: /run local z = GetZoneDetails(); CO(z.name, " - ", YELLOW(z.prettyDifficulty))
 function GetZoneDetails()
     if KoalityOfLife and KoalityOfLife.GetZoneDetails then
         return KoalityOfLife:GetZoneDetails()
@@ -146,9 +120,6 @@ function GetZoneDetails()
     return nil
 end
 
--- ============================================================================
--- Register Slash Command
--- ============================================================================
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:SetScript("OnEvent", function(self, event)

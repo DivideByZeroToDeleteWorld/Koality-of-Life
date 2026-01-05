@@ -2,12 +2,15 @@
 ## Title: |cFFFF0000K|cFFFF4400o|cFFFF8800a|cFFFFCC00l|cFFFFFF00i|cFFCCFF00t|cFF88FF00y|cFF44FF00-|cFF00FF00o|cFF00FF88f|cFF00FFFF-|cFF55AAFFL|cFF7799FFi|cFF8888FFf|cFFAA66FFe|r
 ## Notes: Quality of life improvements for Synastria
 ## Author: |cFF00FF00Z|r|cFFCC00FFero|r
-## Version: 1.0.2.7
+## Version: 1.0.3.9
 ## SavedVariables: KoalityOfLifeDB
 ## OptionalDeps: Ace3, LibSharedMedia-3.0
 
 # Compatibility Layer - MUST load first (provides C_Timer, IsInGroup, etc.)
 compat.lua
+
+# Version - Load early so KOL_VERSION is available to all modules
+version.lua
 
 # Libraries - Core
 libs\LibStub\LibStub.lua
@@ -104,6 +107,9 @@ modules\ldb.lua
 
 # IMPORTANT: tracker-data.lua must load AFTER tracker.lua
 # but BEFORE tracker Initialize() is called (which happens on PLAYER_ENTERING_WORLD)
+
+# Errors Viewer (load before tests - provides error capture UI)
+modules\errors.lua
 
 # Tests Module (load last - depends on all other modules)
 modules\tests.lua

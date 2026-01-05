@@ -1,52 +1,34 @@
--- ============================================================================
--- !Koality-of-Life: Tweaks Module
--- ============================================================================
--- Quality of life tweaks and improvements organized by category
--- ============================================================================
-
 local KOL = KoalityOfLife
 local LSM = LibStub("LibSharedMedia-3.0")
 
--- ============================================================================
--- ItemTracker Module Data
--- ============================================================================
-
--- ItemTracker defaults
 local itemTrackerDefaults = {
     enabled = true,
-    -- Zone headers (ItemHuntFrameHeader)
     zoneFont = "Friz Quadrata TT",
     zoneFontSize = 14,
     zoneFontOutline = "THICKOUTLINE",
-    -- NPCs/Mobs (ItemHuntFrameObj#)
     npcFont = "Friz Quadrata TT",
     npcFontSize = 14,
     npcFontOutline = "THICKOUTLINE",
-    -- Items/Loot (ItemHuntFrameItem#)
     itemFont = "Friz Quadrata TT",
     itemFontSize = 14,
     itemFontOutline = "THICKOUTLINE",
-    -- Limits (ItemHuntFrameLimit#)
     limitFont = "Friz Quadrata TT",
     limitFontSize = 14,
     limitFontOutline = "THICKOUTLINE",
-    -- Scrollbar skinning
     scrollbarEnabled = true,
     scrollbarHidden = false,
-    scrollbarWidth = 16,  -- Width of scrollbar track (default 16)
+    scrollbarWidth = 16,
     scrollbarTrackBg = {r = 0.05, g = 0.05, b = 0.05, a = 0.9},
-    scrollbarTrackBorder = {r = 0.51, g = 0.25, b = 0.8, a = 0},  -- #8341cc, alpha 0
-    scrollbarThumbBg = {r = 0.51, g = 0.25, b = 0.8, a = 1},      -- #8341cc
-    scrollbarThumbBorder = {r = 0.51, g = 0.25, b = 0.8, a = 1},  -- #8341cc
+    scrollbarTrackBorder = {r = 0.51, g = 0.25, b = 0.8, a = 0},
+    scrollbarThumbBg = {r = 0.51, g = 0.25, b = 0.8, a = 1},
+    scrollbarThumbBorder = {r = 0.51, g = 0.25, b = 0.8, a = 1},
     scrollbarButtonBg = {r = 0.15, g = 0.15, b = 0.15, a = 0.9},
-    scrollbarButtonBorder = {r = 0.51, g = 0.25, b = 0.8, a = 1}, -- #8341cc
-    scrollbarButtonArrow = {r = 0.51, g = 0.25, b = 0.8, a = 1},  -- #8341cc
+    scrollbarButtonBorder = {r = 0.51, g = 0.25, b = 0.8, a = 1},
+    scrollbarButtonArrow = {r = 0.51, g = 0.25, b = 0.8, a = 1},
 }
 
--- Track which ItemHunt frames we've already applied fonts to
 local itemHuntFontsApplied = {}
 
--- Track what settings we last applied (so we can detect user changes)
 local lastAppliedSettings = {
     zoneFont = nil,
     zoneFontSize = nil,
@@ -62,7 +44,6 @@ local lastAppliedSettings = {
     limitFontOutline = nil,
 }
 
--- Font outline options
 local fontOutlineOptions = {
     ["NONE"] = "None",
     ["OUTLINE"] = "Outline",
@@ -72,54 +53,35 @@ local fontOutlineOptions = {
     ["THICKOUTLINE, MONOCHROME"] = "Thick Outline + Monochrome",
 }
 
--- ============================================================================
--- Pastel Color Selection for Block Titles
--- ============================================================================
-
--- Smart color selection based on block name keywords
 local COLOR_KEYWORDS = {
-    -- Commerce/Trade
     ["purchase"] = "GREEN",
     ["vendor"] = "YELLOW",
     ["sell"] = "ORANGE",
     ["buy"] = "MINT",
     ["trade"] = "PEACH",
     ["merchant"] = "YELLOW",
-
-    -- Combat/Action
     ["combat"] = "RED",
     ["attack"] = "ROSE",
     ["defense"] = "BLUE",
     ["buff"] = "LAVENDER",
-
-    -- Control/Interface
     ["control"] = "CYAN",
     ["interface"] = "SKY",
     ["ui"] = "PURPLE",
     ["display"] = "BLUE",
-
-    -- Default
     ["default"] = "PINK",
 }
 
--- Pick a pastel color based on block name
 local function PickPastelColor(blockName)
     local lowerName = string.lower(blockName)
 
-    -- Check for keyword matches
     for keyword, colorName in pairs(COLOR_KEYWORDS) do
         if string.find(lowerName, keyword) then
             return KOL.Colors:GetPastel(colorName)
         end
     end
 
-    -- Default to pink if no match
     return KOL.Colors:GetPastel("PINK")
 end
-
--- ============================================================================
--- Font Helper (averages with General settings)
--- ============================================================================
 
 local function GetAveragedFont(requestedSize)
     local generalSize = KOL.db.profile.generalFontSize or 12
@@ -132,16 +94,10 @@ local function GetAveragedFont(requestedSize)
     return fontPath, averageSize, fontOutline
 end
 
--- ============================================================================
--- Tweaks Module
--- ============================================================================
-
 KOL.Tweaks = {}
 local Tweaks = KOL.Tweaks
 
--- Initialize settings
 function Tweaks:Initialize()
-    -- Ensure database structure exists
     if not KOL.db.profile.tweaks then
         KOL.db.profile.tweaks = {
             vendor = {
@@ -150,7 +106,6 @@ function Tweaks:Initialize()
         }
     end
 
-    -- Initialize ItemTracker defaults
     if not KOL.db.profile.tweaks.itemTracker then
         KOL.db.profile.tweaks.itemTracker = {}
     end
@@ -160,14 +115,12 @@ function Tweaks:Initialize()
         end
     end
 
-    -- Initialize Synastria defaults
     if not KOL.db.profile.tweaks.synastria then
         KOL.db.profile.tweaks.synastria = {
-            scrollbarSkinning = true,  -- Default ON
+            scrollbarSkinning = true,
         }
     end
 
-    -- Initialize global scrollbar settings (ensure all fields exist)
     local scrollbarDefaults = {
         width = 16,
         hidden = false,
@@ -184,7 +137,6 @@ function Tweaks:Initialize()
     if not KOL.db.profile.tweaks.synastria.scrollbar then
         KOL.db.profile.tweaks.synastria.scrollbar = scrollbarDefaults
     else
-        -- Ensure all fields exist (for upgrades)
         for k, v in pairs(scrollbarDefaults) do
             if KOL.db.profile.tweaks.synastria.scrollbar[k] == nil then
                 KOL.db.profile.tweaks.synastria.scrollbar[k] = v
@@ -192,27 +144,18 @@ function Tweaks:Initialize()
         end
     end
 
-    -- Setup config UI
     self:SetupConfigUI()
 
-    -- Start ItemTracker batch system
     self:StartItemHuntBatch()
 
-    -- Suppress annoying QuestHelper error popups
     self:SetupQuestHelperSuppressor()
 
     KOL:DebugPrint("Tweaks: Module initialized", 1)
 end
 
--- ============================================================================
--- QuestHelper Error Popup Suppressor
--- ============================================================================
 -- Automatically closes the annoying "QuestHelper has broke" popup
-
 function Tweaks:SetupQuestHelperSuppressor()
-    -- Hook StaticPopup_Show to intercept QuestHelper error popups
     if not self.questHelperHooked then
-        -- Also monitor StaticPopup frames directly for text changes
         local function CheckAndHideQHPopup(popup)
             if not popup or not popup:IsVisible() then return end
 
@@ -228,15 +171,13 @@ function Tweaks:SetupQuestHelperSuppressor()
             return false
         end
 
-        -- Check all static popups periodically via OnUpdate (very lightweight)
         local suppressorFrame = CreateFrame("Frame")
         suppressorFrame.elapsed = 0
         suppressorFrame:SetScript("OnUpdate", function(self, elapsed)
             self.elapsed = self.elapsed + elapsed
-            if self.elapsed < 0.1 then return end  -- Check every 0.1 seconds
+            if self.elapsed < 0.1 then return end
             self.elapsed = 0
 
-            -- Check StaticPopup1 through StaticPopup4
             for i = 1, 4 do
                 local popup = _G["StaticPopup" .. i]
                 if popup and popup:IsVisible() then
@@ -250,13 +191,7 @@ function Tweaks:SetupQuestHelperSuppressor()
     end
 end
 
--- ============================================================================
--- ItemTracker Font Functions
--- ============================================================================
-
--- Apply font to a single ItemHunt frame (button)
 local function ApplyFontToItemHuntFrame(frame, fontPath, fontSize, fontOutline, frameName)
-    -- Check if we've already applied fonts to this frame and they're still correct
     if itemHuntFontsApplied[frameName] then
         -- Verify font is still correct (in case ItemHunt reset it)
         local regionCount = (frame.GetNumRegions and frame:GetNumRegions()) or 0
@@ -273,7 +208,6 @@ local function ApplyFontToItemHuntFrame(frame, fontPath, fontSize, fontOutline, 
 
     local fontStringsUpdated = 0
 
-    -- Check regions for FontStrings
     local regionCount = (frame.GetNumRegions and frame:GetNumRegions()) or 0
     if regionCount > 0 then
         for i = 1, regionCount do
@@ -295,7 +229,6 @@ local function ApplyFontToItemHuntFrame(frame, fontPath, fontSize, fontOutline, 
         end
     end
 
-    -- Also check common properties (text, label, etc.)
     local props = {"text", "label", "title", "Text", "Label", "Title"}
     for _, prop in ipairs(props) do
         if frame[prop] and frame[prop].SetFont and frame[prop].GetFont then
@@ -314,7 +247,6 @@ local function ApplyFontToItemHuntFrame(frame, fontPath, fontSize, fontOutline, 
         end
     end
 
-    -- Mark this frame as having fonts applied
     if fontStringsUpdated > 0 then
         itemHuntFontsApplied[frameName] = true
     end
@@ -322,7 +254,6 @@ local function ApplyFontToItemHuntFrame(frame, fontPath, fontSize, fontOutline, 
     return fontStringsUpdated
 end
 
--- Scan and apply fonts to all ItemHunt frames
 function Tweaks:ScanAndApplyItemHuntFonts()
     if not KOL.db.profile.tweaks.itemTracker or not KOL.db.profile.tweaks.itemTracker.enabled then
         return 0
@@ -330,7 +261,6 @@ function Tweaks:ScanAndApplyItemHuntFonts()
 
     local settings = KOL.db.profile.tweaks.itemTracker
 
-    -- Check if user changed settings - if so, clear tracking and force re-apply
     local settingsChanged = false
     for settingKey, settingValue in pairs(lastAppliedSettings) do
         if settings[settingKey] ~= settingValue then
@@ -348,7 +278,6 @@ function Tweaks:ScanAndApplyItemHuntFonts()
 
     local totalUpdated = 0
 
-    -- Scan ItemHuntFrameItem1 through ItemHuntFrameItem50 (Items/Loot)
     local itemFontPath = LSM:Fetch("font", settings.itemFont)
     if itemFontPath then
         for i = 1, 50 do
@@ -360,7 +289,6 @@ function Tweaks:ScanAndApplyItemHuntFonts()
         end
     end
 
-    -- Scan ItemHuntFrameObj1 through ItemHuntFrameObj20 (NPCs/Mobs)
     local npcFontPath = LSM:Fetch("font", settings.npcFont)
     if npcFontPath then
         for i = 1, 20 do
@@ -372,7 +300,6 @@ function Tweaks:ScanAndApplyItemHuntFonts()
         end
     end
 
-    -- Scan ItemHuntFrameLimit1 through ItemHuntFrameLimit50 (Limits)
     local limitFontPath = LSM:Fetch("font", settings.limitFont)
     if limitFontPath then
         for i = 1, 50 do
@@ -384,7 +311,6 @@ function Tweaks:ScanAndApplyItemHuntFonts()
         end
     end
 
-    -- Scan headers and other frames (Zone headers)
     local zoneFontPath = LSM:Fetch("font", settings.zoneFont)
     if zoneFontPath then
         local otherFrames = {"ItemHuntFrameHeader", "ItemHuntFrameObjLimit"}
@@ -403,7 +329,6 @@ function Tweaks:ScanAndApplyItemHuntFonts()
     return totalUpdated
 end
 
--- Start batch system for ItemHunt font scanning
 function Tweaks:StartItemHuntBatch()
     if self.itemHuntScannerActive then
         return
@@ -411,7 +336,6 @@ function Tweaks:StartItemHuntBatch()
 
     self.itemHuntScannerActive = true
 
-    -- Initialize lastAppliedSettings with current settings
     if KOL.db.profile.tweaks and KOL.db.profile.tweaks.itemTracker then
         local settings = KOL.db.profile.tweaks.itemTracker
         for settingKey, _ in pairs(lastAppliedSettings) do
@@ -419,7 +343,6 @@ function Tweaks:StartItemHuntBatch()
         end
     end
 
-    -- Configure the itemHunt batch channel
     KOL:BatchConfigure("itemHunt", {
         interval = 0.5,
         processMode = "all",
@@ -427,59 +350,44 @@ function Tweaks:StartItemHuntBatch()
         maxQueueSize = 5,
     })
 
-    -- Add scanning action (includes fonts AND scrollbar)
     KOL:BatchAdd("itemHunt", "scanAll", function()
         Tweaks:ScanAndApplyItemHuntFonts()
-        -- Also ensure scrollbar is skinned (won't re-skin if already done)
         Tweaks:ApplyItemTrackerScrollbar()
-        -- Skin registered Synastria scrollbars (PerkMgrFrame, etc.)
         if KOL.UIFactory and KOL.UIFactory.SkinRegisteredScrollBars then
             KOL.UIFactory:SkinRegisteredScrollBars()
         end
     end, 3)
 
-    -- Start the batch
     KOL:BatchStart("itemHunt")
 
     KOL:DebugPrint("Tweaks: Started ItemHunt batch scanner", 3)
 end
 
--- Reset tracking (for zone changes)
 function Tweaks:ResetItemHuntTracking()
     itemHuntFontsApplied = {}
     self.itemHuntScannerActive = false
     self:StartItemHuntBatch()
-    -- Also try to skin the scrollbar
     self:ApplyItemTrackerScrollbar()
 end
 
--- Apply ItemTracker fonts (called when settings change)
 function Tweaks:ApplyItemTrackerFont()
     itemHuntFontsApplied = {}
     self:ScanAndApplyItemHuntFonts()
 end
 
--- ============================================================================
--- ItemTracker Scrollbar Skinning
--- ============================================================================
-
 local itemHuntScrollbarSkinned = false
 
--- Apply scrollbar skin to ItemHuntFrame
 function Tweaks:ApplyItemTrackerScrollbar()
     local settings = KOL.db.profile.tweaks.itemTracker
 
-    -- Find the scrollbar
     local scrollBar = _G["ItemHuntFrame-ScrollFrameScrollBar"]
     if not scrollBar then
         KOL:DebugPrint("Tweaks: ItemHuntFrame scrollbar not found", 3)
         return
     end
 
-    -- Handle hidden scrollbar option
     if settings.scrollbarHidden then
         scrollBar:Hide()
-        -- Also hide any skinned backdrops
         if scrollBar.kolBackdrop then scrollBar.kolBackdrop:Hide() end
         local scrollBarName = scrollBar:GetName() or ""
         local upButton = scrollBar.ScrollUpButton or scrollBar.UpButton or _G[scrollBarName .. "ScrollUpButton"]
@@ -491,7 +399,6 @@ function Tweaks:ApplyItemTrackerScrollbar()
         KOL:DebugPrint("Tweaks: ItemHuntFrame scrollbar hidden", 3)
         return
     else
-        -- Make sure scrollbar is visible if not hidden
         scrollBar:Show()
         if scrollBar.kolBackdrop then scrollBar.kolBackdrop:Show() end
         local scrollBarName = scrollBar:GetName() or ""
@@ -503,18 +410,15 @@ function Tweaks:ApplyItemTrackerScrollbar()
         if thumb and thumb.kolBackdrop then thumb.kolBackdrop:Show() end
     end
 
-    -- Only skin if enabled
     if not settings.scrollbarEnabled then
         KOL:DebugPrint("Tweaks: ItemTracker scrollbar skinning disabled", 3)
         return
     end
 
-    -- Skip if already skinned (unless force refresh)
     if itemHuntScrollbarSkinned and scrollBar.kolSkinned then
         return
     end
 
-    -- Build colors table from settings
     local colors = {
         width = settings.scrollbarWidth or 16,
         track = {
@@ -532,20 +436,15 @@ function Tweaks:ApplyItemTrackerScrollbar()
         },
     }
 
-    -- Find parent scroll frame
     local scrollFrame = _G["ItemHuntFrame-ScrollFrame"]
     if scrollFrame then
-        -- Reset skinned flag to allow re-skinning
         scrollBar.kolSkinned = nil
         KOL:SkinScrollBar(scrollFrame, "ItemHuntFrame-ScrollFrameScrollBar", colors)
         itemHuntScrollbarSkinned = true
         KOL:DebugPrint("Tweaks: ItemHuntFrame scrollbar skinned", 2)
     else
-        -- Try direct skinning without parent
         scrollBar.kolSkinned = nil
-        -- Direct skin the scrollbar using global name
         if KOL.SkinScrollBar then
-            -- Create a mock parent table for the function
             local mockParent = {["ItemHuntFrame-ScrollFrameScrollBar"] = scrollBar}
             KOL:SkinScrollBar(mockParent, "ItemHuntFrame-ScrollFrameScrollBar", colors)
             itemHuntScrollbarSkinned = true
@@ -554,7 +453,6 @@ function Tweaks:ApplyItemTrackerScrollbar()
     end
 end
 
--- Reset scrollbar skinning (called when colors change)
 function Tweaks:ResetItemTrackerScrollbar()
     local scrollBar = _G["ItemHuntFrame-ScrollFrameScrollBar"]
     if scrollBar then
@@ -564,7 +462,6 @@ function Tweaks:ResetItemTrackerScrollbar()
             scrollBar.kolBackdrop = nil
         end
 
-        -- Also reset buttons and thumb
         local scrollBarName = scrollBar:GetName() or ""
         local upButton = scrollBar.ScrollUpButton or scrollBar.UpButton or _G[scrollBarName .. "ScrollUpButton"]
         local downButton = scrollBar.ScrollDownButton or scrollBar.DownButton or _G[scrollBarName .. "ScrollDownButton"]
@@ -589,12 +486,6 @@ function Tweaks:ResetItemTrackerScrollbar()
     self:ApplyItemTrackerScrollbar()
 end
 
--- ============================================================================
--- Config UI - Block System
--- ============================================================================
-
--- Create a block in a Tweaks sub-tab
--- Usage: CreateBlock(subtab, blockName, order, [optionalColor])
 local function CreateBlock(subtab, blockName, order, colorOverride)
     if not KOL.configOptions or not KOL.configOptions.args.tweaks then
         KOL:DebugPrint("Tweaks: Cannot create block - config not initialized", 1)
@@ -607,18 +498,16 @@ local function CreateBlock(subtab, blockName, order, colorOverride)
         return nil
     end
 
-    -- Pick color for block title
     local color = colorOverride or PickPastelColor(blockName)
     local colorHex = KOL.Colors:ToHex(color)
 
     local fontPath, fontSize, fontOutline = GetAveragedFont(14)
 
-    -- Create block group
     local blockKey = string.lower(string.gsub(blockName, " ", "_"))
 
     subtabArgs.args[blockKey] = {
         type = "group",
-        name = " ",  -- Empty name since we'll use a custom header
+        name = " ",
         order = order,
         inline = true,
         args = {
@@ -646,11 +535,6 @@ function Tweaks:SetupConfigUI()
         return
     end
 
-    -- ========================================================================
-    -- VENDORS SUB-TAB
-    -- ========================================================================
-
-    -- Purchase Control Block (Green color for purchase-related features)
     local purchaseBlock = CreateBlock("vendors", "Purchase Control", 1)
 
     if purchaseBlock then
@@ -672,23 +556,16 @@ function Tweaks:SetupConfigUI()
         }
     end
 
-    -- ========================================================================
-    -- ITEMTRACKER OPTIONS (in Synastria sub-tab as tree section)
-    -- ========================================================================
-
-    -- Get reference to synastria tab args
     local synastriaTab = KOL.configOptions.args.tweaks.args.synastria.args
 
-    -- ITEM TRACKER tree section (order 3)
     synastriaTab.itemTracker = {
         type = "group",
         name = "Item Tracker",
         order = 3,
         args = {
-            -- Section Header (orange accent)
             header = {
                 type = "description",
-                name = "ITEM TRACKER|1,0.6,0.2",  -- Orange accent
+                name = "ITEM TRACKER|1,0.6,0.2",
                 dialogControl = "KOL_SectionHeader",
                 width = "full",
                 order = 0,
@@ -700,7 +577,6 @@ function Tweaks:SetupConfigUI()
                 order = 0.1,
             },
 
-            -- Enable toggle
             enabled = {
                 type = "toggle",
                 name = "Enable ItemTracker Font Changes",
@@ -716,7 +592,6 @@ function Tweaks:SetupConfigUI()
                 end,
             },
 
-            -- Zone Headers Group
             zone = {
                 type = "group",
                 name = "Zone Headers",
@@ -761,7 +636,6 @@ function Tweaks:SetupConfigUI()
                 }
             },
 
-            -- NPCs/Mobs Group
             npc = {
                 type = "group",
                 name = "NPCs/Mobs",
@@ -805,7 +679,6 @@ function Tweaks:SetupConfigUI()
                 }
             },
 
-            -- Items/Loot Group
             item = {
                 type = "group",
                 name = "Items/Loot",
@@ -849,7 +722,6 @@ function Tweaks:SetupConfigUI()
                 }
             },
 
-            -- Limit Indicators Group
             limit = {
                 type = "group",
                 name = "Limit Indicators",
@@ -893,7 +765,6 @@ function Tweaks:SetupConfigUI()
                 }
             },
 
-            -- ItemTracker Scrollbar Skinning Group
             scrollbarHeader = {
                 type = "header",
                 name = "ItemTracker Scrollbar Skinning",
@@ -1076,10 +947,6 @@ function Tweaks:SetupConfigUI()
     KOL:DebugPrint("Tweaks: Config UI setup complete", 3)
 end
 
--- ============================================================================
--- Vendor Tweaks
--- ============================================================================
-
 local originalMerchantFrame_OnClick
 
 function Tweaks:SetupVendorTweaks()
@@ -1087,22 +954,18 @@ function Tweaks:SetupVendorTweaks()
         return
     end
 
-    -- Hook the merchant item button clicks
     if not originalMerchantFrame_OnClick then
         originalMerchantFrame_OnClick = MerchantItemButton_OnModifiedClick
 
         MerchantItemButton_OnModifiedClick = function(self, button)
-            -- Check if shift is held and Buy Stack is enabled
             if IsShiftKeyDown() and KOL.db.profile.tweaks.vendor.buyStack then
                 local itemLink = GetMerchantItemLink(self:GetID())
                 if itemLink then
-                    -- Show our custom buy stack dialog
                     Tweaks:ShowBuyStackDialog(self:GetID())
                     return
                 end
             end
 
-            -- Call original function
             if originalMerchantFrame_OnClick then
                 originalMerchantFrame_OnClick(self, button)
             end
@@ -1118,15 +981,13 @@ function Tweaks:ShowBuyStackDialog(merchantSlot)
 
     local itemLink = GetMerchantItemLink(merchantSlot)
 
-    -- Get max stack size - need to handle case where item isn't cached yet
     local _, _, _, _, _, _, _, maxStack = GetItemInfo(itemLink)
 
     -- If maxStack is nil, the item isn't cached - use quantity from merchant as fallback
     if not maxStack or maxStack <= 0 then
-        maxStack = quantity or 20 -- Use merchant quantity or default to 20
+        maxStack = quantity or 20
     end
 
-    -- Calculate how many we can buy (limited by availability and stack size)
     local stackSize = maxStack
     if numAvailable and numAvailable >= 0 then
         stackSize = math.min(maxStack, numAvailable)
@@ -1134,25 +995,22 @@ function Tweaks:ShowBuyStackDialog(merchantSlot)
 
     local totalPrice = price * stackSize
 
-    -- Create popup frame - compact, no title bar
     local popup = CreateFrame("Frame", nil, UIParent)
     popup:SetSize(280, 110)
     popup:SetPoint("CENTER")
     popup:SetFrameStrata("FULLSCREEN_DIALOG")
     popup:SetFrameLevel(200)
 
-    -- Backdrop
     popup:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Buttons\\WHITE8X8",
         tile = false,
-        edgeSize = 1,  -- Changed from 2 to 1
+        edgeSize = 1,
         insets = { left = 0, right = 0, top = 0, bottom = 0 }
     })
     popup:SetBackdropColor(0.05, 0.05, 0.05, 0.98)
-    popup:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)  -- Darker grey border
+    popup:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
 
-    -- Item icon and name
     local icon = popup:CreateTexture(nil, "ARTWORK")
     icon:SetSize(28, 28)
     icon:SetPoint("TOPLEFT", popup, "TOPLEFT", 8, -8)
@@ -1168,7 +1026,6 @@ function Tweaks:ShowBuyStackDialog(merchantSlot)
     itemName:SetJustifyH("LEFT")
     itemName:SetWordWrap(false)
 
-    -- Stack info
     local fontPath3, fontSize3, fontOutline3 = GetAveragedFont(9)
     local stackInfo = popup:CreateFontString(nil, "OVERLAY")
     stackInfo:SetFont(fontPath3, fontSize3, fontOutline3)
@@ -1176,7 +1033,6 @@ function Tweaks:ShowBuyStackDialog(merchantSlot)
     stackInfo:SetText(string.format("Stack Size: |cFFFFFFFF%d|r", stackSize))
     stackInfo:SetTextColor(0.7, 1, 0.7, 1)
 
-    -- Price info
     local priceInfo = popup:CreateFontString(nil, "OVERLAY")
     priceInfo:SetFont(fontPath3, fontSize3, fontOutline3)
     priceInfo:SetPoint("TOP", stackInfo, "BOTTOM", 0, -4)
@@ -1194,7 +1050,6 @@ function Tweaks:ShowBuyStackDialog(merchantSlot)
     priceInfo:SetText("Total Cost: " .. priceStr)
     priceInfo:SetTextColor(1, 1, 0.7, 1)
 
-    -- BUY STACK button - darker, muted green with darker green border
     local buyBtn = CreateFrame("Button", nil, popup)
     buyBtn:SetSize(110, 26)
     buyBtn:SetPoint("BOTTOMLEFT", popup, "BOTTOMLEFT", 10, 10)
@@ -1205,8 +1060,8 @@ function Tweaks:ShowBuyStackDialog(merchantSlot)
         edgeSize = 1,
         insets = { left = 0, right = 0, top = 0, bottom = 0 }
     })
-    buyBtn:SetBackdropColor(0.2, 0.4, 0.2, 1)  -- Darker, muted green
-    buyBtn:SetBackdropBorderColor(0.1, 0.25, 0.1, 1)  -- Even darker green border
+    buyBtn:SetBackdropColor(0.2, 0.4, 0.2, 1)
+    buyBtn:SetBackdropBorderColor(0.1, 0.25, 0.1, 1)
 
     local buyText = buyBtn:CreateFontString(nil, "OVERLAY")
     buyText:SetFont(fontPath2, fontSize2, fontOutline2)
@@ -1216,20 +1071,18 @@ function Tweaks:ShowBuyStackDialog(merchantSlot)
 
     buyBtn:SetScript("OnEnter", function(self)
         self:SetBackdropColor(0.25, 0.5, 0.25, 1)
-        self:SetBackdropBorderColor(0.15, 0.35, 0.15, 1)  -- Darker green border on hover
+        self:SetBackdropBorderColor(0.15, 0.35, 0.15, 1)
     end)
     buyBtn:SetScript("OnLeave", function(self)
         self:SetBackdropColor(0.2, 0.4, 0.2, 1)
         self:SetBackdropBorderColor(0.1, 0.25, 0.1, 1)
     end)
     buyBtn:SetScript("OnClick", function()
-        -- Buy the stack
         BuyMerchantItem(merchantSlot, stackSize)
         popup:Hide()
         KOL:PrintTag("Purchased |cFFFFFFFF" .. stackSize .. "x|r " .. itemLink)
     end)
 
-    -- Cancel button - darker, muted red with darker red border
     local cancelBtn = CreateFrame("Button", nil, popup)
     cancelBtn:SetSize(110, 26)
     cancelBtn:SetPoint("BOTTOMRIGHT", popup, "BOTTOMRIGHT", -10, 10)
@@ -1240,8 +1093,8 @@ function Tweaks:ShowBuyStackDialog(merchantSlot)
         edgeSize = 1,
         insets = { left = 0, right = 0, top = 0, bottom = 0 }
     })
-    cancelBtn:SetBackdropColor(0.4, 0.2, 0.2, 1)  -- Darker, muted red
-    cancelBtn:SetBackdropBorderColor(0.25, 0.1, 0.1, 1)  -- Even darker red border
+    cancelBtn:SetBackdropColor(0.4, 0.2, 0.2, 1)
+    cancelBtn:SetBackdropBorderColor(0.25, 0.1, 0.1, 1)
 
     local cancelText = cancelBtn:CreateFontString(nil, "OVERLAY")
     cancelText:SetFont(fontPath2, fontSize2, fontOutline2)
@@ -1251,7 +1104,7 @@ function Tweaks:ShowBuyStackDialog(merchantSlot)
 
     cancelBtn:SetScript("OnEnter", function(self)
         self:SetBackdropColor(0.5, 0.25, 0.25, 1)
-        self:SetBackdropBorderColor(0.35, 0.15, 0.15, 1)  -- Darker red border on hover
+        self:SetBackdropBorderColor(0.35, 0.15, 0.15, 1)
     end)
     cancelBtn:SetScript("OnLeave", function(self)
         self:SetBackdropColor(0.4, 0.2, 0.2, 1)
@@ -1264,21 +1117,14 @@ function Tweaks:ShowBuyStackDialog(merchantSlot)
     popup:Show()
 end
 
--- Setup vendor hooks when entering world
 KOL:RegisterEventCallback("PLAYER_ENTERING_WORLD", function()
     Tweaks:SetupVendorTweaks()
 end, "Tweaks")
 
--- Re-setup when config changes
 function Tweaks:RefreshHooks()
     Tweaks:SetupVendorTweaks()
 end
 
--- ============================================================================
--- ItemTracker Event Handlers
--- ============================================================================
-
--- Reset ItemHunt tracking on zone changes (frames may be recreated)
 KOL:RegisterEventCallback("ZONE_CHANGED", function()
     Tweaks:ResetItemHuntTracking()
 end, "Tweaks_ItemTracker")
