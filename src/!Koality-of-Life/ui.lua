@@ -254,6 +254,54 @@ function KOL:InitializeUI()
                                 width = 1.5,
                                 order = 3.5,
                             },
+                            spacer1b = {
+                                type = "description",
+                                name = "\n",
+                                order = 3.55,
+                            },
+                            popupHeader = {
+                                type = "description",
+                                name = "POPUP MENU|0.6,0.7,1",  -- Light blue accent
+                                dialogControl = "KOL_SectionHeader",
+                                width = "full",
+                                order = 3.56,
+                            },
+                            popupDesc = {
+                                type = "description",
+                                name = "|cFFAAAAAACustomize the minimap/LDB popup menu appearance.|r",
+                                fontSize = "small",
+                                order = 3.57,
+                            },
+                            popupBgColor = {
+                                type = "color",
+                                name = "Background Color",
+                                desc = "Background color for the minimap/LDB popup menu.",
+                                hasAlpha = true,
+                                get = function()
+                                    local c = self.db.profile.popupBgColor or {r = 0.05, g = 0.05, b = 0.05, a = 0.98}
+                                    return c.r, c.g, c.b, c.a
+                                end,
+                                set = function(_, r, g, b, a)
+                                    self.db.profile.popupBgColor = {r = r, g = g, b = b, a = a}
+                                end,
+                                width = 1.0,
+                                order = 3.6,
+                            },
+                            popupBorderColor = {
+                                type = "color",
+                                name = "Border Color",
+                                desc = "Border color for the minimap/LDB popup menu.",
+                                hasAlpha = true,
+                                get = function()
+                                    local c = self.db.profile.popupBorderColor or {r = 0.3, g = 0.3, b = 0.3, a = 1}
+                                    return c.r, c.g, c.b, c.a
+                                end,
+                                set = function(_, r, g, b, a)
+                                    self.db.profile.popupBorderColor = {r = r, g = g, b = b, a = a}
+                                end,
+                                width = 1.0,
+                                order = 3.7,
+                            },
                             spacer2 = {
                                 type = "description",
                                 name = "\n",

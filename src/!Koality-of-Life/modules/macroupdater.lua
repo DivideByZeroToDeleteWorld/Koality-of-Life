@@ -1239,9 +1239,6 @@ local function CreateMacroUpdaterWindow()
     currentBox:SetScrollChild(currentText)
     frame.currentText = currentText
 
-    -- Skin the scrollbar
-    KOL:SkinUIPanelScrollFrame(currentBox)
-
     -- Updated Macro section
     local updatedLabel = frame:CreateFontString(nil, "OVERLAY")
     updatedLabel:SetFont(fontPath, 12, fontOutline)
@@ -1276,9 +1273,6 @@ local function CreateMacroUpdaterWindow()
     updatedText:EnableKeyboard(false)  -- Read-only, no typing
     updatedBox:SetScrollChild(updatedText)
     frame.updatedText = updatedText
-
-    -- Skin the scrollbar
-    KOL:SkinUIPanelScrollFrame(updatedBox)
 
     -- Save button
     local saveBtn = CreateStyledButton(frame, 100, 30, "Save")

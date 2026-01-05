@@ -226,7 +226,7 @@ function CommandBlocks:CreateEditor()
     codeLabel:SetPoint("TOPLEFT", 10, -70)
     codeLabel:SetText("|cFFFFFFFFLua Code:|r |cFFAAAA00(must return a string)|r")
 
-    local scrollFrame = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
+    local scrollFrame = CreateFrame("ScrollFrame", "KOL_CommandBlocksScrollFrame", frame, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", 10, -90)
     scrollFrame:SetPoint("BOTTOMRIGHT", -30, 50)
     scrollFrame:SetBackdrop({
@@ -288,6 +288,7 @@ function CommandBlocks:CreateEditor()
     scrollFrame:SetScrollChild(codeEditBox)
     frame.codeEditBox = codeEditBox
 
+    -- Skin the scrollbar
     KOL:SkinUIPanelScrollFrame(scrollFrame)
 
     if KoalityOfLife.indent and KoalityOfLife.indent.enable then

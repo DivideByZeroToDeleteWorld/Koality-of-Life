@@ -225,12 +225,18 @@ end
 -- ============================================================================
 
 local function ApplyThemeColors(tooltip)
-    local bgColor = {r = 0.06, g = 0.06, b = 0.06, a = 0.98}
-    local borderColor = {r = 0.35, g = 0.35, b = 0.35, a = 1}
+    -- Default colors
+    local bgColor = {r = 0.05, g = 0.05, b = 0.05, a = 0.98}
+    local borderColor = {r = 0.3, g = 0.3, b = 0.3, a = 1}
 
-    if KOL.Themes and KOL.Themes.GetUIThemeColor then
-        bgColor = KOL.Themes:GetUIThemeColor("GlobalBG", bgColor)
-        borderColor = KOL.Themes:GetUIThemeColor("GlobalBorder", borderColor)
+    -- Check for user-configured popup colors first
+    if KOL.db and KOL.db.profile then
+        if KOL.db.profile.popupBgColor then
+            bgColor = KOL.db.profile.popupBgColor
+        end
+        if KOL.db.profile.popupBorderColor then
+            borderColor = KOL.db.profile.popupBorderColor
+        end
     end
 
     tooltip:SetBackdropColor(bgColor.r, bgColor.g, bgColor.b, bgColor.a or 0.98)
@@ -275,19 +281,25 @@ local function CreateSeparator(tooltip, yOffset, text)
     return SEPARATOR_HEIGHT
 end
 
--- Styled section header (matches UIFactory:CreateSectionHeader style)
-local SECTION_HEADER_HEIGHT = 18
+-- Styled section header (matches UIFactory:CreateSectionHeader and KOL_SectionHeader style)
+local SECTION_HEADER_HEIGHT = 22
 local function CreateSectionHeader(tooltip, yOffset, text, color)
     local fontPath, fontOutline = GetFont()
     color = color or COLORS.LABEL
 
+    -- Get alpha from popup background setting (so section headers match popup transparency)
+    local bgAlpha = 0.8
+    if KOL.db and KOL.db.profile and KOL.db.profile.popupBgColor then
+        bgAlpha = KOL.db.profile.popupBgColor.a or 0.98
+    end
+
     -- Background - subtle dark using accent color at 20% intensity
-    local bg = tooltip:CreateTexture(nil, "BACKGROUND")
+    -- Use BORDER layer so it appears above the popup's backdrop but below ARTWORK/OVERLAY
+    local bg = tooltip:CreateTexture(nil, "BORDER")
     bg:SetPoint("TOPLEFT", tooltip, "TOPLEFT", PADDING, yOffset)
-    bg:SetPoint("TOPRIGHT", tooltip, "TOPRIGHT", -PADDING, yOffset)
-    bg:SetHeight(SECTION_HEADER_HEIGHT)
+    bg:SetPoint("BOTTOMRIGHT", tooltip, "TOPRIGHT", -PADDING, yOffset - SECTION_HEADER_HEIGHT)
     bg:SetTexture("Interface\\Buttons\\WHITE8X8")
-    bg:SetVertexColor(color.r * 0.2, color.g * 0.2, color.b * 0.2, 0.8)
+    bg:SetVertexColor(color.r * 0.2, color.g * 0.2, color.b * 0.2, bgAlpha)
     table.insert(tooltip.regions, bg)
 
     -- Left accent bar (3px wide)
@@ -298,10 +310,10 @@ local function CreateSectionHeader(tooltip, yOffset, text, color)
     accent:SetVertexColor(color.r, color.g, color.b, 1)
     table.insert(tooltip.regions, accent)
 
-    -- Text in accent color
+    -- Text in accent color (vertically centered)
     local label = tooltip:CreateFontString(nil, "OVERLAY")
-    label:SetFont(fontPath, 10, fontOutline)
-    label:SetPoint("LEFT", tooltip, "TOPLEFT", PADDING + 8, yOffset - (SECTION_HEADER_HEIGHT / 2))
+    label:SetFont(fontPath, 11, fontOutline)
+    label:SetPoint("LEFT", tooltip, "TOPLEFT", PADDING + 10, yOffset - (SECTION_HEADER_HEIGHT / 2))
     label:SetTextColor(color.r, color.g, color.b, 1)
     label:SetText(text)
     table.insert(tooltip.regions, label)
@@ -859,9 +871,9 @@ function LDBModule:ShowMainMenu(anchor)
     -- Current Settings Section
     -- ========================================================================
 
-    local currentLabelHeight = CreateLabel(tooltip, "Current", yOffset, COLORS.LABEL)
-    yOffset = yOffset - currentLabelHeight
-    totalHeight = totalHeight + currentLabelHeight
+    local currentHeaderHeight = CreateSectionHeader(tooltip, yOffset, "CURRENT", COLORS.LABEL)
+    yOffset = yOffset - currentHeaderHeight
+    totalHeight = totalHeight + currentHeaderHeight
 
     -- Limit Damage setting (clickable to toggle)
     local limitDamageValue = KOL.db and KOL.db.profile and KOL.db.profile.limitDamage or false
@@ -988,9 +1000,9 @@ function LDBModule:ShowMainMenu(anchor)
     -- Shortcuts Label
     -- ========================================================================
 
-    local labelHeight = CreateLabel(tooltip, "Shortcuts", yOffset, COLORS.LABEL)
-    yOffset = yOffset - labelHeight
-    totalHeight = totalHeight + labelHeight
+    local shortcutsHeaderHeight = CreateSectionHeader(tooltip, yOffset, "SHORTCUTS", COLORS.LABEL)
+    yOffset = yOffset - shortcutsHeaderHeight
+    totalHeight = totalHeight + shortcutsHeaderHeight
 
     -- ========================================================================
     -- Folders: Modules, Tests, Standalone
