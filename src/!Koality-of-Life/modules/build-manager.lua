@@ -248,7 +248,8 @@ function BuildManager:ProcessQueue(elapsed)
         self:StopQueue()
     elseif action.type == "complete_misc" then
         local count = action.data and action.data.changeCount or 0
-        self:Print("Misc Perks applied! " .. count .. " perk toggles changed, " .. #MISC_SUB_OPTIONS .. " sub-options set.")
+        local subOptionsCount = MISC_SUB_OPTIONS and #MISC_SUB_OPTIONS or 0
+        self:Print("Misc Perks applied! " .. count .. " perk toggles changed, " .. subOptionsCount .. " sub-options set.")
         self:StopQueue()
     end
 end
