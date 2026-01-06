@@ -1508,6 +1508,82 @@ KOL.Tracker:RegisterInstance("toc_25", {
     }
 })
 
+-- Trial of the Grand Crusader (10-player Heroic)
+KOL.Tracker:RegisterInstance("toc_10h", {
+    name = "Trial of the Grand Crusader (10H)",
+    type = "raid",
+    expansion = "wotlk",
+    difficulty = 3,
+    color = "ORANGE",
+    zones = {"Trial of the Crusader"},
+    bosses = {
+        {
+            name = "The Beasts of Northrend",
+            id = 34797,
+        },
+        {
+            name = "Lord Jaraxxus",
+            id = 34780,
+        },
+        {
+            name = "Faction Champions",
+            type = "yell",
+            id = 34461,
+            yell = "GLORY TO THE ALLIANCE!",
+            yells = {
+                "GLORY TO THE ALLIANCE!",
+                "That was just a taste of what the future brings. FOR THE HORDE!",
+            },
+        },
+        {
+            name = "Twin Val'kyr",
+            id = 34497,
+        },
+        {
+            name = "Anub'arak",
+            id = 34564,
+        },
+    }
+})
+
+-- Trial of the Grand Crusader (25-player Heroic)
+KOL.Tracker:RegisterInstance("toc_25h", {
+    name = "Trial of the Grand Crusader (25H)",
+    type = "raid",
+    expansion = "wotlk",
+    difficulty = 4,
+    color = "ORANGE",
+    zones = {"Trial of the Crusader"},
+    bosses = {
+        {
+            name = "The Beasts of Northrend",
+            id = 34797,
+        },
+        {
+            name = "Lord Jaraxxus",
+            id = 34780,
+        },
+        {
+            name = "Faction Champions",
+            type = "yell",
+            id = 34461,
+            yell = "GLORY TO THE ALLIANCE!",
+            yells = {
+                "GLORY TO THE ALLIANCE!",
+                "That was just a taste of what the future brings. FOR THE HORDE!",
+            },
+        },
+        {
+            name = "Twin Val'kyr",
+            id = 34497,
+        },
+        {
+            name = "Anub'arak",
+            id = 34564,
+        },
+    }
+})
+
 -- Onyxia's Lair (10-player) - WotLK Revamp
 KOL.Tracker:RegisterInstance("ony_10", {
     name = "Onyxia's Lair (10-Player)",
@@ -1860,6 +1936,134 @@ KOL.Tracker:RegisterInstance("icc_25", {
     }
 })
 
+-- Icecrown Citadel (10-player Heroic)
+KOL.Tracker:RegisterInstance("icc_10h", {
+    name = "Icecrown Citadel (10H)",
+    type = "raid",
+    expansion = "wotlk",
+    difficulty = 3,
+    color = "PURPLE",
+    zones = {"Icecrown Citadel"},
+    groups = {
+        {
+            name = "The Lower Spire",
+            bosses = {
+                { name = "Lord Marrowgar", id = 36612 },
+                { name = "Lady Deathwhisper", id = 36855 },
+                {
+                    name = "Gunship Battle",
+                    type = "yell",
+                    id = {37540, 36939},
+                    anyNPC = true,
+                    yell = "Don't say I didn't warn ya, scoundrels!",
+                    yells = {
+                        "Don't say I didn't warn ya, scoundrels!",
+                        "The Alliance falter. Onward to the Lich King!",
+                    },
+                },
+                { name = "Deathbringer Saurfang", id = 37813 },
+            }
+        },
+        {
+            name = "The Plagueworks",
+            bosses = {
+                { name = "Festergut", id = 36626 },
+                { name = "Rotface", id = 36627 },
+                { name = "Professor Putricide", id = 36678 },
+            }
+        },
+        {
+            name = "The Crimson Hall",
+            bosses = {
+                { name = "Blood Prince Council", id = 37970 },
+                { name = "Blood-Queen Lana'thel", id = 37955 },
+            }
+        },
+        {
+            name = "Frostwing Halls",
+            bosses = {
+                {
+                    name = "Valithria Dreamwalker",
+                    id = 36789,
+                    detectType = "cast",
+                    detectSpellId = 71189,
+                },
+                { name = "Sindragosa", id = 36853 },
+            }
+        },
+        {
+            name = "The Frozen Throne",
+            bosses = {
+                { name = "The Lich King", id = 36597 },
+            }
+        },
+    }
+})
+
+-- Icecrown Citadel (25-player Heroic)
+KOL.Tracker:RegisterInstance("icc_25h", {
+    name = "Icecrown Citadel (25H)",
+    type = "raid",
+    expansion = "wotlk",
+    difficulty = 4,
+    color = "PURPLE",
+    zones = {"Icecrown Citadel"},
+    groups = {
+        {
+            name = "The Lower Spire",
+            bosses = {
+                { name = "Lord Marrowgar", id = 36612 },
+                { name = "Lady Deathwhisper", id = 36855 },
+                {
+                    name = "Gunship Battle",
+                    type = "yell",
+                    id = {37540, 36939},
+                    anyNPC = true,
+                    yell = "Don't say I didn't warn ya, scoundrels!",
+                    yells = {
+                        "Don't say I didn't warn ya, scoundrels!",
+                        "The Alliance falter. Onward to the Lich King!",
+                    },
+                },
+                { name = "Deathbringer Saurfang", id = 37813 },
+            }
+        },
+        {
+            name = "The Plagueworks",
+            bosses = {
+                { name = "Festergut", id = 36626 },
+                { name = "Rotface", id = 36627 },
+                { name = "Professor Putricide", id = 36678 },
+            }
+        },
+        {
+            name = "The Crimson Hall",
+            bosses = {
+                { name = "Blood Prince Council", id = 37970 },
+                { name = "Blood-Queen Lana'thel", id = 37955 },
+            }
+        },
+        {
+            name = "Frostwing Halls",
+            bosses = {
+                {
+                    name = "Valithria Dreamwalker",
+                    id = 36789,
+                    detectType = "cast",
+                    detectSpellId = 71189,
+                },
+                { name = "Sindragosa", id = 36853 },
+            }
+        },
+        {
+            name = "The Frozen Throne",
+            bosses = {
+                { name = "The Lich King", id = 36597 },
+            }
+        },
+    }
+})
+
 -- Ruby Sanctum (10-player)
 KOL.Tracker:RegisterInstance("rs_10", {
     name = "Ruby Sanctum (10-Player)",
@@ -1880,6 +2084,32 @@ KOL.Tracker:RegisterInstance("rs_25", {
     expansion = "wotlk",
     difficulty = 2,
     color = "RED",
+    zones = {"The Ruby Sanctum"},
+    bosses = {
+        {name = "Halion", id = 39863},
+    }
+})
+
+-- Ruby Sanctum (10-player Heroic)
+KOL.Tracker:RegisterInstance("rs_10h", {
+    name = "Ruby Sanctum (10H)",
+    type = "raid",
+    expansion = "wotlk",
+    difficulty = 3,
+    color = "PINK",
+    zones = {"The Ruby Sanctum"},
+    bosses = {
+        {name = "Halion", id = 39863},
+    }
+})
+
+-- Ruby Sanctum (25-player Heroic)
+KOL.Tracker:RegisterInstance("rs_25h", {
+    name = "Ruby Sanctum (25H)",
+    type = "raid",
+    expansion = "wotlk",
+    difficulty = 4,
+    color = "PINK",
     zones = {"The Ruby Sanctum"},
     bosses = {
         {name = "Halion", id = 39863},
