@@ -1658,6 +1658,8 @@ KOL.Tracker:RegisterInstance("icc_10", {
                 {
                     name = "Valithria Dreamwalker",
                     id = 36789,
+                    detectType = "cast",        -- Valithria doesn't die, she's healed
+                    detectSpellId = 71189,      -- Victory spell cast when healed to full
                     hardmode = {
                         yells = {
                             "I am lost in a sea of dream",
@@ -1819,6 +1821,8 @@ KOL.Tracker:RegisterInstance("icc_25", {
                 {
                     name = "Valithria Dreamwalker",
                     id = 36789,
+                    detectType = "cast",        -- Valithria doesn't die, she's healed
+                    detectSpellId = 71189,      -- Victory spell cast when healed to full
                     hardmode = {
                         yells = {
                             "I am lost in a sea of dream",
@@ -3429,3 +3433,9 @@ KOL.Tracker:RegisterInstance("hor_h", {
         },
     }
 })
+
+-- ============================================================================
+-- Build detection lookups after all instances are registered
+-- ============================================================================
+KOL.Tracker:BuildDetectionLookups()
+KOL:DebugPrint("Tracker-Data: All instances registered, detection lookups built", 3)

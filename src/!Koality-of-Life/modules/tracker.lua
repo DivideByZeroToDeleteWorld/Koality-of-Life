@@ -72,6 +72,182 @@ Tracker.currentInstanceId = nil
 -- Format: [instanceId][bossId] = true/false
 Tracker.hardmodeActive = {}
 
+-- Cached frame for text measurement (avoid creating new frames every update)
+Tracker.textMeasureFrame = nil
+Tracker.textMeasureString = nil
+
+-- ============================================================================
+-- Universal Boss Detection System
+-- ============================================================================
+-- Supports multiple detection types so bosses can specify how they're detected:
+--   detectType = "death"  (default) - UNIT_DIED event
+--   detectType = "cast"   - SPELL_CAST_START/SUCCESS with detectSpellId
+--   detectType = "buff"   - SPELL_AURA_APPLIED with detectSpellId
+--   detectType = "health" - Boss reaches specific health % (future)
+--
+-- Usage in boss data:
+--   { name = "Valithria Dreamwalker", id = 36789, detectType = "cast", detectSpellId = 71189 }
+-- ============================================================================
+
+-- Detection handlers registry
+-- Format: handlers[detectType] = { eventTypes = {"EVENT1", "EVENT2"}, handler = function(args, bossLookup) }
+Tracker.detectionHandlers = {}
+
+-- Lookup tables for fast detection (built during initialization)
+-- Format: spellLookup[spellId] = { {instanceId, bossIndex, boss}, ... }
+Tracker.spellLookup = {}
+
+-- Register a detection handler
+-- @param detectType string - The detection type name (e.g., "cast", "buff")
+-- @param eventTypes table - List of combat log event types to listen for
+-- @param handler function - Function(self, args, lookup) that processes the event
+function Tracker:RegisterDetectionHandler(detectType, eventTypes, handler)
+    self.detectionHandlers[detectType] = {
+        eventTypes = eventTypes,
+        handler = handler
+    }
+    KOL:DebugPrint("Tracker: Registered detection handler for type '" .. detectType .. "'", 3)
+end
+
+-- Build lookup tables for all registered detection types
+function Tracker:BuildDetectionLookups()
+    self.spellLookup = {}
+
+    for instanceId, data in pairs(self.instances) do
+        local function processBoss(boss, bossIndex)
+            local detectType = boss.detectType or "death"
+
+            if detectType == "cast" or detectType == "buff" then
+                local spellId = boss.detectSpellId
+                if spellId then
+                    if not self.spellLookup[spellId] then
+                        self.spellLookup[spellId] = {}
+                    end
+                    table.insert(self.spellLookup[spellId], {
+                        instanceId = instanceId,
+                        bossIndex = bossIndex,
+                        boss = boss,
+                        detectType = detectType
+                    })
+                    KOL:DebugPrint("Tracker: Built lookup for " .. boss.name .. " [" .. detectType .. "] spellId=" .. spellId, 3)
+                end
+            end
+        end
+
+        -- Check flat bosses list
+        if data.bosses then
+            for bossIndex, boss in ipairs(data.bosses) do
+                processBoss(boss, bossIndex)
+            end
+        end
+
+        -- Check grouped bosses
+        if data.groups then
+            for groupIndex, group in ipairs(data.groups) do
+                if group.bosses then
+                    for bossIndex, boss in ipairs(group.bosses) do
+                        -- Calculate global boss index for grouped bosses
+                        local globalIndex = self:GetGlobalBossIndex(data, groupIndex, bossIndex)
+                        processBoss(boss, globalIndex)
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- Get global boss index for grouped boss structures
+function Tracker:GetGlobalBossIndex(instanceData, groupIndex, localBossIndex)
+    local globalIndex = 0
+    if instanceData.groups then
+        for i = 1, groupIndex - 1 do
+            if instanceData.groups[i] and instanceData.groups[i].bosses then
+                globalIndex = globalIndex + #instanceData.groups[i].bosses
+            end
+        end
+    end
+    return globalIndex + localBossIndex
+end
+
+-- Initialize the default detection handlers
+function Tracker:InitializeDetectionHandlers()
+    -- Cast detection handler (SPELL_CAST_START, SPELL_CAST_SUCCESS)
+    self:RegisterDetectionHandler("cast", {"SPELL_CAST_START", "SPELL_CAST_SUCCESS"}, function(self, args)
+        local eventType = args[2]
+        local spellId = args[10]  -- WotLK 3.3.5: arg10 is spellId for spell events
+        local spellName = args[11]
+
+        if not spellId then return end
+
+        local lookupEntries = self.spellLookup[spellId]
+        if not lookupEntries then return end
+
+        for _, entry in ipairs(lookupEntries) do
+            if entry.detectType == "cast" and entry.instanceId == self.currentInstanceId then
+                KOL:DebugPrint("CAST DETECT: " .. entry.boss.name .. " via spell " .. spellId .. " (" .. (spellName or "?") .. ")", 2)
+                self:HandleBossDetection(entry.instanceId, entry.bossIndex, entry.boss, "cast", spellId)
+                return
+            end
+        end
+    end)
+
+    -- Buff detection handler (SPELL_AURA_APPLIED)
+    self:RegisterDetectionHandler("buff", {"SPELL_AURA_APPLIED"}, function(self, args)
+        local eventType = args[2]
+        local spellId = args[10]
+        local spellName = args[11]
+
+        if not spellId then return end
+
+        local lookupEntries = self.spellLookup[spellId]
+        if not lookupEntries then return end
+
+        for _, entry in ipairs(lookupEntries) do
+            if entry.detectType == "buff" and entry.instanceId == self.currentInstanceId then
+                KOL:DebugPrint("BUFF DETECT: " .. entry.boss.name .. " via spell " .. spellId .. " (" .. (spellName or "?") .. ")", 2)
+                self:HandleBossDetection(entry.instanceId, entry.bossIndex, entry.boss, "buff", spellId)
+                return
+            end
+        end
+    end)
+
+    KOL:DebugPrint("Tracker: Default detection handlers initialized", 3)
+end
+
+-- Handle boss detection (called by detection handlers)
+function Tracker:HandleBossDetection(instanceId, bossIndex, boss, detectType, triggerId)
+    local data = self.instances[instanceId]
+    if not data then return end
+
+    -- Check if already killed
+    if self:IsBossKilled(instanceId, bossIndex) then
+        KOL:DebugPrint("Tracker: Boss " .. boss.name .. " already killed, ignoring detection", 3)
+        return
+    end
+
+    -- Mark boss as killed
+    self:MarkBossKilled(instanceId, bossIndex)
+
+    local watchLevel = KOL.db.profile.watchDeathsLevel or 0
+    if watchLevel >= 1 then
+        local detectInfo = ""
+        if detectType == "cast" then
+            detectInfo = " (victory spell)"
+        elseif detectType == "buff" then
+            detectInfo = " (buff applied)"
+        end
+        KOL:Print("Boss completed: " .. COLOR(data.color, boss.name) .. detectInfo)
+    end
+
+    -- Record for BossRecorder if available
+    if KOL.BossRecorder and KOL.BossRecorder.OnBossDetected then
+        local bossId = self:GetBossId(boss)
+        KOL.BossRecorder:OnBossDetected(boss.name, nil, bossId, "Boss")
+    end
+
+    KOL:DebugPrint("Tracker: HandleBossDetection complete for " .. boss.name .. " [" .. detectType .. "]", 2)
+end
+
 -- ============================================================================
 -- Initialization
 -- ============================================================================
@@ -161,6 +337,9 @@ function Tracker:Initialize()
 
     -- Load custom panels from DB
     self:LoadCustomPanels()
+
+    -- Initialize detection handlers (must be before RegisterEvents)
+    self:InitializeDetectionHandlers()
 
     -- Register event handlers
     self:RegisterEvents()
@@ -923,15 +1102,16 @@ end
 function Tracker:OnCombatLogEvent(...)
     local args = {...}
 
-    -- WotLK 3.3.5 combat log structure for UNIT_DIED:
+    -- WotLK 3.3.5 combat log structure:
     -- arg1: timestamp
     -- arg2: eventType
-    -- arg3: sourceGUID (always 0 for deaths)
-    -- arg4: sourceName (always nil for deaths)
+    -- arg3: sourceGUID
+    -- arg4: sourceName
     -- arg5: sourceFlags
     -- arg6: destGUID
     -- arg7: destName
     -- arg8: destFlags
+    -- For spell events: arg10 = spellId, arg11 = spellName
     local timestamp = args[1]
     local eventType = args[2]
     local sourceGUID = args[3]
@@ -941,8 +1121,17 @@ function Tracker:OnCombatLogEvent(...)
     local destName = args[7]
     local destFlags = args[8]
 
-    -- Only process UNIT_DIED events
+    -- Check detection handlers for non-death events (cast, buff, etc.)
     if eventType ~= "UNIT_DIED" then
+        -- Check all registered detection handlers
+        for detectType, handlerInfo in pairs(self.detectionHandlers) do
+            for _, eventName in ipairs(handlerInfo.eventTypes) do
+                if eventType == eventName then
+                    handlerInfo.handler(self, args)
+                    return
+                end
+            end
+        end
         return
     end
 
@@ -2585,10 +2774,12 @@ function Tracker:CreateWatchFrame(instanceId)
 
     -- Dragging from title text
     titleText:SetScript("OnDragStart", function(self)
+        frame.isMoving = true  -- Flag to skip expensive updates during drag
         frame:StartMoving()
     end)
     titleText:SetScript("OnDragStop", function(self)
         frame:StopMovingOrSizing()
+        frame.isMoving = false
         Tracker:SaveFramePosition(instanceId)
     end)
 
@@ -2943,6 +3134,11 @@ function Tracker:UpdateWatchFrame(instanceId)
         return
     end
 
+    -- Skip expensive updates while dragging the frame
+    if frame.isMoving then
+        return
+    end
+
     local data = frame.instanceData
     local content = frame.content
 
@@ -2977,13 +3173,15 @@ function Tracker:UpdateWatchFrame(instanceId)
         titleTextContent = self:GetShortTitle(data)
     end
 
-    -- Measure title width with scaled font
-    local tempFrame = CreateFrame("Frame")
-    local tempString = tempFrame:CreateFontString()
-    tempString:SetFont(titleFontPath, scaledTitleFontSize, titleFontOutline)
-    tempString:SetText(titleTextContent)
+    -- Measure title width with scaled font (use cached frame to avoid garbage)
+    if not self.textMeasureFrame then
+        self.textMeasureFrame = CreateFrame("Frame")
+        self.textMeasureString = self.textMeasureFrame:CreateFontString()
+    end
+    self.textMeasureString:SetFont(titleFontPath, scaledTitleFontSize, titleFontOutline)
+    self.textMeasureString:SetText(titleTextContent)
 
-    local titleTextWidth = tempString:GetStringWidth()
+    local titleTextWidth = self.textMeasureString:GetStringWidth()
     local showMinimizeBtn = false  -- Removed minimize button - user can double-click titlebar to minimize
     local leftPadding = 8
     local rightPadding = showMinimizeBtn and 30 or 10  -- +2 pixels back from minimize button removal

@@ -1723,8 +1723,10 @@ function LDBModule:HookMinimapButton()
             -- CUSTOM DRAG BEHAVIOR - Square edge positioning
             -- ============================================================
             local EDGE_OFFSET = 10  -- Distance from minimap edge to button center
+            local currentAngle = KOL.db.profile.minimap.minimapPos or 220
 
             -- Position button along square edge at given angle
+            -- Store at module level so it can be called on zone changes etc.
             local function PositionAtAngle(angle)
                 local rads = math.rad(angle)
                 local cos_a = math.cos(rads)
@@ -1755,9 +1757,109 @@ function LDBModule:HookMinimapButton()
                 button:SetPoint("CENTER", Minimap, "CENTER", x, y)
             end
 
+            -- Store function at module level for external access
+            LDBModule.PositionMinimapButton = function()
+                local angle = KOL.db.profile.minimap.minimapPos or 220
+                currentAngle = angle
+                PositionAtAngle(angle)
+            end
+
+            -- Calculate expected position for a given angle (for verification)
+            local function GetExpectedPosition(angle)
+                local rads = math.rad(angle)
+                local cos_a = math.cos(rads)
+                local sin_a = math.sin(rads)
+                local halfSize = (Minimap:GetWidth() / 2) + EDGE_OFFSET
+                local abs_cos = math.abs(cos_a)
+                local abs_sin = math.abs(sin_a)
+                local t
+                if abs_cos < 0.001 then
+                    t = halfSize / abs_sin
+                elseif abs_sin < 0.001 then
+                    t = halfSize / abs_cos
+                elseif abs_cos > abs_sin then
+                    t = halfSize / abs_cos
+                else
+                    t = halfSize / abs_sin
+                end
+                return cos_a * t, sin_a * t
+            end
+
+            -- Self-canceling position verifier
+            -- Checks position periodically and fixes if wrong, cancels when stable
+            local positionTicker = nil
+            local correctCount = 0
+            local POSITION_TOLERANCE = 2  -- pixels
+            local REQUIRED_CORRECT_CHECKS = 3
+
+            LDBModule.StartPositionVerifier = function()
+                -- Cancel existing ticker if any
+                if positionTicker then
+                    positionTicker:Cancel()
+                    positionTicker = nil
+                end
+                correctCount = 0
+
+                positionTicker = C_Timer.NewTicker(0.2, function()
+                    if not button or not button:IsShown() then
+                        return
+                    end
+
+                    local angle = KOL.db.profile.minimap.minimapPos or 220
+                    local expectedX, expectedY = GetExpectedPosition(angle)
+                    local mx, my = Minimap:GetCenter()
+                    local bx, by = button:GetCenter()
+
+                    if mx and my and bx and by then
+                        local actualOffsetX = bx - mx
+                        local actualOffsetY = by - my
+                        local diffX = math.abs(actualOffsetX - expectedX)
+                        local diffY = math.abs(actualOffsetY - expectedY)
+
+                        if diffX <= POSITION_TOLERANCE and diffY <= POSITION_TOLERANCE then
+                            -- Position is correct
+                            correctCount = correctCount + 1
+                            if correctCount >= REQUIRED_CORRECT_CHECKS then
+                                -- Position has been stable, cancel ticker
+                                positionTicker:Cancel()
+                                positionTicker = nil
+                                KOL:DebugPrint("LDB: Minimap button position verified, ticker stopped", 3)
+                            end
+                        else
+                            -- Position is wrong, fix it
+                            correctCount = 0
+                            currentAngle = angle
+                            PositionAtAngle(angle)
+                            KOL:DebugPrint("LDB: Fixed minimap button position (off by " .. string.format("%.1f, %.1f", diffX, diffY) .. ")", 3)
+                        end
+                    end
+                end)
+
+                KOL:DebugPrint("LDB: Started position verifier ticker", 3)
+            end
+
+            LDBModule.StopPositionVerifier = function()
+                if positionTicker then
+                    positionTicker:Cancel()
+                    positionTicker = nil
+                    KOL:DebugPrint("LDB: Position verifier stopped manually", 3)
+                end
+            end
+
             -- Apply initial position
-            local currentAngle = KOL.db.profile.minimap.minimapPos or 220
             PositionAtAngle(currentAngle)
+
+            -- Start position verifier on initial setup
+            LDBModule.StartPositionVerifier()
+
+            -- Hook OnShow to re-apply position whenever button becomes visible
+            button:HookScript("OnShow", function()
+                C_Timer.After(0, function()
+                    PositionAtAngle(currentAngle)
+                end)
+                -- Restart verifier when button shows
+                LDBModule.StartPositionVerifier()
+            end)
 
             -- Block ALL of LibDBIcon's SetPoint calls - we handle positioning entirely
             local origSetPoint = button.SetPoint
@@ -1939,6 +2041,9 @@ end
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+frame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+frame:RegisterEvent("ZONE_CHANGED")
+frame:RegisterEvent("ZONE_CHANGED_INDOORS")
 frame:SetScript("OnEvent", function(self, event)
     -- PLAYER_LOGIN fires on initial login only
     -- PLAYER_ENTERING_WORLD fires on login AND /reload
@@ -1960,5 +2065,16 @@ frame:SetScript("OnEvent", function(self, event)
                 LDBModule:Initialize()
             end
         end)
+        -- Start position verifier after entering world (self-cancels when stable)
+        C_Timer.After(0.1, function()
+            if LDBModule.StartPositionVerifier then
+                LDBModule.StartPositionVerifier()
+            end
+        end)
+    elseif event == "ZONE_CHANGED_NEW_AREA" or event == "ZONE_CHANGED" or event == "ZONE_CHANGED_INDOORS" then
+        -- Start position verifier after zone changes (self-cancels when stable)
+        if LDBModule.StartPositionVerifier then
+            LDBModule.StartPositionVerifier()
+        end
     end
 end)

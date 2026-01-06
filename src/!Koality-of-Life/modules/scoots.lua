@@ -321,28 +321,56 @@ function Scoots:ToggleVendorFilter()
         return
     end
 
-    -- Replicate the exact logic from SVFToggleOffButton OnClick handler
-    -- (from ScootsVendorFilter.lua lines 1338-1347)
+    -- Close options panel if open (so we're working from main view)
+    if SVF.optionsOpen and SVF.closeOptions then
+        SVF.closeOptions()
+    end
+
     if SVF.off == true then
+        -- Turn ON the filter (show SVF, hide default merchant)
         SVF.off = false
+
+        -- Hide default merchant UI
+        if SVF.hideMerchantUi then
+            SVF.hideMerchantUi()
+        end
+
+        -- Show SVF frames
         if SVF.frame then
             SVF.frame:Show()
         end
         if SVF.synopsisFrame then
             SVF.synopsisFrame:Show()
         end
+
+        -- Update toggle button text if it exists
+        if SVF.toggleOffButton then
+            SVF.toggleOffButton:SetText("Use default vendor")
+        end
+
         KOL:DebugPrint("Scoots: Switched to FILTERED vendor view", 3)
     else
+        -- Turn OFF the filter (hide SVF, show default merchant)
         SVF.off = true
+
+        -- Hide SVF frames
         if SVF.frame then
             SVF.frame:Hide()
         end
         if SVF.synopsisFrame then
             SVF.synopsisFrame:Hide()
         end
+
+        -- Show default merchant UI
         if SVF.showMerchantUi then
             SVF.showMerchantUi()
         end
+
+        -- Update toggle button text if it exists
+        if SVF.toggleOffButton then
+            SVF.toggleOffButton:SetText("Use ScootsVendorFilter")
+        end
+
         KOL:DebugPrint("Scoots: Switched to DEFAULT vendor view", 3)
     end
 
