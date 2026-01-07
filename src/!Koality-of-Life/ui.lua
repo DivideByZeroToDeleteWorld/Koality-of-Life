@@ -2436,8 +2436,9 @@ function KOL:PopulateTrackerConfigUI()
                             args = {
                                 objectiveColorsLabel = {
                                     type = "description",
-                                    name = "|cFF88DDFF--- Objective Colors ---|r",
-                                    fontSize = "medium",
+                                    name = "OBJECTIVE COLORS|0.53,0.87,1",
+                                    dialogControl = "KOL_SectionHeader",
+                                    width = "full",
                                     order = 1,
                                 },
                                 titleFontColor = {
@@ -2531,8 +2532,9 @@ function KOL:PopulateTrackerConfigUI()
                                 },
                                 uiColorsLabel = {
                                     type = "description",
-                                    name = "\n|cFF88DDFF--- UI Colors ---|r",
-                                    fontSize = "medium",
+                                    name = "UI COLORS|0.53,0.87,1",
+                                    dialogControl = "KOL_SectionHeader",
+                                    width = "full",
                                     order = 10,
                                 },
                                 backgroundColor = {
@@ -2639,8 +2641,9 @@ function KOL:PopulateTrackerConfigUI()
                                 },
                                 fontsLabel = {
                                     type = "description",
-                                    name = "\n|cFF88DDFF--- Fonts ---|r",
-                                    fontSize = "medium",
+                                    name = "FONTS|0.53,0.87,1",
+                                    dialogControl = "KOL_SectionHeader",
+                                    width = "full",
                                     order = 20,
                                 },
                                 globalFont = {

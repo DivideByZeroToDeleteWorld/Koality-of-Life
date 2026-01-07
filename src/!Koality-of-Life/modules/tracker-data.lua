@@ -2843,7 +2843,7 @@ KOL.Tracker:RegisterInstance("swp_25n", {
     expansion = "tbc",
     difficulty = 2,
     color = "ORANGE",
-    zones = {"Sunwell Plateau"},
+    zones = {"The Sunwell", "Sunwell Plateau"},
     groups = {
         {
             name = "Outer Sanctum",

@@ -581,6 +581,39 @@ function KOL:SlashCommand(input)
             print("  " .. YELLOW(cmdName) .. " [" .. category .. "]")
         end
         self:PrintTag("Total: " .. count .. " commands registered")
+    elseif cmd == "zone" or cmd == "diag" then
+        -- Zone diagnostic command
+        local zoneName = GetRealZoneText()
+        local subZoneName = GetSubZoneText()
+        local name, instanceType, difficultyIndex, difficultyName, maxPlayers = GetInstanceInfo()
+
+        self:PrintTag("=== ZONE DIAGNOSTIC ===")
+        print("  Zone: " .. YELLOW(tostring(zoneName)))
+        print("  SubZone: " .. YELLOW(tostring(subZoneName)))
+        print("  Instance: " .. YELLOW(tostring(name)))
+        print("  Type: " .. YELLOW(tostring(instanceType)))
+        print("  Difficulty: " .. YELLOW(tostring(difficultyIndex)) .. " (" .. tostring(difficultyName) .. ")")
+        print("  Max Players: " .. YELLOW(tostring(maxPlayers)))
+
+        if KOL.Tracker then
+            print("  Current Instance ID: " .. YELLOW(tostring(KOL.Tracker.currentInstanceId) or "nil"))
+
+            -- Check if zone matches any registered instance
+            local matches = {}
+            for id, data in pairs(KOL.Tracker.instances or {}) do
+                for _, zone in ipairs(data.zones or {}) do
+                    if zone == zoneName or zone == subZoneName then
+                        table.insert(matches, id .. " (diff=" .. tostring(data.difficulty) .. ")")
+                    end
+                end
+            end
+
+            if #matches > 0 then
+                print("  Matching Instances: " .. GREEN(table.concat(matches, ", ")))
+            else
+                print("  Matching Instances: " .. RED("NONE - zone not recognized!"))
+            end
+        end
     else
         self:PrintTag(RED("Unknown command: ") .. cmd)
         self:PrintTag("Type " .. YELLOW("/kol help") .. " for a list of commands")

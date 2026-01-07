@@ -578,8 +578,9 @@ function LDBModule:ShowSubmenu(parentButton, items, title, expandLeft)
         totalHeight = totalHeight + sepHeight
     end
 
-    -- Check if submenu items would overflow right
-    local childExpandLeft = WouldOverflowRight(tooltip, MENU_WIDTH)
+    -- Inherit expand direction from parent - only switch to left if would overflow
+    -- Never switch back to right once we've gone left (prevents overlap)
+    local childExpandLeft = expandLeft or WouldOverflowRight(tooltip, MENU_WIDTH)
 
     -- Add items
     for _, item in ipairs(items) do
@@ -1800,6 +1801,11 @@ function LDBModule:HookMinimapButton()
                 end
                 correctCount = 0
 
+                -- Immediately fix position (don't wait for first tick)
+                local angle = KOL.db.profile.minimap.minimapPos or 220
+                currentAngle = angle
+                PositionAtAngle(angle)
+
                 positionTicker = C_Timer.NewTicker(0.2, function()
                     if not button or not button:IsShown() then
                         return
@@ -2073,8 +2079,11 @@ frame:SetScript("OnEvent", function(self, event)
         end)
     elseif event == "ZONE_CHANGED_NEW_AREA" or event == "ZONE_CHANGED" or event == "ZONE_CHANGED_INDOORS" then
         -- Start position verifier after zone changes (self-cancels when stable)
-        if LDBModule.StartPositionVerifier then
-            LDBModule.StartPositionVerifier()
-        end
+        -- Small delay to ensure we run AFTER LibDBIcon finishes any repositioning
+        C_Timer.After(0.1, function()
+            if LDBModule.StartPositionVerifier then
+                LDBModule.StartPositionVerifier()
+            end
+        end)
     end
 end)

@@ -2338,6 +2338,7 @@ function Tracker:UpdateZoneTracking()
 end
 
 -- Store the WoW instance ID when we kill a boss
+-- Also detects fresh instances by comparing to stored ID
 function Tracker:StoreInstanceID(instanceId, wowInstanceId)
     local storedId = self.instanceLockouts[instanceId]
     local storedIdNum = storedId and tonumber(storedId)
@@ -2347,19 +2348,24 @@ function Tracker:StoreInstanceID(instanceId, wowInstanceId)
 
     if storedIdNum and storedIdNum ~= wowInstanceId and hasKills then
         -- DIFFERENT INSTANCE DETECTED!
-        -- This could mean: reset, different lockout, or just WoW reassigning IDs (not always reliable)
-        -- DON'T auto-reset here - just log it. Let the time-based exit/re-entry detection handle resets.
+        -- This means we're in a fresh instance (reset happened, different lockout, etc.)
+        -- Reset our tracking since this is a new lockout
+        local instanceData = self.instances[instanceId]
+        local instanceName = instanceData and instanceData.name or instanceId
+        KOL:PrintTag("Fresh instance detected (new lockout ID) - resetting " .. instanceName)
         KOL:DebugPrint("Tracker: Instance ID changed from " .. storedIdNum .. " to " .. wowInstanceId ..
-            " for " .. instanceId .. " (not auto-resetting)", 2)
+            " for " .. instanceId .. " - RESETTING", 2)
+        self:ResetInstance(instanceId)
     end
 
-    -- Store the current instance ID (for future reference, though we're not using it for resets anymore)
+    -- Store the current instance ID
     self.instanceLockouts[instanceId] = tostring(wowInstanceId)
     KOL.db.profile.tracker.instanceLockouts = self.instanceLockouts
     KOL:DebugPrint("Tracker: WoW Instance ID for " .. instanceId .. " = " .. wowInstanceId, 3)
 end
 
 -- Check if instance has reset when player re-enters
+-- Uses WoW's internal instance ID to detect fresh instances (not time-based)
 function Tracker:CheckInstanceReset(instanceId, zoneName, difficultyIndex)
     local instanceData = self.instances[instanceId]
     if not instanceData then return end
@@ -2379,33 +2385,19 @@ function Tracker:CheckInstanceReset(instanceId, zoneName, difficultyIndex)
         return
     end
 
-    -- Check when we last exited this instance
-    local lastExit = self.lastExitTime[instanceId]
-    local currentTime = time()
-
     KOL:DebugPrint("Tracker: Checking reset for " .. instanceId .. " | hasKills=" .. tostring(hasKills) ..
-        " | hasSavedTimer=" .. tostring(hasSavedTimer) .. " | lastExit=" .. tostring(lastExit) .. " | currentTime=" .. currentTime, 3)
+        " | hasSavedTimer=" .. tostring(hasSavedTimer), 3)
 
-    if lastExit then
-        local timeSinceExit = currentTime - lastExit
+    -- Reset detection is now handled by:
+    -- 1. UPDATE_INSTANCE_INFO event when player manually resets while outside (OnInstanceInfoUpdate)
+    -- 2. Instance ID comparison when a boss dies (StoreInstanceID detects different lockout)
+    --
+    -- We do NOT use time-based reset anymore because:
+    -- - Dying and running back takes time but shouldn't reset progress
+    -- - Hearthing out to repair shouldn't reset progress
+    -- - Only actual instance resets should clear progress
 
-        -- For RAIDS: 30+ seconds outside = assume reset (covers manual reset, teleporting out, etc.)
-        -- For DUNGEONS: 10+ seconds outside = assume reset (they reset faster)
-        local threshold = instanceData.type == "raid" and 30 or 10
-
-        KOL:DebugPrint("CheckInstanceReset: " .. instanceId .. " | Time since exit: " .. math.floor(timeSinceExit) .. "s | Threshold: " .. threshold .. "s", 2)
-
-        if timeSinceExit >= threshold then
-            KOL:PrintTag("Fresh " .. instanceData.type .. " detected (outside for " .. math.floor(timeSinceExit) .. "s) - resetting " .. instanceData.name)
-            self:ResetInstance(instanceId)
-            self.lastExitTime[instanceId] = nil  -- Clear exit time
-            return
-        else
-            KOL:DebugPrint("Re-entry after " .. timeSinceExit .. "s (threshold=" .. threshold .. "s), keeping kills", 2)
-        end
-    else
-        KOL:DebugPrint("CheckInstanceReset: First entry to " .. instanceId .. " (no previous exit recorded)", 1)
-    end
+    KOL:DebugPrint("CheckInstanceReset: Re-entering " .. instanceId .. " - keeping progress (instance ID based reset only)", 3)
 end
 
 -- Track when player exits an instance
@@ -3289,8 +3281,8 @@ function Tracker:UpdateWatchFrame(instanceId)
                 return string.format("%02X%02X%02X", r, g, b)
             end
 
-            -- SPEED buff status line (if enabled)
-            if dcConfig.showBuffStacks then
+            -- SPEED buff status line (if enabled AND (buff is active OR has stacks))
+            if dcConfig.showBuffStacks and (dcState.buffActive or dcState.speedStacks > 0) then
                 local speedStatusText = content:CreateFontString(nil, "OVERLAY")
                 speedStatusText:SetFont(objectiveFontPath, scaledObjectiveFontSize, objectiveFontOutline)
                 speedStatusText:SetPoint("TOPLEFT", content, "TOPLEFT", 4, yOffset)
@@ -3306,8 +3298,8 @@ function Tracker:UpdateWatchFrame(instanceId)
                 contentHeight = contentHeight + speedStatusText:GetStringHeight() + 2
             end
 
-            -- Current timer and best time line (if enabled)
-            if dcConfig.showTimer then
+            -- Current timer and best time line (if enabled AND (buff is active OR has stacks))
+            if dcConfig.showTimer and (dcState.buffActive or dcState.speedStacks > 0) then
                 local currentTimeStr = self:FormatTime(dcState.currentTime)
                 local bestTimeStr = self:FormatTime(dcState.bestTime)
                 local timerColor = dcState.buffActive and whiteColor or redColor
