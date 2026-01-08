@@ -1165,11 +1165,6 @@ KOL.Tracker:RegisterInstance("uld_10", {
                     type = "yell",
                     id = 32845,
                     yell = "I... I am released from his grasp... at last.",
-                    hardmode = {
-                        yells = {
-                            "Hodir has been defeated",
-                        }
-                    }
                 },
                 {
                     name = "Thorim",
@@ -1301,11 +1296,6 @@ KOL.Tracker:RegisterInstance("uld_25", {
                     type = "yell",
                     id = 32845,
                     yell = "I... I am released from his grasp... at last.",
-                    hardmode = {
-                        yells = {
-                            "Hodir has been defeated",
-                        }
-                    }
                 },
                 {
                     name = "Thorim",
@@ -1386,22 +1376,10 @@ KOL.Tracker:RegisterInstance("toc_10", {
         {
             name = "The Beasts of Northrend",
             id = 34797,
-            hardmode = {
-                yells = {
-                    "The next beast is released!",
-                    "The beast is slain!",
-                }
-            }
         },
         {
             name = "Lord Jaraxxus",
             id = 34780,
-            hardmode = {
-                yells = {
-                    "TRIFLING GNOME!",
-                    "Flesh from bone!",
-                }
-            }
         },
         {
             name = "Faction Champions",
@@ -1412,31 +1390,14 @@ KOL.Tracker:RegisterInstance("toc_10", {
                 "GLORY TO THE ALLIANCE!",  -- Alliance victory
                 "That was just a taste of what the future brings. FOR THE HORDE!",  -- Horde victory
             },
-            hardmode = {
-                yells = {
-                    "A tragic day",
-                }
-            }
         },
         {
             name = "Twin Val'kyr",
             id = 34497,
-            hardmode = {
-                yells = {
-                    "LIGHT GRANT ME STRENGTH",
-                    "darkness overwhelm",
-                }
-            }
         },
         {
             name = "Anub'arak",
             id = 34564,
-            hardmode = {
-                yells = {
-                    "This place will serve as your tomb",
-                    "AHHH! The surface",
-                }
-            }
         },
     }
 })
@@ -1453,22 +1414,10 @@ KOL.Tracker:RegisterInstance("toc_25", {
         {
             name = "The Beasts of Northrend",
             id = 34797,
-            hardmode = {
-                yells = {
-                    "The next beast is released!",
-                    "The beast is slain!",
-                }
-            }
         },
         {
             name = "Lord Jaraxxus",
             id = 34780,
-            hardmode = {
-                yells = {
-                    "TRIFLING GNOME!",
-                    "Flesh from bone!",
-                }
-            }
         },
         {
             name = "Faction Champions",
@@ -1479,31 +1428,14 @@ KOL.Tracker:RegisterInstance("toc_25", {
                 "GLORY TO THE ALLIANCE!",  -- Alliance victory
                 "That was just a taste of what the future brings. FOR THE HORDE!",  -- Horde victory
             },
-            hardmode = {
-                yells = {
-                    "A tragic day",
-                }
-            }
         },
         {
             name = "Twin Val'kyr",
             id = 34497,
-            hardmode = {
-                yells = {
-                    "LIGHT GRANT ME STRENGTH",
-                    "darkness overwhelm",
-                }
-            }
         },
         {
             name = "Anub'arak",
             id = 34564,
-            hardmode = {
-                yells = {
-                    "This place will serve as your tomb",
-                    "AHHH! The surface",
-                }
-            }
         },
     }
 })
@@ -1625,20 +1557,10 @@ KOL.Tracker:RegisterInstance("icc_10", {
                 {
                     name = "Lord Marrowgar",
                     id = 36612,
-                    hardmode = {
-                        yells = {
-                            "BONE STORM!",
-                        }
-                    }
                 },
                 {
                     name = "Lady Deathwhisper",
                     id = 36855,
-                    hardmode = {
-                        yells = {
-                            "Fools, you have brought about your own demise!",
-                        }
-                    }
                 },
                 {
                     name = "Gunship Battle",
@@ -1650,22 +1572,10 @@ KOL.Tracker:RegisterInstance("icc_10", {
                         "Don't say I didn't warn ya, scoundrels!",  -- Alliance victory
                         "The Alliance falter. Onward to the Lich King!",  -- Horde victory
                     },
-                    hardmode = {
-                        yells = {
-                            "Open fire!",
-                            "Marines, defenders of the Alliance",
-                        }
-                    }
                 },
                 {
                     name = "Deathbringer Saurfang",
                     id = 37813,
-                    hardmode = {
-                        yells = {
-                            "Feast on their blood!",
-                            "Blood beasts, heed my call!",
-                        }
-                    }
                 },
             }
         },
@@ -1675,32 +1585,14 @@ KOL.Tracker:RegisterInstance("icc_10", {
                 {
                     name = "Festergut",
                     id = 36626,
-                    hardmode = {
-                        yells = {
-                            "Fun time!",
-                            "New toys!",
-                        }
-                    }
                 },
                 {
                     name = "Rotface",
                     id = 36627,
-                    hardmode = {
-                        yells = {
-                            "Daddy make toys out of you!",
-                            "BAD! BAD! BAD!",
-                        }
-                    }
                 },
                 {
                     name = "Professor Putricide",
                     id = 36678,
-                    hardmode = {
-                        yells = {
-                            "Good news, everyone!",
-                            "Great news, everyone!",
-                        }
-                    }
                 },
             }
         },
@@ -1710,21 +1602,10 @@ KOL.Tracker:RegisterInstance("icc_10", {
                 {
                     name = "Blood Prince Council",
                     id = 37970,
-                    hardmode = {
-                        yells = {
-                            "You have made a grave error",
-                        }
-                    }
                 },
                 {
                     name = "Blood-Queen Lana'thel",
                     id = 37955,
-                    hardmode = {
-                        yells = {
-                            "You have made a grave mistake",
-                            "The blood races in my veins!",
-                        }
-                    }
                 },
             }
         },
@@ -1736,21 +1617,10 @@ KOL.Tracker:RegisterInstance("icc_10", {
                     id = 36789,
                     detectType = "cast",        -- Valithria doesn't die, she's healed
                     detectSpellId = 71189,      -- Victory spell cast when healed to full
-                    hardmode = {
-                        yells = {
-                            "I am lost in a sea of dream",
-                        }
-                    }
                 },
                 {
                     name = "Sindragosa",
                     id = 36853,
-                    hardmode = {
-                        yells = {
-                            "Suffer, mortals!",
-                            "Icy death awaits!",
-                        }
-                    }
                 },
             }
         },
@@ -1760,13 +1630,6 @@ KOL.Tracker:RegisterInstance("icc_10", {
                 {
                     name = "The Lich King",
                     id = 36597,
-                    hardmode = {
-                        yells = {
-                            "Frostmourne hungers!",
-                            "I will freeze you from within",
-                            "So the Light's vaunted justice has finally arrived",
-                        }
-                    }
                 },
             }
         },
@@ -1788,20 +1651,10 @@ KOL.Tracker:RegisterInstance("icc_25", {
                 {
                     name = "Lord Marrowgar",
                     id = 36612,
-                    hardmode = {
-                        yells = {
-                            "BONE STORM!",
-                        }
-                    }
                 },
                 {
                     name = "Lady Deathwhisper",
                     id = 36855,
-                    hardmode = {
-                        yells = {
-                            "Fools, you have brought about your own demise!",
-                        }
-                    }
                 },
                 {
                     name = "Gunship Battle",
@@ -1813,22 +1666,10 @@ KOL.Tracker:RegisterInstance("icc_25", {
                         "Don't say I didn't warn ya, scoundrels!",  -- Alliance victory
                         "The Alliance falter. Onward to the Lich King!",  -- Horde victory
                     },
-                    hardmode = {
-                        yells = {
-                            "Open fire!",
-                            "Marines, defenders of the Alliance",
-                        }
-                    }
                 },
                 {
                     name = "Deathbringer Saurfang",
                     id = 37813,
-                    hardmode = {
-                        yells = {
-                            "Feast on their blood!",
-                            "Blood beasts, heed my call!",
-                        }
-                    }
                 },
             }
         },
@@ -1838,32 +1679,14 @@ KOL.Tracker:RegisterInstance("icc_25", {
                 {
                     name = "Festergut",
                     id = 36626,
-                    hardmode = {
-                        yells = {
-                            "Fun time!",
-                            "New toys!",
-                        }
-                    }
                 },
                 {
                     name = "Rotface",
                     id = 36627,
-                    hardmode = {
-                        yells = {
-                            "Daddy make toys out of you!",
-                            "BAD! BAD! BAD!",
-                        }
-                    }
                 },
                 {
                     name = "Professor Putricide",
                     id = 36678,
-                    hardmode = {
-                        yells = {
-                            "Good news, everyone!",
-                            "Great news, everyone!",
-                        }
-                    }
                 },
             }
         },
@@ -1873,21 +1696,10 @@ KOL.Tracker:RegisterInstance("icc_25", {
                 {
                     name = "Blood Prince Council",
                     id = 37970,
-                    hardmode = {
-                        yells = {
-                            "You have made a grave error",
-                        }
-                    }
                 },
                 {
                     name = "Blood-Queen Lana'thel",
                     id = 37955,
-                    hardmode = {
-                        yells = {
-                            "You have made a grave mistake",
-                            "The blood races in my veins!",
-                        }
-                    }
                 },
             }
         },
@@ -1899,21 +1711,10 @@ KOL.Tracker:RegisterInstance("icc_25", {
                     id = 36789,
                     detectType = "cast",        -- Valithria doesn't die, she's healed
                     detectSpellId = 71189,      -- Victory spell cast when healed to full
-                    hardmode = {
-                        yells = {
-                            "I am lost in a sea of dream",
-                        }
-                    }
                 },
                 {
                     name = "Sindragosa",
                     id = 36853,
-                    hardmode = {
-                        yells = {
-                            "Suffer, mortals!",
-                            "Icy death awaits!",
-                        }
-                    }
                 },
             }
         },
@@ -1923,13 +1724,6 @@ KOL.Tracker:RegisterInstance("icc_25", {
                 {
                     name = "The Lich King",
                     id = 36597,
-                    hardmode = {
-                        yells = {
-                            "Frostmourne hungers!",
-                            "I will freeze you from within",
-                            "So the Light's vaunted justice has finally arrived",
-                        }
-                    }
                 },
             }
         },
@@ -3195,43 +2989,10 @@ KOL.Tracker:RegisterInstance("hol_h", {
     zones = {"Halls of Lightning"},
     challengeMaxLevel = 80,
     bosses = {
-        {
-            name = "General Bjarngrim",
-            id = 28586,
-            hardmode = {
-                yells = {
-                    "I will crush you!",
-                }
-            }
-        },
-        {
-            name = "Volkhan",
-            id = 28587,
-            hardmode = {
-                yells = {
-                    "Untainted by flame!",
-                }
-            }
-        },
-        {
-            name = "Ionar",
-            id = 28546,
-            hardmode = {
-                yells = {
-                    "You wish to confront the master?",
-                }
-            }
-        },
-        {
-            name = "Loken",
-            id = 28923,
-            hardmode = {
-                yells = {
-                    "What little time you have left in this world will be spent in agony!",
-                    "I have witnessed the rise and fall of empires",
-                }
-            }
-        },
+        {name = "General Bjarngrim", id = 28586},
+        {name = "Volkhan", id = 28587},
+        {name = "Ionar", id = 28546},
+        {name = "Loken", id = 28923},
     }
 })
 
@@ -3261,43 +3022,10 @@ KOL.Tracker:RegisterInstance("oc_h", {
     zones = {"The Oculus"},
     challengeMaxLevel = 80,
     bosses = {
-        {
-            name = "Drakos the Interrogator",
-            id = 27654,
-            hardmode = {
-                yells = {
-                    "I will rip the secret of",
-                }
-            }
-        },
-        {
-            name = "Varos Cloudstrider",
-            id = 27447,
-            hardmode = {
-                yells = {
-                    "Nothing takes to the air without my permission!",
-                }
-            }
-        },
-        {
-            name = "Mage-Lord Urom",
-            id = 27655,
-            hardmode = {
-                yells = {
-                    "Astounding! Still alive?",
-                }
-            }
-        },
-        {
-            name = "Ley-Guardian Eregos",
-            id = 27656,
-            hardmode = {
-                yells = {
-                    "You were warned!",
-                    "The powers of magic must be unleashed!",
-                }
-            }
-        },
+        {name = "Drakos the Interrogator", id = 27654},
+        {name = "Varos Cloudstrider", id = 27447},
+        {name = "Mage-Lord Urom", id = 27655},
+        {name = "Ley-Guardian Eregos", id = 27656},
     }
 })
 
@@ -3327,46 +3055,10 @@ KOL.Tracker:RegisterInstance("up_h", {
     zones = {"Utgarde Pinnacle"},
     challengeMaxLevel = 80,
     bosses = {
-        {
-            name = "Svala Sorrowgrave",
-            id = 26668,
-            hardmode = {
-                yells = {
-                    "Your death approaches.",
-                    "The Lich King has granted me eternal life!",
-                }
-            }
-        },
-        {
-            name = "Gortok Palehoof",
-            id = 26687,
-            hardmode = {
-                yells = {
-                    "What this place?",
-                    "Me heard you pink thing!",
-                }
-            }
-        },
-        {
-            name = "Skadi the Ruthless",
-            id = 26693,
-            hardmode = {
-                yells = {
-                    "You motherless knaves!",
-                    "Sear them, Grauf!",
-                }
-            }
-        },
-        {
-            name = "King Ymiron",
-            id = 26861,
-            hardmode = {
-                yells = {
-                    "What mongrels dare intrude",
-                    "Bjorn! Haldor! Your master calls!",
-                }
-            }
-        },
+        {name = "Svala Sorrowgrave", id = 26668},
+        {name = "Gortok Palehoof", id = 26687},
+        {name = "Skadi the Ruthless", id = 26693},
+        {name = "King Ymiron", id = 26861},
     }
 })
 
@@ -3396,44 +3088,10 @@ KOL.Tracker:RegisterInstance("cos_h", {
     zones = {"The Culling of Stratholme"},
     challengeMaxLevel = 80,
     bosses = {
-        {
-            name = "Meathook",
-            id = 26529,
-            hardmode = {
-                yells = {
-                    "Ahh... more meat!",
-                }
-            }
-        },
-        {
-            name = "Salramm the Fleshcrafter",
-            id = 26530,
-            hardmode = {
-                yells = {
-                    "Ah, the flesh... the terrible, terrible flesh!",
-                }
-            }
-        },
-        {
-            name = "Chrono-Lord Epoch",
-            id = 26532,
-            hardmode = {
-                yells = {
-                    "We'll see about that, young prince.",
-                    "Tick tock, tick tock",
-                }
-            }
-        },
-        {
-            name = "Mal'Ganis",
-            id = 26533,
-            hardmode = {
-                yells = {
-                    "Your journey has just begun, young prince.",
-                    "This has been an amusing turn of events.",
-                }
-            }
-        },
+        {name = "Meathook", id = 26529},
+        {name = "Salramm the Fleshcrafter", id = 26530},
+        {name = "Chrono-Lord Epoch", id = 26532},
+        {name = "Mal'Ganis", id = 26533},
     }
 })
 
@@ -3462,41 +3120,9 @@ KOL.Tracker:RegisterInstance("toc5_h", {
     zones = {"Trial of the Champion"},
     challengeMaxLevel = 80,
     bosses = {
-        {
-            name = "Grand Champions",
-            id = 35328,
-            type = "yell",
-            yell = "Well fought! Your next challenge comes from the Crusade's own ranks.",
-            hardmode = {
-                yells = {
-                    "Well fought! Your next challenge comes from the Crusade's own ranks.",
-                }
-            }
-        },
-        {
-            name = "Argent Champion",
-            id = {34928, 35119},
-            type = "yell",
-            yell = {"Excellent work!", "I yield! I submit. Excellent work."},
-            hardmode = {
-                yells = {
-                    "Excellent work!",
-                    "I yield! I submit. Excellent work.",
-                }
-            }
-        },
-        {
-            name = "The Black Knight",
-            type = "multikill",
-            id = 35451,
-            multiKill = 3,
-            hardmode = {
-                yells = {
-                    "This is the hour of the Scourge!",
-                    "No more games!",
-                }
-            }
-        },
+        {name = "Grand Champions", id = 35328, type = "yell", yell = "Well fought! Your next challenge comes from the Crusade's own ranks."},
+        {name = "Argent Champion", id = {34928, 35119}, type = "yell", yell = {"Excellent work!", "I yield! I submit. Excellent work."}},
+        {name = "The Black Knight", type = "multikill", id = 35451, multiKill = 3},
     }
 })
 
@@ -3524,25 +3150,8 @@ KOL.Tracker:RegisterInstance("fos_h", {
     zones = {"The Forge of Souls"},
     challengeMaxLevel = 80,
     bosses = {
-        {
-            name = "Bronjahm",
-            id = 36497,
-            hardmode = {
-                yells = {
-                    "Such is the fate of all who oppose the Lich King.",
-                }
-            }
-        },
-        {
-            name = "Devourer of Souls",
-            id = 36502,
-            hardmode = {
-                yells = {
-                    "Despair ends here!",
-                    "Face now the lord of the forge!",
-                }
-            }
-        },
+        {name = "Bronjahm", id = 36497},
+        {name = "Devourer of Souls", id = 36502},
     }
 })
 
@@ -3571,36 +3180,9 @@ KOL.Tracker:RegisterInstance("pos_h", {
     zones = {"Pit of Saron"},
     challengeMaxLevel = 80,
     bosses = {
-        {
-            name = "Forgemaster Garfrost",
-            id = 36494,
-            hardmode = {
-                yells = {
-                    "Tiny creatures, under foot.",
-                    "I will build a monument to your demise!",
-                }
-            }
-        },
-        {
-            name = "Ick & Krick",
-            id = 36476,
-            hardmode = {
-                yells = {
-                    "Ick! You! Come!",
-                    "Aw, we gonna die!",
-                }
-            }
-        },
-        {
-            name = "Scourgelord Tyrannus",
-            id = 36658,
-            hardmode = {
-                yells = {
-                    "Frostmourne has many hungers",
-                    "Rimefang! Trap them in ice!",
-                }
-            }
-        },
+        {name = "Forgemaster Garfrost", id = 36494},
+        {name = "Ick & Krick", id = 36476},
+        {name = "Scourgelord Tyrannus", id = 36658},
     }
 })
 
@@ -3629,38 +3211,9 @@ KOL.Tracker:RegisterInstance("hor_h", {
     zones = {"Halls of Reflection"},
     challengeMaxLevel = 80,
     bosses = {
-        {
-            name = "Falric",
-            id = 38112,
-            hardmode = {
-                yells = {
-                    "Men, women, and children...",
-                    "Despair... so delicious...",
-                }
-            }
-        },
-        {
-            name = "Marwyn",
-            id = 38113,
-            hardmode = {
-                yells = {
-                    "Death is all that you will find here!",
-                    "Your flesh shall decay before your very eyes!",
-                }
-            }
-        },
-        {
-            name = "The Lich King",
-            id = 36954,
-            type = "yell",
-            yell = "FIRE! FIRE!",
-            hardmode = {
-                yells = {
-                    "FIRE! FIRE!",
-                    "There is no escape!",
-                }
-            }
-        },
+        {name = "Falric", id = 38112},
+        {name = "Marwyn", id = 38113},
+        {name = "The Lich King", id = 36954, type = "yell", yell = "FIRE! FIRE!"},
     }
 })
 

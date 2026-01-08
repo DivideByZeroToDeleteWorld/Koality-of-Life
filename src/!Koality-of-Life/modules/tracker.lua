@@ -451,12 +451,13 @@ function Tracker:GetBossName(boss)
 end
 
 -- Get formatted boss name with hardmode indicator if active
--- Note: Lightning bolt ⚡ is rendered separately using CHAR_LIGATURESFONT for proper display
+-- Only shows (HM) if the boss actually has a hardmode definition in the data
 function Tracker:GetBossNameWithHardmode(instanceId, bossIndex, boss)
     local bossName = self:GetBossName(boss)
 
-    -- Check if hardmode is active for this boss
-    if self:IsBossHardmode(instanceId, bossIndex) then
+    -- Only show hardmode indicator if the boss actually supports hardmode
+    -- (has a hardmode definition in its data) AND is currently in hardmode
+    if boss and boss.hardmode and self:IsBossHardmode(instanceId, bossIndex) then
         local nuclearPurple = "CC66FF"  -- Nuclear purple
         if KOL.Colors and KOL.Colors.GetNuclear then
             nuclearPurple = KOL.Colors:GetNuclear("PURPLE") or nuclearPurple
@@ -3474,19 +3475,11 @@ function Tracker:UpdateWatchFrame(instanceId)
             local bossIcon = KOL.UIFactory:CreateGlyph(bossBtn, checkMark, colorHex, scaledObjectiveFontSize)
             bossIcon:SetPoint("LEFT", bossBtn, "LEFT", 4, 0)
 
-            -- Hardmode icon (using ligatures font for proper Unicode rendering)
-            local isHardmode = self:IsBossHardmode(instanceId, i)
-            local nuclearPurple = "CC66FF"
-            if KOL.Colors and KOL.Colors.GetNuclear then
-                nuclearPurple = KOL.Colors:GetNuclear("PURPLE") or nuclearPurple
-            end
-            local hardmodeIcon = KOL.UIFactory:CreateGlyph(bossBtn, isHardmode and CHAR_LIGHTNING or "", nuclearPurple, scaledObjectiveFontSize)
-            hardmodeIcon:SetPoint("LEFT", bossIcon, "RIGHT", 2, 0)
-
             -- Text (using configured objective font)
+            -- Note: Hardmode indicator "(HM)" is added via GetBossNameWithHardmode, no separate glyph
             local bossText = bossBtn:CreateFontString(nil, "OVERLAY")
             bossText:SetFont(objectiveFontPath, scaledObjectiveFontSize, objectiveFontOutline)
-            bossText:SetPoint("LEFT", hardmodeIcon, "RIGHT", isHardmode and 2 or 0, 0)
+            bossText:SetPoint("LEFT", bossIcon, "RIGHT", 2, 0)
             bossText:SetPoint("RIGHT", bossBtn, "RIGHT", -4, 0)
             bossText:SetJustifyH("LEFT")
             bossText:SetWordWrap(true)
@@ -4042,19 +4035,11 @@ function Tracker:UpdateWatchFrame(instanceId)
                     local bossIcon = KOL.UIFactory:CreateGlyph(bossBtn, checkMark, colorHex, scaledObjectiveFontSize)
                     bossIcon:SetPoint("LEFT", bossBtn, "LEFT", 0, 0)
 
-                    -- Hardmode icon (using ligatures font for proper Unicode rendering)
-                    local isHardmode = self:IsBossHardmode(instanceId, bossId)
-                    local nuclearPurple = "CC66FF"
-                    if KOL.Colors and KOL.Colors.GetNuclear then
-                        nuclearPurple = KOL.Colors:GetNuclear("PURPLE") or nuclearPurple
-                    end
-                    local hardmodeIcon = KOL.UIFactory:CreateGlyph(bossBtn, isHardmode and CHAR_LIGHTNING or "", nuclearPurple, scaledObjectiveFontSize)
-                    hardmodeIcon:SetPoint("LEFT", bossIcon, "RIGHT", 2, 0)
-
                     -- Text (using configured objective font)
+                    -- Note: Hardmode indicator "(HM)" is added via GetBossNameWithHardmode, no separate glyph
                     local bossText = bossBtn:CreateFontString(nil, "OVERLAY")
                     bossText:SetFont(objectiveFontPath, scaledObjectiveFontSize, objectiveFontOutline)
-                    bossText:SetPoint("LEFT", hardmodeIcon, "RIGHT", isHardmode and 2 or 0, 0)
+                    bossText:SetPoint("LEFT", bossIcon, "RIGHT", 2, 0)
                     bossText:SetPoint("RIGHT", bossBtn, "RIGHT", -4, 0)
                     bossText:SetJustifyH("LEFT")
                     bossText:SetWordWrap(true)
