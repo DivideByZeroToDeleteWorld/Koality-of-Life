@@ -81,6 +81,20 @@ Tracker.textMeasureFrame = nil
 Tracker.textMeasureString = nil
 
 -- ============================================================================
+-- Performance: Buff Caching System (Issue #2 Optimization)
+-- ============================================================================
+-- Cache buff scan results to avoid scanning 40 buffs every 0.5s
+-- Invalidated on UNIT_AURA event for player
+Tracker.buffCache = {
+    challengeBuff = { valid = false, active = false, duration = 0, expiration = 0 },
+    speedBuff = { valid = false, active = false, stacks = 0 },
+    lastInvalidation = 0,
+}
+
+-- Dirty flag for watch frame updates (skip if nothing changed)
+Tracker.watchFrameDirty = {}
+
+-- ============================================================================
 -- Frame Pool System (prevents memory leaks from repeated CreateFrame calls)
 -- ============================================================================
 Tracker.framePools = {
@@ -2116,9 +2130,43 @@ function Tracker:OnRaidBossEmote(text, npcName, ...)
     end
 end
 
+-- Performance: Check if any loot tracking entries exist (cached)
+function Tracker:HasLootTrackingEntries()
+    -- Return cached result if already checked
+    if self.lootTrackingChecked then
+        return self.hasLootTracking
+    end
+
+    -- Scan for any loot-type entries (only runs once)
+    self.hasLootTracking = false
+    for instanceId, data in pairs(self.instances) do
+        if data.entries then
+            for _, entry in ipairs(data.entries) do
+                if entry.type == "loot" then
+                    self.hasLootTracking = true
+                    self.lootTrackingChecked = true
+                    return true
+                end
+            end
+        end
+    end
+
+    self.lootTrackingChecked = true
+    return false
+end
+
+-- Call this when custom trackers are modified to re-check
+function Tracker:InvalidateLootTrackingCache()
+    self.lootTrackingChecked = false
+    self.hasLootTracking = false
+end
+
 -- Handle CHAT_MSG_LOOT for item drop detection (custom panels)
 function Tracker:OnLoot(message, ...)
     if not message then return end
+
+    -- Performance: Early exit if no loot tracking entries exist
+    if not self:HasLootTrackingEntries() then return end
 
     -- Extract item link from loot message
     -- Format: "You receive loot: [Item Name]" or "PlayerName receives loot: [Item Name]"
@@ -2135,7 +2183,7 @@ function Tracker:OnLoot(message, ...)
 
     KOL:DebugPrint("Tracker: Loot detected - Item ID: " .. lootedItemId, 3)
 
-    -- Check all instances for loot-based entries
+    -- Check custom tracker instances for loot-based entries
     for instanceId, data in pairs(self.instances) do
         -- Check custom tracker entries (new format with count support)
         if data.entries and #data.entries > 0 then
@@ -2654,6 +2702,18 @@ function Tracker:RegisterEvents()
         Tracker:OnCombatLogEvent(...)
     end, "Tracker")
     KOL:DebugPrint("Tracker: COMBAT_LOG_EVENT_UNFILTERED registered", 3)
+
+    -- UNIT_AURA for buff cache invalidation (Performance optimization)
+    KOL:RegisterEventCallback("UNIT_AURA", function(unit)
+        if unit == "player" then
+            Tracker:InvalidateBuffCache()
+            -- Mark all active watch frames as dirty
+            for instanceId in pairs(Tracker.activeFrames) do
+                Tracker.watchFrameDirty[instanceId] = true
+            end
+        end
+    end, "Tracker")
+    KOL:DebugPrint("Tracker: UNIT_AURA registered for buff cache invalidation", 3)
 
     -- Encounter end for scripted boss events (Grand Champions, etc.)
     KOL:RegisterEventCallback("ENCOUNTER_END", function(...)
@@ -4949,6 +5009,9 @@ function Tracker:CreateCustomPanel(name, zones, color, panelType, data)
         LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
     end
 
+    -- Invalidate loot tracking cache (new panel may have loot entries)
+    self:InvalidateLootTrackingCache()
+
     return panelId
 end
 
@@ -5024,6 +5087,9 @@ function Tracker:UpdateCustomPanel(panelId, name, zones, color, panelType, data)
         LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
     end
 
+    -- Invalidate loot tracking cache (entries may have changed)
+    self:InvalidateLootTrackingCache()
+
     return true
 end
 
@@ -5052,6 +5118,9 @@ function Tracker:DeleteCustomPanel(panelId)
         KOL:PopulateTrackerConfigUI()
         LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
     end
+
+    -- Invalidate loot tracking cache (deleted panel may have had loot entries)
+    self:InvalidateLootTrackingCache()
 
     return true
 end
@@ -5301,22 +5370,55 @@ function Tracker:IsDungeonChallengeEligible(instanceId)
     return true
 end
 
--- Scan for Dungeon Challenge buff
+-- Invalidate buff cache (called by UNIT_AURA handler)
+function Tracker:InvalidateBuffCache()
+    self.buffCache.challengeBuff.valid = false
+    self.buffCache.speedBuff.valid = false
+    self.buffCache.lastInvalidation = GetTime()
+    KOL:DebugPrint("Buff cache invalidated", 3)
+end
+
+-- Scan for Dungeon Challenge buff (with caching)
 function Tracker:ScanDungeonChallengeBuff()
+    -- Return cached result if still valid
+    local cache = self.buffCache.challengeBuff
+    if cache.valid then
+        return cache.active, cache.duration, cache.expiration
+    end
+
+    -- Scan buffs
     for i = 1, 40 do
         local name, rank, icon, count, debuffType, duration, expirationTime, unitCaster, isStealable, shouldConsolidate, spellId = UnitBuff("player", i)
         if not name then break end
 
         -- Check if this is the Dungeon Challenge buff (by name, not ID)
         if name and name:find("Dungeon Challenge") then
+            -- Cache and return
+            cache.valid = true
+            cache.active = true
+            cache.duration = duration
+            cache.expiration = expirationTime
             return true, duration, expirationTime
         end
     end
+
+    -- Cache negative result
+    cache.valid = true
+    cache.active = false
+    cache.duration = 0
+    cache.expiration = 0
     return false, 0, 0
 end
 
--- Scan for Speed buff (stacks 0-50)
+-- Scan for Speed buff (stacks 0-50) (with caching)
 function Tracker:ScanSpeedBuff()
+    -- Return cached result if still valid
+    local cache = self.buffCache.speedBuff
+    if cache.valid then
+        return cache.active, cache.stacks
+    end
+
+    -- Scan buffs
     for i = 1, 40 do
         local name, rank, icon, count, debuffType, duration, expirationTime, unitCaster, isStealable, shouldConsolidate, spellId = UnitBuff("player", i)
         if not name then break end
@@ -5332,12 +5434,19 @@ function Tracker:ScanSpeedBuff()
         if count and count > 0 and count <= 50 then
             if name and (name:find("Speed") or name:find("Dungeon") or name:find("Challenge")) then
                 KOL:DebugPrint(string.format("Speed buff detected by name: '%s' - %d stacks", name, count), 2)
+                -- Cache and return
+                cache.valid = true
+                cache.active = true
+                cache.stacks = count
                 return true, count
             end
         end
     end
 
-    -- No speed buff found - return false so the SPEED BUFF line won't be shown
+    -- Cache negative result
+    cache.valid = true
+    cache.active = false
+    cache.stacks = 0
     return false, 0
 end
 
@@ -5612,6 +5721,10 @@ end
 
 -- Handle chat messages for dungeon challenge completion
 function Tracker:OnDungeonChallengeChat(message)
+    -- Performance: Early exit if no dungeon challenge is active
+    -- This avoids pattern matching on every chat message when not in a challenge
+    if not next(self.dungeonChallengeState) then return end
+
     -- Pattern: "You completed this dungeon challenge in MM:SS!"
     -- Pattern: "Your previous best time was MM:SS."
     -- Pattern: "You've made progress with dungeon challenge, current timer is MM:SS! There are X remaining encounters."
@@ -5737,9 +5850,10 @@ end
 
 -- Start periodic dungeon challenge updates
 function Tracker:StartDungeonChallengeUpdates()
-    -- Create ticker to update dungeon challenge state every 0.5 seconds
+    -- Create ticker to update dungeon challenge state every 1.0 seconds
+    -- (Performance optimization: reduced from 0.5s - timer displays in whole seconds anyway)
     if not self.dungeonChallengeTicker then
-        self.dungeonChallengeTicker = C_Timer.NewTicker(0.5, function()
+        self.dungeonChallengeTicker = C_Timer.NewTicker(1.0, function()
             -- Update state for all active watch frames
             for instanceId, frame in pairs(self.activeFrames) do
                 if frame:IsShown() then
@@ -5754,7 +5868,7 @@ function Tracker:StartDungeonChallengeUpdates()
                 end
             end
         end)
-        KOL:DebugPrint("Watch frame update ticker started (0.5s interval)", 3)
+        KOL:DebugPrint("Watch frame update ticker started (1.0s interval)", 3)
     end
 end
 

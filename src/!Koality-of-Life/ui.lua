@@ -496,7 +496,7 @@ function KOL:InitializeUI()
                         name = "Font Outline",
                         desc = "Outline style for general UI fonts. Changes apply immediately to the config panel.",
                         values = {
-                            ["NONE"] = "None",
+                            ["NONE"] = "NONE",
                             ["OUTLINE"] = "Outline",
                             ["THICKOUTLINE"] = "Thick Outline",
                             ["MONOCHROME"] = "Monochrome",
@@ -769,7 +769,7 @@ function KOL:InitializeUI()
                         name = "Font Outline",
                         desc = "Outline style for debug console font",
                         values = {
-                            ["NONE"] = "None",
+                            ["NONE"] = "NONE",
                             ["OUTLINE"] = "Outline",
                             ["THICKOUTLINE"] = "Thick Outline",
                             ["MONOCHROME"] = "Monochrome",
@@ -1461,7 +1461,7 @@ function KOL:InitializeUI()
                             titleFontOutline = {
                                 type = "select",
                                 name = "Outline",
-                                desc = "Font outline style:\n\n• None - No outline\n• Thin - Subtle outline around text\n• Thick - Bold outline around text\n• Sharp - Crisp edges (no smoothing)\n• Thin + Sharp - Thin outline, crisp edges\n• Thick + Sharp - Bold outline, crisp edges",
+                                desc = "Font outline style:\n\n• NONE - No outline\n• Thin - Subtle outline around text\n• Thick - Bold outline around text\n• Sharp - Crisp edges (no smoothing)\n• Thin + Sharp - Thin outline, crisp edges\n• Thick + Sharp - Bold outline, crisp edges",
                                 values = function() return KOL.UIFactory.FONT_OUTLINE_VALUES end,
                                 sorting = function() return KOL.UIFactory.FONT_OUTLINE_SORTING end,
                                 get = function()
@@ -1543,7 +1543,7 @@ function KOL:InitializeUI()
                             groupFontOutline = {
                                 type = "select",
                                 name = "Outline",
-                                desc = "Font outline style:\n\n• None - No outline\n• Thin - Subtle outline around text\n• Thick - Bold outline around text\n• Sharp - Crisp edges (no smoothing)\n• Thin + Sharp - Thin outline, crisp edges\n• Thick + Sharp - Bold outline, crisp edges",
+                                desc = "Font outline style:\n\n• NONE - No outline\n• Thin - Subtle outline around text\n• Thick - Bold outline around text\n• Sharp - Crisp edges (no smoothing)\n• Thin + Sharp - Thin outline, crisp edges\n• Thick + Sharp - Bold outline, crisp edges",
                                 values = function() return KOL.UIFactory.FONT_OUTLINE_VALUES end,
                                 sorting = function() return KOL.UIFactory.FONT_OUTLINE_SORTING end,
                                 get = function()
@@ -1625,7 +1625,7 @@ function KOL:InitializeUI()
                             objectiveFontOutline = {
                                 type = "select",
                                 name = "Outline",
-                                desc = "Font outline style:\n\n• None - No outline\n• Thin - Subtle outline around text\n• Thick - Bold outline around text\n• Sharp - Crisp edges (no smoothing)\n• Thin + Sharp - Thin outline, crisp edges\n• Thick + Sharp - Bold outline, crisp edges",
+                                desc = "Font outline style:\n\n• NONE - No outline\n• Thin - Subtle outline around text\n• Thick - Bold outline around text\n• Sharp - Crisp edges (no smoothing)\n• Thin + Sharp - Thin outline, crisp edges\n• Thick + Sharp - Bold outline, crisp edges",
                                 values = function() return KOL.UIFactory.FONT_OUTLINE_VALUES end,
                                 sorting = function() return KOL.UIFactory.FONT_OUTLINE_SORTING end,
                                 get = function()
@@ -2003,11 +2003,12 @@ function KOL:InitializeUI()
                                 },
                                 filterExpansion = {
                                     type = "select",
+                                    dialogControl = "KOL_ScrollDropdown",
                                     name = "Expansion",
                                     desc = "Select which expansion's dungeons to display",
-                                    width = 0.65,
+                                    width = 0.58,
                                     values = {
-                                        [""] = "-- Select --",
+                                        [""] = "NONE",
                                         classic = "Classic",
                                         tbc = "TBC",
                                         wotlk = "WotLK",
@@ -2029,26 +2030,32 @@ function KOL:InitializeUI()
                                 },
                                 filterDifficulty = {
                                     type = "select",
+                                    dialogControl = "KOL_ScrollDropdown",
                                     name = "Difficulty",
                                     desc = "Filter dungeons by difficulty",
-                                    width = 0.55,
+                                    width = 0.50,
                                     values = function()
                                         local expansion = KOL.db.profile.tracker.dungeonFilterExpansion or ""
+                                        local pastelGreen = "|cFFB3FFB3"   -- Normal
+                                        local pastelPurple = "|cFFE6B3FF"  -- Heroic
+                                        local yellow = "|cFFFFFF00"
                                         if expansion == "classic" then
                                             return {
-                                                all = "All",
-                                                normal = "Normal",
+                                                [""] = "NONE",
+                                                all = yellow .. "ALL|r",
+                                                normal = pastelGreen .. "5N|r",
                                             }
                                         else
                                             return {
-                                                all = "All",
-                                                normal = "Normal",
-                                                heroic = "Heroic",
+                                                [""] = "NONE",
+                                                all = yellow .. "ALL|r",
+                                                normal = pastelGreen .. "5N|r",
+                                                heroic = pastelPurple .. "5H|r",
                                             }
                                         end
                                     end,
                                     get = function()
-                                        return KOL.db.profile.tracker.dungeonFilterDifficulty or "all"
+                                        return KOL.db.profile.tracker.dungeonFilterDifficulty or ""
                                     end,
                                     set = function(_, value)
                                         KOL.db.profile.tracker.dungeonFilterDifficulty = value
@@ -2060,26 +2067,33 @@ function KOL:InitializeUI()
                                 },
                                 selectInstance = {
                                     type = "select",
+                                    dialogControl = "KOL_ScrollDropdown",
                                     name = "Instance",
                                     desc = "Choose which instance to configure",
-                                    width = 0.8,
+                                    width = 1.13,
                                     values = function()
-                                        local instances = {[""] = "-- Select --"}
+                                        local instances = {[""] = "NONE"}
                                         if not KOL.Tracker or not KOL.Tracker.instances then
                                             return instances
                                         end
 
                                         local expansion = KOL.db.profile.tracker.dungeonFilterExpansion or ""
-                                        local difficulty = KOL.db.profile.tracker.dungeonFilterDifficulty or "all"
+                                        local difficulty = KOL.db.profile.tracker.dungeonFilterDifficulty or ""
 
-                                        -- Don't show instances if no expansion selected
-                                        if expansion == "" then
+                                        -- Don't show instances if no expansion or difficulty selected
+                                        if expansion == "" or difficulty == "" then
                                             return instances
                                         end
 
                                         local difficultyMap = {normal = 1, heroic = 2, mythic = 3}
                                         local filterDiffNum = difficultyMap[difficulty]
 
+                                        -- Color codes for difficulties (matching titlebar colors)
+                                        local pastelGreen = "|cFFB3FFB3"   -- Normal (5N)
+                                        local pastelPurple = "|cFFE6B3FF"  -- Heroic (5H)
+
+                                        -- Build list with sorting info
+                                        local dungeonList = {}
                                         for id, data in pairs(KOL.Tracker.instances) do
                                             if data.type == "dungeon" then
                                                 local include = true
@@ -2093,9 +2107,41 @@ function KOL:InitializeUI()
                                                 end
 
                                                 if include then
-                                                    instances[id] = data.name
+                                                    local baseName = data.name:gsub("%s*%(Normal%)", ""):gsub("%s*%(Heroic%)", "")
+                                                    local isHeroic = data.difficulty == 2
+                                                    local color = isHeroic and pastelPurple or pastelGreen
+                                                    local suffix = isHeroic and " (5H)" or " (5N)"
+
+                                                    local displayName
+                                                    if difficulty == "all" then
+                                                        -- Show colored name with difficulty suffix
+                                                        displayName = color .. baseName .. suffix .. "|r"
+                                                    else
+                                                        -- Single difficulty selected, no suffix needed
+                                                        displayName = color .. baseName .. "|r"
+                                                    end
+
+                                                    table.insert(dungeonList, {
+                                                        id = id,
+                                                        name = displayName,
+                                                        baseName = baseName,
+                                                        isHeroic = isHeroic,
+                                                    })
                                                 end
                                             end
+                                        end
+
+                                        -- Sort: Normal before Heroic, then alphabetically within each group
+                                        table.sort(dungeonList, function(a, b)
+                                            if a.isHeroic ~= b.isHeroic then
+                                                return not a.isHeroic  -- Normal (false) comes before Heroic (true)
+                                            end
+                                            return a.baseName < b.baseName
+                                        end)
+
+                                        -- Build final instances table
+                                        for _, dungeon in ipairs(dungeonList) do
+                                            instances[dungeon.id] = dungeon.name
                                         end
                                         return instances
                                     end,
@@ -2124,11 +2170,12 @@ function KOL:InitializeUI()
                                 },
                                 filterExpansion = {
                                     type = "select",
+                                    dialogControl = "KOL_ScrollDropdown",
                                     name = "Expansion",
                                     desc = "Select which expansion's raids to display",
-                                    width = 0.65,
+                                    width = 0.58,
                                     values = {
-                                        [""] = "-- Select --",
+                                        [""] = "NONE",
                                         classic = "Classic",
                                         tbc = "TBC",
                                         wotlk = "WotLK",
@@ -2148,40 +2195,45 @@ function KOL:InitializeUI()
                                 },
                                 filterDifficulty = {
                                     type = "select",
+                                    dialogControl = "KOL_ScrollDropdown",
                                     name = "Size",
                                     desc = "Filter raids by size and difficulty (N=Normal, H=Heroic)",
-                                    width = 0.55,
+                                    width = 0.50,
                                     values = function()
                                         local expansion = KOL.db.profile.tracker.raidFilterExpansion or ""
-                                        local green = "|cFF66FF66"
-                                        local red = "|cFFFF6666"
+                                        local pastelGreen = "|cFFB3FFB3"   -- Normal
+                                        local pastelPurple = "|cFFE6B3FF"  -- Heroic
+                                        local yellow = "|cFFFFFF00"
 
                                         if expansion == "classic" then
                                             return {
-                                                all = "All",
-                                                ["20n"] = green .. "20-Man|r",
-                                                ["40n"] = green .. "40-Man|r",
+                                                [""] = "NONE",
+                                                all = yellow .. "ALL|r",
+                                                ["20n"] = pastelGreen .. "20-Man|r",
+                                                ["40n"] = pastelGreen .. "40-Man|r",
                                             }
                                         elseif expansion == "tbc" then
                                             return {
-                                                all = "All",
-                                                ["10n"] = green .. "10-Man|r",
-                                                ["25n"] = green .. "25-Man|r",
+                                                [""] = "NONE",
+                                                all = yellow .. "ALL|r",
+                                                ["10n"] = pastelGreen .. "10-Man|r",
+                                                ["25n"] = pastelGreen .. "25-Man|r",
                                             }
                                         elseif expansion == "wotlk" then
                                             return {
-                                                all = "All",
-                                                ["10n"] = green .. "10N|r",
-                                                ["25n"] = green .. "25N|r",
-                                                ["10h"] = red .. "10H|r",
-                                                ["25h"] = red .. "25H|r",
+                                                [""] = "NONE",
+                                                all = yellow .. "ALL|r",
+                                                ["10n"] = pastelGreen .. "10N|r",
+                                                ["25n"] = pastelGreen .. "25N|r",
+                                                ["10h"] = pastelPurple .. "10H|r",
+                                                ["25h"] = pastelPurple .. "25H|r",
                                             }
                                         else
-                                            return {all = "All"}
+                                            return {[""] = "NONE", all = yellow .. "ALL|r"}
                                         end
                                     end,
                                     get = function()
-                                        return KOL.db.profile.tracker.raidFilterDifficulty or "all"
+                                        return KOL.db.profile.tracker.raidFilterDifficulty or ""
                                     end,
                                     set = function(_, value)
                                         KOL.db.profile.tracker.raidFilterDifficulty = value
@@ -2193,20 +2245,21 @@ function KOL:InitializeUI()
                                 },
                                 selectInstance = {
                                     type = "select",
+                                    dialogControl = "KOL_ScrollDropdown",
                                     name = "Instance",
                                     desc = "Choose which raid instance to configure",
-                                    width = 0.8,
+                                    width = 1.13,
                                     values = function()
-                                        local instances = {[""] = "-- Select --"}
+                                        local instances = {[""] = "NONE"}
                                         if not KOL.Tracker or not KOL.Tracker.instances then
                                             return instances
                                         end
 
                                         local filterExpansion = KOL.db.profile.tracker.raidFilterExpansion or ""
-                                        local filterDifficulty = KOL.db.profile.tracker.raidFilterDifficulty or "all"
+                                        local filterDifficulty = KOL.db.profile.tracker.raidFilterDifficulty or ""
 
-                                        -- Don't show instances if no expansion selected
-                                        if filterExpansion == "" then
+                                        -- Don't show instances if no expansion or difficulty selected
+                                        if filterExpansion == "" or filterDifficulty == "" then
                                             return instances
                                         end
 
@@ -2247,7 +2300,9 @@ function KOL:InitializeUI()
                                         end)
 
                                         for _, raid in ipairs(raidList) do
-                                            instances[raid.id] = raid.name
+                                            -- Strip "(XX-Player)" suffix since size is already filtered
+                                            local displayName = raid.name:gsub("%s*%(%d+%-Player%)", "")
+                                            instances[raid.id] = displayName
                                         end
 
                                         return instances
@@ -2414,23 +2469,24 @@ function KOL:PopulateTrackerConfigUI()
                 return false
             end
             if raidFilterDifficulty ~= "all" then
+                -- Performance: Use "(XX-" pattern from raid names like "(20-Player)" instead of multiple string.find calls
                 if data.expansion == "classic" then
                     if raidFilterDifficulty == "20" then
-                        if not (string.find(data.name, "Zul'Gurub") or string.find(data.name, "AQ20") or string.find(data.name, "Ruins")) then
+                        if not string.find(data.name, "(20-", 1, true) then
                             return false
                         end
                     elseif raidFilterDifficulty == "40" then
-                        if string.find(data.name, "Zul'Gurub") or string.find(data.name, "AQ20") or string.find(data.name, "Ruins") then
+                        if string.find(data.name, "(20-", 1, true) then
                             return false
                         end
                     end
                 elseif data.expansion == "tbc" then
                     if raidFilterDifficulty == "10" then
-                        if not (string.find(data.name, "10") or string.find(data.name, "Karazhan") or string.find(data.name, "Zul'Aman")) then
+                        if not string.find(data.name, "(10-", 1, true) then
                             return false
                         end
                     elseif raidFilterDifficulty == "25" then
-                        if string.find(data.name, "10") or string.find(data.name, "Karazhan") or string.find(data.name, "Zul'Aman") then
+                        if string.find(data.name, "(10-", 1, true) then
                             return false
                         end
                     end
@@ -2996,7 +3052,7 @@ function KOL:PopulateTrackerConfigUI()
                                     name = "Outline",
                                     desc = "Default outline style for all text",
                                     values = {
-                                        ["NONE"] = "None",
+                                        ["NONE"] = "NONE",
                                         ["OUTLINE"] = "Outline",
                                         ["THICKOUTLINE"] = "Thick",
                                     },
@@ -3300,7 +3356,7 @@ function KOL:PopulateTrackerConfigUI()
                             name = "Global Outline",
                             desc = "Default outline style for all text (used when specific outlines are not set)",
                             values = {
-                                ["NONE"] = "None",
+                                ["NONE"] = "NONE",
                                 ["OUTLINE"] = "Outline",
                                 ["THICKOUTLINE"] = "Thick Outline",
                             },
@@ -3353,7 +3409,7 @@ function KOL:PopulateTrackerConfigUI()
                             desc = "Outline style for title bar (leave empty to use Global Outline)",
                             values = {
                                 [""] = "Use Global Outline",
-                                ["NONE"] = "None",
+                                ["NONE"] = "NONE",
                                 ["OUTLINE"] = "Outline",
                                 ["THICKOUTLINE"] = "Thick Outline",
                                 ["MONOCHROME"] = "Monochrome",
@@ -3403,7 +3459,7 @@ function KOL:PopulateTrackerConfigUI()
                             desc = "Outline style for group headers (leave empty to use Global Outline)",
                             values = {
                                 [""] = "Use Global Outline",
-                                ["NONE"] = "None",
+                                ["NONE"] = "NONE",
                                 ["OUTLINE"] = "Outline",
                                 ["THICKOUTLINE"] = "Thick Outline",
                                 ["MONOCHROME"] = "Monochrome",
@@ -3453,7 +3509,7 @@ function KOL:PopulateTrackerConfigUI()
                             desc = "Outline style for boss names/objectives (leave empty to use Global Outline)",
                             values = {
                                 [""] = "Use Global Outline",
-                                ["NONE"] = "None",
+                                ["NONE"] = "NONE",
                                 ["OUTLINE"] = "Outline",
                                 ["THICKOUTLINE"] = "Thick Outline",
                                 ["MONOCHROME"] = "Monochrome",

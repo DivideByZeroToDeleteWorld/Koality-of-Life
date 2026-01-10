@@ -6323,4 +6323,513 @@ function UIFactory:AddTreeFont(sectionArgs, key, config)
     }
 end
 
+-- ============================================================================
+-- AceGUI Custom Widget: KOL_ScrollDropdown
+-- ============================================================================
+-- A scrollable dropdown widget for use with AceConfig
+-- Styled to match the KOL addon theme
+-- Usage in AceConfig options:
+--   myDropdown = {
+--       type = "select",
+--       name = "Choose Option",
+--       dialogControl = "KOL_ScrollDropdown",
+--       values = { ... },
+--       ...
+--   },
+-- ============================================================================
+
+local function RegisterAceGUIScrollDropdown()
+    local AceGUI = LibStub("AceGUI-3.0", true)
+    if not AceGUI then return end
+
+    local widgetType = "KOL_ScrollDropdown"
+    local widgetVersion = 12
+
+    -- Frame caches
+    local contentFrameCache = {}
+    local dropDownCache = {}
+
+    -- Theme colors (will be fetched dynamically)
+    local function GetThemeColors()
+        local bgColor, borderColor
+        if KOL.Themes and KOL.Themes.GetUIThemeColor then
+            bgColor = KOL.Themes:GetUIThemeColor("ContentAreaBG", {r = 0.08, g = 0.08, b = 0.08, a = 1})
+            borderColor = KOL.Themes:GetUIThemeColor("ContentAreaBorder", {r = 0.3, g = 0.3, b = 0.3, a = 1})
+        else
+            bgColor = {r = 0.08, g = 0.08, b = 0.08, a = 1}
+            borderColor = {r = 0.3, g = 0.3, b = 0.3, a = 1}
+        end
+        return bgColor, borderColor
+    end
+
+    -- Styled backdrop (matches KOL style)
+    local styledBackdrop = {
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        tile = false,
+        tileSize = 1,
+        edgeSize = 1,
+        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    }
+
+    -- Content line functions
+    local function ReturnSelf(self)
+        self:ClearAllPoints()
+        self:Hide()
+        self:SetWidth(0)
+        self.check:Hide()
+        self.text:SetText("")
+        self:SetBackdrop(nil)
+        self.obj = nil
+        self.value = nil
+        table.insert(contentFrameCache, self)
+    end
+
+    local function ContentOnClick(this, button)
+        local self = this.obj
+        self:Fire("OnValueChanged", this.value)
+        if self.dropdown then
+            self:CloseDropdown()
+        end
+    end
+
+    local function GetContentLine()
+        local frame
+        if next(contentFrameCache) then
+            frame = table.remove(contentFrameCache)
+        else
+            frame = CreateFrame("Button", nil, UIParent, BackdropTemplateMixin and "BackdropTemplate")
+            frame:SetHeight(20)
+            frame:SetScript("OnClick", ContentOnClick)
+
+            -- Hover effect
+            frame:SetScript("OnEnter", function(self)
+                self:SetBackdrop(styledBackdrop)
+                self:SetBackdropColor(0.18, 0.18, 0.18, 1)
+                self:SetBackdropBorderColor(0.18, 0.18, 0.18, 0)
+            end)
+            frame:SetScript("OnLeave", function(self)
+                self:SetBackdrop(nil)
+            end)
+
+            -- Checkmark for selected item
+            local check = frame:CreateFontString(nil, "OVERLAY")
+            check:SetFont(CHAR_LIGATURESFONT or "Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
+            check:SetPoint("LEFT", frame, "LEFT", 4, 0)
+            check:SetText(CHAR_CHECK or "\226\156\147")  -- Checkmark glyph
+            check:SetTextColor(0.4, 1, 0.4, 1)
+            check:Hide()
+            frame.check = check
+
+            -- Item text
+            local fontPath, fontOutline = GetGeneralFont()
+            local text = frame:CreateFontString(nil, "OVERLAY")
+            text:SetFont(fontPath, 11, fontOutline)
+            text:SetPoint("LEFT", check, "RIGHT", 2, 0)
+            text:SetPoint("RIGHT", frame, "RIGHT", -4, 0)
+            text:SetJustifyH("LEFT")
+            text:SetTextColor(0.9, 0.9, 0.9, 1)
+            frame.text = text
+            frame.ReturnSelf = ReturnSelf
+        end
+        frame:Show()
+        return frame
+    end
+
+    -- Dropdown frame functions
+    local function OnMouseWheel(self, dir)
+        self.slider:SetValue(self.slider:GetValue() + (20 * dir * -1))
+    end
+
+    local function AddFrame(self, frame)
+        frame:SetParent(self.contentframe)
+        frame:SetFrameStrata(self:GetFrameStrata())
+        frame:SetFrameLevel(self:GetFrameLevel() + 10)
+
+        if next(self.contentRepo) then
+            frame:SetPoint("TOPLEFT", self.contentRepo[#self.contentRepo], "BOTTOMLEFT", 0, 0)
+            frame:SetPoint("RIGHT", self.contentframe, "RIGHT", 0, 0)
+            self.contentframe:SetHeight(self.contentframe:GetHeight() + frame:GetHeight())
+            self.contentRepo[#self.contentRepo + 1] = frame
+        else
+            self.contentframe:SetHeight(frame:GetHeight())
+            frame:SetPoint("TOPLEFT", self.contentframe, "TOPLEFT", 0, 0)
+            frame:SetPoint("RIGHT", self.contentframe, "RIGHT", 0, 0)
+            self.contentRepo[1] = frame
+        end
+
+        -- Show scrollbar if content exceeds max height (250px or 40% of screen)
+        local maxHeight = math.min(250, UIParent:GetHeight() * 2 / 5)
+        local contentHeight = self.contentframe:GetHeight() or 0
+        if contentHeight > maxHeight - 10 then
+            self.scrollframe:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -8, 4)
+            self:SetHeight(maxHeight)
+            self.slider:Show()
+            self:SetScript("OnMouseWheel", OnMouseWheel)
+            local scrollRange = math.max(0, contentHeight - (self.scrollframe:GetHeight() or 0))
+            self.slider:SetMinMaxValues(0, scrollRange)
+        else
+            self.scrollframe:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -4, 4)
+            self:SetHeight(contentHeight + 8)
+            self.slider:Hide()
+            self:SetScript("OnMouseWheel", nil)
+            self.slider:SetMinMaxValues(0, 0)
+        end
+        -- Set contentframe width (use dropdown width minus padding, fallback to 180)
+        local scrollWidth = self.scrollframe:GetWidth()
+        if scrollWidth and scrollWidth > 0 then
+            self.contentframe:SetWidth(scrollWidth)
+        else
+            self.contentframe:SetWidth(self:GetWidth() - 8)
+        end
+    end
+
+    local function ClearFrames(self)
+        for i = #self.contentRepo, 1, -1 do
+            self.contentRepo[i]:ReturnSelf()
+        end
+        wipe(self.contentRepo)
+    end
+
+    local function slider_OnValueChanged(self, value)
+        self.frame.scrollframe:SetVerticalScroll(value)
+    end
+
+    local function GetDropDownFrame()
+        local frame
+        if next(dropDownCache) then
+            frame = table.remove(dropDownCache)
+        else
+            frame = CreateFrame("Frame", nil, UIParent, BackdropTemplateMixin and "BackdropTemplate")
+            frame:SetClampedToScreen(true)
+            frame:SetWidth(200)
+            frame:SetBackdrop(styledBackdrop)
+            frame:SetBackdropColor(0.1, 0.1, 0.1, 0.98)
+            frame:SetBackdropBorderColor(0.18, 0.18, 0.18, 1)
+            frame:SetFrameStrata("TOOLTIP")
+            frame:EnableMouseWheel(true)
+
+            local contentframe = CreateFrame("Frame", nil, frame)
+            contentframe:SetWidth(180)
+            contentframe:SetHeight(0)
+            frame.contentframe = contentframe
+
+            local scrollframe = CreateFrame("ScrollFrame", nil, frame)
+            scrollframe:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -4)
+            scrollframe:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -4, 4)
+            scrollframe:SetScrollChild(contentframe)
+            frame.scrollframe = scrollframe
+
+            contentframe:SetPoint("TOPLEFT", scrollframe, "TOPLEFT", 0, 0)
+
+            frame.AddFrame = AddFrame
+            frame.ClearFrames = ClearFrames
+            frame.contentRepo = {}
+
+            -- Styled scrollbar
+            local slider = CreateFrame("Slider", nil, frame, BackdropTemplateMixin and "BackdropTemplate")
+            slider:SetOrientation("VERTICAL")
+            slider:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -2, -4)
+            slider:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -2, 4)
+            slider:SetWidth(4)
+            slider:SetBackdrop(styledBackdrop)
+            slider:SetBackdropColor(0.08, 0.08, 0.08, 1)
+            slider:SetBackdropBorderColor(0.18, 0.18, 0.18, 1)
+            slider:SetMinMaxValues(0, 1)
+            slider:SetValueStep(1)
+            slider:EnableMouse(true)
+            if slider.SetObeyStepOnDrag then
+                slider:SetObeyStepOnDrag(true)
+            end
+
+            -- Custom thumb texture
+            local thumb = slider:CreateTexture(nil, "OVERLAY")
+            thumb:SetTexture("Interface\\Buttons\\WHITE8X8")
+            thumb:SetVertexColor(0.3, 0.3, 0.3, 1)
+            thumb:SetSize(4, 30)
+            slider:SetThumbTexture(thumb)
+
+            slider.frame = frame
+            slider:SetScript("OnValueChanged", slider_OnValueChanged)
+            frame.slider = slider
+        end
+        -- Reset state for reuse
+        frame:SetBackdropColor(0.1, 0.1, 0.1, 0.98)
+        frame:SetBackdropBorderColor(0.18, 0.18, 0.18, 1)
+        frame:SetHeight(250)
+        frame.slider:SetValue(0)
+        frame.slider:Hide()
+        frame.scrollframe:SetVerticalScroll(0)
+        frame.contentframe:SetHeight(0)
+        frame.contentframe:SetWidth(180)
+        frame:Show()
+        return frame
+    end
+
+    local function ReturnDropDownFrame(frame)
+        ClearFrames(frame)
+        frame:ClearAllPoints()
+        frame:Hide()
+        table.insert(dropDownCache, frame)
+        return nil
+    end
+
+    -- Widget methods
+    local function OnAcquire(self)
+        self:SetHeight(47)
+        self:SetWidth(200)
+        -- Use consistent dark colors
+        self.frame.backdrop:SetBackdropColor(0.1, 0.1, 0.1, 0.98)
+        self.frame.backdrop:SetBackdropBorderColor(0.18, 0.18, 0.18, 1)
+    end
+
+    local function OnRelease(self)
+        self:SetText("")
+        self:SetLabel("")
+        self:SetDisabled(false)
+        self.value = nil
+        self.list = nil
+        self.open = nil
+        self.frame:ClearAllPoints()
+        self.frame:Hide()
+    end
+
+    local function SetValue(self, value)
+        if self.list then
+            self:SetText(self.list[value] or "")
+        end
+        self.value = value
+    end
+
+    local function GetValue(self)
+        return self.value
+    end
+
+    local function SetList(self, list)
+        self.list = list
+    end
+
+    local function SetText(self, text)
+        self.frame.text:SetText(text or "")
+    end
+
+    local function SetLabel(self, text)
+        self.frame.label:SetText(text or "")
+    end
+
+    local function AddItem(self, key, value)
+        self.list = self.list or {}
+        self.list[key] = value
+    end
+
+    local function SetMultiselect(self, flag) end
+    local function GetMultiselect() return false end
+    local function SetItemValue(self, key, value) self.list[key] = value end
+    local function SetItemDisabled(self, key) end
+
+    local function SetDisabled(self, disabled)
+        self.disabled = disabled
+        if disabled then
+            self.frame:Disable()
+            self.frame.label:SetTextColor(0.5, 0.5, 0.5)
+            self.frame.text:SetTextColor(0.5, 0.5, 0.5)
+            self.frame.arrow:SetTextColor(0.3, 0.3, 0.3)
+        else
+            self.frame:Enable()
+            self.frame.label:SetTextColor(1, 0.82, 0)
+            self.frame.text:SetTextColor(1, 1, 1)
+            self.frame.arrow:SetTextColor(0.6, 0.6, 0.6)
+        end
+    end
+
+    local function CloseDropdown(self)
+        if self.dropdown then
+            self.dropdown = ReturnDropDownFrame(self.dropdown)
+            self.frame.arrow:SetText(CHAR_ARROW_DOWNFILLED or "v")
+        end
+    end
+
+    -- Explicit SetWidth/SetHeight for AceConfig compatibility
+    local function SetWidth(self, width)
+        self.frame:SetWidth(width)
+    end
+
+    local function SetHeight(self, height)
+        self.frame:SetHeight(height)
+    end
+
+    local sortedList = {}
+
+    local function ToggleDrop(this)
+        local self = this.obj
+        if self.dropdown then
+            self:CloseDropdown()
+            AceGUI:ClearFocus()
+        else
+            AceGUI:SetFocus(self)
+            self.dropdown = GetDropDownFrame()
+            -- Popup width: determine minimum based on label (Instance needs more width)
+            local labelText = self.frame.label:GetText() or ""
+            local minWidth = 180  -- Default for Expansion, Difficulty, Size, etc.
+            if labelText:find("Instance") then
+                minWidth = 285  -- Instance dropdown needs more width for long names
+            end
+            local buttonWidth = self.frame.backdrop:GetWidth() or self.frame:GetWidth() or minWidth
+            local popupWidth = math.max(minWidth, buttonWidth)
+            self.dropdown:SetWidth(popupWidth)
+            -- Anchor to backdrop (the visible button) not the frame
+            self.dropdown:SetPoint("TOPLEFT", self.frame.backdrop, "BOTTOMLEFT", 0, -2)
+            -- Pre-set contentframe width (scrollframe won't have size until next frame)
+            self.dropdown.contentframe:SetWidth(popupWidth - 8)
+
+            self.frame.arrow:SetText(CHAR_ARROW_UPFILLED or "^")
+
+            -- Build sorted list
+            for k, v in pairs(self.list) do
+                sortedList[#sortedList + 1] = k
+            end
+            -- Sort by display value: "NONE" first, "ALL" second, then Normal before Heroic, then alphabetically
+            table.sort(sortedList, function(a, b)
+                local valA = self.list[a] or ""
+                local valB = self.list[b] or ""
+                -- Strip color codes for comparison
+                local cleanA = valA:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+                local cleanB = valB:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+                -- "NONE" always first
+                local isNoneA = cleanA:find("^NONE") ~= nil
+                local isNoneB = cleanB:find("^NONE") ~= nil
+                if isNoneA ~= isNoneB then return isNoneA end
+                -- "ALL" comes second
+                local isAllA = cleanA:find("^ALL") ~= nil
+                local isAllB = cleanB:find("^ALL") ~= nil
+                if isAllA ~= isAllB then return isAllA end
+                -- Check for heroic indicators: (5H), 5H, 10H, 25H, etc.
+                local isHeroicA = cleanA:find("5H") ~= nil or cleanA:find("10H") ~= nil or cleanA:find("25H") ~= nil
+                local isHeroicB = cleanB:find("5H") ~= nil or cleanB:find("10H") ~= nil or cleanB:find("25H") ~= nil
+                if isHeroicA ~= isHeroicB then
+                    return not isHeroicA  -- Normal comes before Heroic
+                end
+                return cleanA < cleanB
+            end)
+
+            -- Add items
+            for i, k in ipairs(sortedList) do
+                local f = GetContentLine()
+                f.text:SetText(self.list[k])
+                f.value = k
+                if k == self.value then
+                    f.check:Show()
+                end
+                f.obj = self
+                self.dropdown:AddFrame(f)
+            end
+            wipe(sortedList)
+        end
+    end
+
+    local function ClearFocus(self)
+        self:CloseDropdown()
+    end
+
+    local function OnHide(this)
+        local self = this.obj
+        self:CloseDropdown()
+    end
+
+    local function Constructor()
+        local bgColor, borderColor = GetThemeColors()
+        local fontPath, fontOutline = GetGeneralFont()
+
+        local frame = CreateFrame("Button", nil, UIParent)
+        frame:SetHeight(47)
+        frame:SetWidth(200)
+        frame:EnableMouse(true)
+        frame:SetScript("OnHide", OnHide)
+
+        -- Label
+        local label = frame:CreateFontString(nil, "OVERLAY")
+        label:SetFont(fontPath, 11, fontOutline)
+        label:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+        label:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+        label:SetJustifyH("LEFT")
+        label:SetHeight(16)
+        label:SetTextColor(1, 0.82, 0)
+        frame.label = label
+
+        -- Styled backdrop container (replaces old WoW dropdown textures)
+        local backdrop = CreateFrame("Frame", nil, frame, BackdropTemplateMixin and "BackdropTemplate")
+        backdrop:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -16)
+        backdrop:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -6, 10)
+        backdrop:SetBackdrop(styledBackdrop)
+        backdrop:SetBackdropColor(0.1, 0.1, 0.1, 0.98)
+        backdrop:SetBackdropBorderColor(0.18, 0.18, 0.18, 1)
+        backdrop:EnableMouse(false)  -- Let clicks pass through to parent button
+        frame.backdrop = backdrop
+
+        -- Selected text (create on backdrop so it's above the backdrop)
+        local text = backdrop:CreateFontString(nil, "OVERLAY")
+        text:SetFont(fontPath, 11, fontOutline)
+        text:SetPoint("LEFT", backdrop, "LEFT", 8, 0)
+        text:SetPoint("RIGHT", backdrop, "RIGHT", -24, 0)
+        text:SetJustifyH("LEFT")
+        text:SetTextColor(1, 1, 1)
+        frame.text = text
+
+        -- Arrow indicator (using glyph, create on backdrop)
+        local arrow = backdrop:CreateFontString(nil, "OVERLAY")
+        arrow:SetFont(CHAR_LIGATURESFONT or fontPath, 12, CHAR_LIGATURESOUTLINE or fontOutline)
+        arrow:SetPoint("RIGHT", backdrop, "RIGHT", -6, 0)
+        arrow:SetText(CHAR_ARROW_DOWNFILLED or "v")
+        arrow:SetTextColor(0.6, 0.6, 0.6, 1)
+        frame.arrow = arrow
+
+        -- Make entire frame clickable
+        frame:SetScript("OnClick", ToggleDrop)
+
+        -- Hover effect
+        frame:SetScript("OnEnter", function(self)
+            self.backdrop:SetBackdropColor(0.15, 0.15, 0.15, 0.98)
+            self.backdrop:SetBackdropBorderColor(0.25, 0.25, 0.25, 1)
+        end)
+        frame:SetScript("OnLeave", function(self)
+            self.backdrop:SetBackdropColor(0.1, 0.1, 0.1, 0.98)
+            self.backdrop:SetBackdropBorderColor(0.18, 0.18, 0.18, 1)
+        end)
+
+        local self = {}
+        self.type = widgetType
+        self.frame = frame
+        frame.obj = self
+
+        self.alignoffset = 31
+
+        self.OnRelease = OnRelease
+        self.OnAcquire = OnAcquire
+        self.ClearFocus = ClearFocus
+        self.SetText = SetText
+        self.SetValue = SetValue
+        self.GetValue = GetValue
+        self.SetList = SetList
+        self.SetLabel = SetLabel
+        self.SetDisabled = SetDisabled
+        self.AddItem = AddItem
+        self.SetMultiselect = SetMultiselect
+        self.GetMultiselect = GetMultiselect
+        self.SetItemValue = SetItemValue
+        self.SetItemDisabled = SetItemDisabled
+        self.CloseDropdown = CloseDropdown
+        self.SetWidth = SetWidth
+        self.SetHeight = SetHeight
+
+        AceGUI:RegisterAsWidget(self)
+        return self
+    end
+
+    AceGUI:RegisterWidgetType(widgetType, Constructor, widgetVersion)
+    KOL:DebugPrint("Registered AceGUI widget: KOL_ScrollDropdown", 2)
+end
+
+-- Register the widget when this file loads
+C_Timer.After(0, RegisterAceGUIScrollDropdown)
+
 KOL:DebugPrint("UI Factory loaded with enhanced components", 1)

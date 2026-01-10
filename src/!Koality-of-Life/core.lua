@@ -25,7 +25,8 @@ seterrorhandler(function(err)
 
     if errorPrintEnabled and err then
         local errStr = tostring(err)
-        if string.find(errStr, "Koality") or string.find(errStr, "KOL") or string.find(errStr, "!Koality") then
+        -- Performance: "Koality" matches both "Koality" and "!Koality"
+        if string.find(errStr, "Koality", 1, true) or string.find(errStr, "KOL", 1, true) then
             print("|cFFFF0000[KOL ERROR]|r " .. errStr)
         end
     end
@@ -91,10 +92,10 @@ local defaults = {
             baseFontSize = 12,
             fontScale = 1.0,
             dungeonFilterExpansion = "",
-            dungeonFilterDifficulty = "all",
+            dungeonFilterDifficulty = "",
             selectedDungeonInstance = "",
             raidFilterExpansion = "",
-            raidFilterDifficulty = "all",
+            raidFilterDifficulty = "",
             selectedRaidInstance = "",
             autoShow = true,
         },

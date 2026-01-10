@@ -1287,6 +1287,7 @@ function LDBModule:ShowMainMenu(anchor)
             LDBModule.escapeFrame:SetPropagateKeyboardInput(true)
         end
     end
+
 end
 
 function LDBModule:HideMenu()
@@ -1646,6 +1647,9 @@ function LDBModule:UpdateMinimapVisibility()
     if showMinimap then
         LDBIcon:Show("!Koality-of-Life")
         KOL.db.profile.minimap.hide = false
+        -- Re-apply styling (HookMinimapButton checks kolHooked to avoid double-hooking)
+        -- This is needed when button is shown for first time after being hidden at startup
+        self:HookMinimapButton()
     else
         LDBIcon:Hide("!Koality-of-Life")
         KOL.db.profile.minimap.hide = true
@@ -1698,6 +1702,36 @@ end
 -- LDB Text update (for dynamic text like Speed display)
 local ldbTextUpdateFrame = nil
 
+-- ============================================================================
+-- LDB Text Cache System (Performance optimization)
+-- ============================================================================
+-- Cache values to avoid rebuilding text string when nothing changed
+local ldbTextCache = {
+    lastSpeedValue = nil,      -- Last speed % value
+    lastLimitValue = nil,      -- Last limit damage setting
+    lastRacialValue = nil,     -- Last racial setting
+    lastDisplayText = nil,     -- Last built display text
+}
+
+-- Get current raw values for comparison (cheap operations)
+local function GetCurrentLDBValues()
+    local profile = KOL.db.profile
+
+    -- Speed value (from Scoots module)
+    local speedValue = nil
+    if profile.ldbShowSpeed ~= false then
+        speedValue = KOL.ReturnSpeedText and KOL:ReturnSpeedText(false) or nil
+    end
+
+    -- Limit value
+    local limitValue = profile.limitDamage or false
+
+    -- Racial value
+    local racialValue = KOL.GetCurrentRacial and KOL:GetCurrentRacial() or "Unknown"
+
+    return speedValue, limitValue, racialValue
+end
+
 -- Build the LDB display text based on current settings
 local function BuildLDBDisplayText()
     local profile = KOL.db.profile
@@ -1742,7 +1776,7 @@ local function BuildLDBDisplayText()
         local currentRacial = KOL.GetCurrentRacial and KOL:GetCurrentRacial() or "Unknown"
         local shortName = KOL.GetRacialShortName and KOL:GetRacialShortName(currentRacial) or currentRacial
         local racialText = showRacialLabel and "RACIAL: " or ""
-        racialText = racialText .. "|cFFDDAAFF" .. shortName .. "|r"
+        racialText = racialText .. "|cFFDDAAFF" .. string.upper(shortName) .. "|r"
         table.insert(items, { pos = racialPos, text = racialText })
     end
 
@@ -1761,6 +1795,37 @@ local function BuildLDBDisplayText()
     end
 
     return table.concat(segments, " |cFF666666|||r ")
+end
+
+-- Get LDB text with caching - only rebuilds if values changed
+local function GetCachedLDBDisplayText()
+    local speedValue, limitValue, racialValue = GetCurrentLDBValues()
+
+    -- Check if any value changed
+    local changed = false
+    if speedValue ~= ldbTextCache.lastSpeedValue then
+        changed = true
+    elseif limitValue ~= ldbTextCache.lastLimitValue then
+        changed = true
+    elseif racialValue ~= ldbTextCache.lastRacialValue then
+        changed = true
+    end
+
+    -- If nothing changed and we have cached text, return it
+    if not changed and ldbTextCache.lastDisplayText then
+        return ldbTextCache.lastDisplayText, false  -- false = not rebuilt
+    end
+
+    -- Something changed - rebuild text
+    local newText = BuildLDBDisplayText()
+
+    -- Update cache
+    ldbTextCache.lastSpeedValue = speedValue
+    ldbTextCache.lastLimitValue = limitValue
+    ldbTextCache.lastRacialValue = racialValue
+    ldbTextCache.lastDisplayText = newText
+
+    return newText, true  -- true = rebuilt
 end
 
 -- Check if any dynamic display is enabled (speed needs continuous updates)
@@ -1790,19 +1855,24 @@ function LDBModule:UpdateLDBText()
             ldbTextUpdateFrame.debugCount = 0
             ldbTextUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
                 self.elapsed = self.elapsed + elapsed
-                if self.elapsed < 0.1 then return end  -- Update every 0.1 seconds
+                if self.elapsed < 0.5 then return end  -- Check every 0.5 seconds
                 self.elapsed = 0
 
                 -- Only update if we still need continuous updates
                 if NeedsContinuousUpdate() and dataObject then
-                    local text = BuildLDBDisplayText()
-                    dataObject.text = text
+                    -- Use cached text - only rebuilds if values actually changed
+                    local text, wasRebuilt = GetCachedLDBDisplayText()
+
+                    -- Only update dataObject if text was actually rebuilt
+                    if wasRebuilt then
+                        dataObject.text = text
+                    end
 
                     -- DEBUG: Print first few updates
                     if ldbSpeedDebug then
                         self.debugCount = (self.debugCount or 0) + 1
                         if self.debugCount <= 5 then
-                            print("|cFF00FFFF[LDB DEBUG]|r OnUpdate #" .. self.debugCount .. " - text = '" .. tostring(text) .. "'")
+                            print("|cFF00FFFF[LDB DEBUG]|r OnUpdate #" .. self.debugCount .. " - rebuilt=" .. tostring(wasRebuilt) .. " text='" .. tostring(text) .. "'")
                         end
                         if text and (text:find("%%") or text:find("BASE")) then
                             print("|cFF00FF00[LDB DEBUG]|r Speed detected! Disabling debug.")
@@ -2192,8 +2262,6 @@ function LDBModule:HookMinimapButton()
                 if button.SetBackdropBorderColor then
                     button:SetBackdropBorderColor(0.8, 0.7, 0.3, 1)
                 end
-                -- Show click action tooltip
-                ShowClickActionTooltip(self)
             end)
 
             button:SetScript("OnLeave", function(self)
@@ -2204,14 +2272,10 @@ function LDBModule:HookMinimapButton()
                 if button.SetBackdropBorderColor then
                     button:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
                 end
-                -- Hide click action tooltip
-                HideClickActionTooltip()
             end)
 
             -- Click with modifier support
             button:SetScript("OnClick", function(self, btn)
-                -- Hide tooltip on any click
-                HideClickActionTooltip()
 
                 -- Check for modifier keys first
                 if IsShiftKeyDown() then
