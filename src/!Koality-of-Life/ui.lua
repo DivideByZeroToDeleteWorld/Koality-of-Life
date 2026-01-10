@@ -1137,6 +1137,12 @@ function KOL:InitializeUI()
                         name = "|cFFFFDD00General|r",
                         order = 1,
                         args = {
+                            header = {
+                                type = "description",
+                                name = "|cFFFFFFFFGeneral Settings|r\n|cFFAAAAAAGlobal options, appearance, fonts, colors, and actions for all trackers.|r\n",
+                                fontSize = "medium",
+                                order = 0,
+                            },
                             -- ================================================================
                             -- GLOBAL SECTION
                             -- ================================================================

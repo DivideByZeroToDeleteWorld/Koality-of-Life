@@ -7,42 +7,48 @@ local Breadcrumb = KOL.Breadcrumb
 Breadcrumb.currentPath = {}
 Breadcrumb.initialized = false
 
-local BREADCRUMB_INACTIVE_COLOR = "PASTEL_BLUE"
-local BREADCRUMB_CURRENT_COLOR = "PASTEL_YELLOW"
-
-local SECTION_NAMES = {
-    [""] = "Main",
-    general = "General",
-    binds = "Binds",
-    tracker = "Tracker",
-    batch = "Batch",
-    debug = "Debug",
-    colors = "Colors",
-    tweaks = "Tweaks",
-    profiles = "Profile Manager",
-    combat = "Combat",
-    social = "Social",
-    utility = "Utility",
+-- Section names and their signature colors
+local SECTION_DATA = {
+    [""] = { name = "Main", color = "FFFFFF" },
+    -- Top-level tabs
+    general = { name = "General", color = "FFDD00" },
+    tracker = { name = "Progress Tracker", color = "66FFCC" },
+    tweaks = { name = "Tweaks", color = "88DDFF" },
+    commandblocks = { name = "Command Blocks", color = "FFAA66" },
+    -- General sub-tabs
+    main = { name = "Main", color = "FFDD00" },
+    debug = { name = "Debug", color = "FF6666" },
+    colors = { name = "Colors", color = "FF88CC" },
+    -- Progress Tracker sub-tabs
+    generalTracker = { name = "General", color = "FFDD00" },
+    dungeons = { name = "Dungeons", color = "88DDFF" },
+    raids = { name = "Raids", color = "FF6666" },
+    custom = { name = "Custom", color = "AA66FF" },
+    -- Tweaks sub-tabs
+    synastria = { name = "Synastria", color = "00CCFF" },
+    vendors = { name = "Vendors", color = "FFDD00" },
+    -- Command Blocks sub-tabs
+    combat = { name = "Combat", color = "FF6666" },
+    social = { name = "Social", color = "88DDFF" },
+    utility = { name = "Utility", color = "FFDD00" },
+    binds = { name = "Binds", color = "88FF88" },
+    batch = { name = "Batch", color = "FFAA66" },
+    -- Other
+    profiles = { name = "Profiles", color = "AAAAAA" },
+    notify = { name = "Notify", color = "FF88CC" },
+    batchSystem = { name = "Batch System", color = "FFAA66" },
+    media = { name = "Media", color = "88DDFF" },
 }
 
-function Breadcrumb:CurrentCrumb(sectionName)
-    self:UpdateBreadcrumbs()
-end
+-- Tabs that have sub-tabs (need 2+ path segments for full path)
+local TABS_WITH_SUBTABS = {
+    general = true,
+    tracker = true,
+    tweaks = true,
+    commandblocks = true,
+}
 
-function Breadcrumb:SetPath(...)
-    self.currentPath = {...}
-
-    local pathStr = "Main"
-    for i, segment in ipairs(self.currentPath) do
-        if segment and segment ~= "" then
-            pathStr = pathStr .. " → " .. (SECTION_NAMES[segment] or segment)
-        end
-    end
-    KOL:DebugPrint("Breadcrumb: " .. pathStr)
-
-    self:UpdateBreadcrumbs()
-end
-
+-- Clear breadcrumb from root args only
 function Breadcrumb:ClearBreadcrumbs()
     if not KOL.configOptions or not KOL.configOptions.args then
         return
@@ -55,78 +61,46 @@ function Breadcrumb:ClearBreadcrumbs()
     end
 end
 
+function Breadcrumb:SetPath(...)
+    self.currentPath = {...}
+
+    local pathStr = "Root"
+    for i, segment in ipairs(self.currentPath) do
+        if segment and segment ~= "" then
+            local data = SECTION_DATA[segment]
+            pathStr = pathStr .. " > " .. (data and data.name or segment)
+        end
+    end
+    KOL:DebugPrint("Breadcrumb: " .. pathStr)
+
+    self:UpdateBreadcrumbs()
+end
+
 function Breadcrumb:UpdateBreadcrumbs()
     if not KOL.configOptions or not KOL.configOptions.args then
         return
     end
 
+    -- Clear existing breadcrumb
     self:ClearBreadcrumbs()
 
-    local segments = {}
-
-    table.insert(segments, {
-        id = "",
-        name = "Main",
-        path = {},
-        isCurrent = (#self.currentPath == 0)
-    })
+    -- Build the breadcrumb text
+    local breadcrumbText = "|cFF888888Root|r"
 
     for i, segmentId in ipairs(self.currentPath) do
         if segmentId and segmentId ~= "" then
-            local pathToHere = {}
-            for j = 1, i do
-                table.insert(pathToHere, self.currentPath[j])
-            end
-
-            table.insert(segments, {
-                id = segmentId,
-                name = SECTION_NAMES[segmentId] or segmentId,
-                path = pathToHere,
-                isCurrent = (i == #self.currentPath)
-            })
+            local data = SECTION_DATA[segmentId] or { name = segmentId, color = "FFFFFF" }
+            breadcrumbText = breadcrumbText .. " |cFF555555>|r |cFF" .. data.color .. data.name .. "|r"
         end
     end
 
-    local order = -100
-
-    for i, segment in ipairs(segments) do
-        local color = segment.isCurrent and BREADCRUMB_CURRENT_COLOR or BREADCRUMB_INACTIVE_COLOR
-
-        local buttonKey = "_breadcrumb_seg_" .. i
-        KOL.configOptions.args[buttonKey] = {
-            type = "execute",
-            name = COLOR(color, segment.name),
-            desc = segment.isCurrent and "Current location" or ("Navigate to " .. segment.name),
-            width = "normal",
-            order = order,
-            func = function()
-                if not segment.isCurrent then
-                    if #segment.path == 0 then
-                        AceConfigDialog:SelectGroup("KoalityOfLife")
-                    else
-                        AceConfigDialog:SelectGroup("KoalityOfLife", unpack(segment.path))
-                    end
-                end
-            end,
-        }
-        order = order + 1
-
-        if i < #segments then
-            local sepKey = "_breadcrumb_sep_" .. i
-            KOL.configOptions.args[sepKey] = {
-                type = "description",
-                name = " " .. CHAR("RIGHT") .. " ",
-                width = "normal",
-                order = order,
-            }
-            order = order + 1
-        end
-    end
-
-    KOL.configOptions.args._breadcrumb_spacer = {
-        type = "header",
-        name = "",
-        order = -50,
+    -- Always add breadcrumb to ROOT args (stays at top, above tabs)
+    KOL.configOptions.args._breadcrumb_text = {
+        type = "description",
+        name = breadcrumbText .. "\n",
+        fontSize = "medium",
+        width = "full",
+        order = 0.5,  -- After header (0), before tabs (1+)
     }
 
     LibStub("AceConfigRegistry-3.0"):NotifyChange("KoalityOfLife")
@@ -137,33 +111,27 @@ function Breadcrumb:Initialize()
         return
     end
 
-    if not (KOL.db and KOL.db.profile and KOL.db.profile.devMode) then
-        KOL:DebugPrint("Breadcrumb: Skipped (devMode disabled)")
-        return
-    end
-
-    KOL:DebugPrint("Breadcrumb: Initializing navigation tracking")
-
-    local originalSelectGroup = AceConfigDialog.SelectGroup
-
-    AceConfigDialog.SelectGroup = function(self, appName, ...)
-        originalSelectGroup(self, appName, ...)
-
-        if appName == "KoalityOfLife" then
-            KOL.Breadcrumb:SetPath(...)
+    -- Hook FeedGroup - this is called when rendering groups/tabs
+    if AceConfigDialog.FeedGroup then
+        local originalFeedGroup = AceConfigDialog.FeedGroup
+        AceConfigDialog.FeedGroup = function(dialog, appName, options, container, rootframe, path, ...)
+            originalFeedGroup(dialog, appName, options, container, rootframe, path, ...)
+            if appName == "KoalityOfLife" and path and type(path) == "table" and #path > 0 then
+                -- Skip partial paths for tabs that have sub-tabs
+                -- (wait for the full path with sub-tab included)
+                local firstSegment = path[1]
+                if #path == 1 and TABS_WITH_SUBTABS[firstSegment] then
+                    return  -- Wait for full path
+                end
+                KOL.Breadcrumb:SetPath(unpack(path))
+            end
         end
     end
 
+    -- Set initial empty path (shows just "Root")
     self:SetPath()
 
     self.initialized = true
-    KOL:DebugPrint("Breadcrumb: Initialization complete")
-end
-
-function CurrentCrumb(sectionName)
-    if KOL.Breadcrumb then
-        KOL.Breadcrumb:CurrentCrumb(sectionName)
-    end
 end
 
 KOL.InitializeBreadcrumb = function()
