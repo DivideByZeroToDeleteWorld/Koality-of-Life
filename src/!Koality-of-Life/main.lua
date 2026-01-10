@@ -614,6 +614,130 @@ function KOL:SlashCommand(input)
                 print("  Matching Instances: " .. RED("NONE - zone not recognized!"))
             end
         end
+    elseif cmd == "diffraids" then
+        -- Analyze all RAID instances and output available difficulties by expansion
+        self:PrintTag("=== RAID DIFFICULTIES ANALYSIS ===")
+
+        if not KOL.Tracker or not KOL.Tracker.instances then
+            self:PrintTag(RED("Tracker not loaded or no instances registered"))
+            return
+        end
+
+        -- Build analysis structure: expansion -> difficulty -> instances
+        local analysis = {}
+        local instanceCount = 0
+
+        for id, data in pairs(KOL.Tracker.instances) do
+            if data.type == "raid" then
+                instanceCount = instanceCount + 1
+                local exp = data.expansion or "unknown"
+                local diff = data.difficulty or 0
+
+                if not analysis[exp] then analysis[exp] = {} end
+                if not analysis[exp][diff] then analysis[exp][diff] = {} end
+
+                table.insert(analysis[exp][diff], {
+                    id = id,
+                    name = data.name or id
+                })
+            end
+        end
+
+        self:PrintTag("Total raids registered: " .. GREEN(instanceCount))
+        print("")
+
+        local expansionOrder = {"classic", "tbc", "wotlk"}
+        local diffNames = {
+            [1] = "10-Player Normal",
+            [2] = "25-Player Normal",
+            [3] = "10-Player Heroic",
+            [4] = "25-Player Heroic"
+        }
+
+        for _, exp in ipairs(expansionOrder) do
+            if analysis[exp] then
+                print(YELLOW("=== " .. string.upper(exp) .. " RAIDS ==="))
+
+                local diffs = {}
+                for diff in pairs(analysis[exp]) do
+                    table.insert(diffs, diff)
+                end
+                table.sort(diffs)
+
+                for _, diff in ipairs(diffs) do
+                    local instances = analysis[exp][diff]
+                    local diffLabel = diffNames[diff] or ("Difficulty " .. diff)
+                    print("  " .. CYAN("Difficulty " .. diff) .. " (" .. diffLabel .. "): " .. #instances .. " raids")
+
+                    for _, inst in ipairs(instances) do
+                        print("    - " .. inst.name)
+                    end
+                end
+                print("")
+            end
+        end
+
+    elseif cmd == "diffdungeons" then
+        -- Analyze all DUNGEON instances and output available difficulties by expansion
+        self:PrintTag("=== DUNGEON DIFFICULTIES ANALYSIS ===")
+
+        if not KOL.Tracker or not KOL.Tracker.instances then
+            self:PrintTag(RED("Tracker not loaded or no instances registered"))
+            return
+        end
+
+        -- Build analysis structure: expansion -> difficulty -> instances
+        local analysis = {}
+        local instanceCount = 0
+
+        for id, data in pairs(KOL.Tracker.instances) do
+            if data.type == "dungeon" then
+                instanceCount = instanceCount + 1
+                local exp = data.expansion or "unknown"
+                local diff = data.difficulty or 0
+
+                if not analysis[exp] then analysis[exp] = {} end
+                if not analysis[exp][diff] then analysis[exp][diff] = {} end
+
+                table.insert(analysis[exp][diff], {
+                    id = id,
+                    name = data.name or id
+                })
+            end
+        end
+
+        self:PrintTag("Total dungeons registered: " .. GREEN(instanceCount))
+        print("")
+
+        local expansionOrder = {"classic", "tbc", "wotlk"}
+        local diffNames = {
+            [1] = "Normal",
+            [2] = "Heroic",
+            [3] = "Mythic"
+        }
+
+        for _, exp in ipairs(expansionOrder) do
+            if analysis[exp] then
+                print(YELLOW("=== " .. string.upper(exp) .. " DUNGEONS ==="))
+
+                local diffs = {}
+                for diff in pairs(analysis[exp]) do
+                    table.insert(diffs, diff)
+                end
+                table.sort(diffs)
+
+                for _, diff in ipairs(diffs) do
+                    local instances = analysis[exp][diff]
+                    local diffLabel = diffNames[diff] or ("Difficulty " .. diff)
+                    print("  " .. CYAN("Difficulty " .. diff) .. " (" .. diffLabel .. "): " .. #instances .. " dungeons")
+
+                    for _, inst in ipairs(instances) do
+                        print("    - " .. inst.name)
+                    end
+                end
+                print("")
+            end
+        end
     else
         self:PrintTag(RED("Unknown command: ") .. cmd)
         self:PrintTag("Type " .. YELLOW("/kol help") .. " for a list of commands")

@@ -1652,9 +1652,16 @@ function KOL:InitializeUI()
                                 width = "full",
                                 order = 40,
                             },
+                            colorNote = {
+                                type = "description",
+                                name = "|cFF888888These are global defaults. Individual instances can override these in their own config panel.|r",
+                                width = "full",
+                                order = 40.5,
+                            },
+                            -- Row 1: Title Font + Title BG
                             titleFontColor = {
                                 type = "color",
-                                name = "Title",
+                                name = "Title Font",
                                 desc = "Color for the instance title text",
                                 hasAlpha = false,
                                 get = function()
@@ -1675,9 +1682,89 @@ function KOL:InitializeUI()
                                         end
                                     end
                                 end,
-                                width = "normal",
+                                width = 1,
                                 order = 41,
                             },
+                            titleBarColor = {
+                                type = "color",
+                                name = "Title BG",
+                                desc = "Background color for the title bar",
+                                hasAlpha = true,
+                                get = function()
+                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.titleBarColor
+                                    if color then
+                                        return color[1], color[2], color[3], color[4] or 1
+                                    end
+                                    return 0.1, 0.1, 0.1, 1
+                                end,
+                                set = function(_, r, g, b, a)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.titleBarColor = {r, g, b, a}
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                width = 1,
+                                order = 42,
+                            },
+                            -- Row 2: Border + Body BG
+                            borderColor = {
+                                type = "color",
+                                name = "Border",
+                                desc = "Border color for the frame",
+                                hasAlpha = true,
+                                get = function()
+                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.borderColor
+                                    if color then
+                                        return color[1], color[2], color[3], color[4] or 1
+                                    end
+                                    return 0.2, 0.2, 0.2, 1
+                                end,
+                                set = function(_, r, g, b, a)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.borderColor = {r, g, b, a}
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                width = 1,
+                                order = 43,
+                            },
+                            backgroundColor = {
+                                type = "color",
+                                name = "Body BG",
+                                desc = "Background color for the frame body",
+                                hasAlpha = true,
+                                get = function()
+                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.backgroundColor
+                                    if color then
+                                        return color[1], color[2], color[3], color[4] or 0.95
+                                    end
+                                    return 0.05, 0.05, 0.05, 0.95
+                                end,
+                                set = function(_, r, g, b, a)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.backgroundColor = {r, g, b, a}
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                width = 1,
+                                order = 44,
+                            },
+                            -- Row 3: Group Incomplete + Group Complete
                             groupIncompleteColor = {
                                 type = "color",
                                 name = "Group Incomplete",
@@ -1701,8 +1788,8 @@ function KOL:InitializeUI()
                                         end
                                     end
                                 end,
-                                width = "half",
-                                order = 42,
+                                width = 1,
+                                order = 45,
                             },
                             groupCompleteColor = {
                                 type = "color",
@@ -1727,9 +1814,10 @@ function KOL:InitializeUI()
                                         end
                                     end
                                 end,
-                                width = "half",
-                                order = 43,
+                                width = 1,
+                                order = 46,
                             },
+                            -- Row 4: Objective Incomplete + Objective Complete
                             objectiveIncompleteColor = {
                                 type = "color",
                                 name = "Objective Incomplete",
@@ -1753,8 +1841,8 @@ function KOL:InitializeUI()
                                         end
                                     end
                                 end,
-                                width = "half",
-                                order = 44,
+                                width = 1,
+                                order = 47,
                             },
                             objectiveCompleteColor = {
                                 type = "color",
@@ -1779,8 +1867,88 @@ function KOL:InitializeUI()
                                         end
                                     end
                                 end,
-                                width = "half",
-                                order = 45,
+                                width = 1,
+                                order = 48,
+                            },
+                            -- Row 5: Scrollbar BG + Scrollbar Thumb
+                            scrollBarColor = {
+                                type = "color",
+                                name = "Scrollbar BG",
+                                desc = "Background color for the scroll bar",
+                                hasAlpha = true,
+                                get = function()
+                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.scrollBarColor
+                                    if color then
+                                        return color[1], color[2], color[3], color[4] or 0.9
+                                    end
+                                    return 0.1, 0.1, 0.1, 0.9
+                                end,
+                                set = function(_, r, g, b, a)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.scrollBarColor = {r, g, b, a}
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                width = 1,
+                                order = 49,
+                            },
+                            scrollThumbColor = {
+                                type = "color",
+                                name = "Scrollbar Thumb",
+                                desc = "Color for the scroll bar thumb/slider",
+                                hasAlpha = true,
+                                get = function()
+                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.scrollThumbColor
+                                    if color then
+                                        return color[1], color[2], color[3], color[4] or 1
+                                    end
+                                    return 0.3, 0.3, 0.3, 1
+                                end,
+                                set = function(_, r, g, b, a)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.scrollThumbColor = {r, g, b, a}
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                width = 1,
+                                order = 50,
+                            },
+                            -- Row 6: Scrollbar Border (alone)
+                            scrollBarBorderColor = {
+                                type = "color",
+                                name = "Scrollbar Border",
+                                desc = "Border color for the scroll bar",
+                                hasAlpha = true,
+                                get = function()
+                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.scrollBarBorderColor
+                                    if color then
+                                        return color[1], color[2], color[3], color[4] or 1
+                                    end
+                                    return 0.2, 0.2, 0.2, 1
+                                end,
+                                set = function(_, r, g, b, a)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.scrollBarBorderColor = {r, g, b, a}
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                width = 1,
+                                order = 51,
                             },
 
                             -- ================================================================
@@ -1791,7 +1959,7 @@ function KOL:InitializeUI()
                                 name = "ACTIONS|1.0,0.1,0.1",
                                 dialogControl = "KOL_SectionHeader",
                                 width = "full",
-                                order = 50,
+                                order = 60,
                             },
                             resetAll = {
                                 type = "execute",
@@ -1803,10 +1971,16 @@ function KOL:InitializeUI()
                                     end
                                 end,
                                 width = "double",
-                                order = 51,
+                                order = 61,
                                 confirm = function()
                                     return "Are you sure you want to reset ALL boss kill tracking? This cannot be undone."
                                 end,
+                            },
+                            bottomSpacer = {
+                                type = "description",
+                                name = " ",
+                                width = "full",
+                                order = 99,
                             },
                         }
                     },
@@ -1821,104 +1995,97 @@ function KOL:InitializeUI()
                                     fontSize = "medium",
                                     order = 0,
                                 },
-                                filterGroup = {
-                                    type = "group",
-                                    name = "Filters",
-                                    inline = true,
-                                    order = 1,
-                                    args = {
-                                        filterExpansion = {
-                                            type = "select",
-                                            name = "Expansion",
-                                            desc = "Select which expansion's dungeons to display",
-                                            width = 120,
-                                            values = {
-                                                [""] = "-- Select Expansion --",
-                                                classic = "Classic",
-                                                tbc = "The Burning Crusade",
-                                                wotlk = "Wrath of the Lich King",
-                                                all = "All Expansions",
-                                            },
-                                            get = function()
-                                                return KOL.db.profile.tracker.dungeonFilterExpansion or ""
-                                            end,
-                                            set = function(_, value)
-                                                KOL.db.profile.tracker.dungeonFilterExpansion = value
-                                                KOL:PopulateTrackerConfigUI()
-                                                LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
-                                            end,
-                                            order = 1,
-                                        },
-                                        filterDifficulty = {
-                                            type = "select",
-                                            name = "Difficulty",
-                                            desc = "Filter dungeons by difficulty",
-                                            width = 100,
-                                            values = function()
-                                                local expansion = KOL.db.profile.tracker.dungeonFilterExpansion or "all"
-                                                if expansion == "all" then
-                                                    return {
-                                                        all = "All Difficulties",
-                                                        normal = "Normal",
-                                                        heroic = "Heroic",
-                                                    }
-                                                elseif expansion == "classic" then
-                                                    return {
-                                                        all = "All Difficulties",
-                                                        normal = "Normal",
-                                                    }
-                                                else  -- TBC or WotLK
-                                                    return {
-                                                        all = "All Difficulties",
-                                                        normal = "Normal",
-                                                        heroic = "Heroic",
-                                                    }
-                                                end
-                                            end,
-                                            get = function()
-                                                return KOL.db.profile.tracker.dungeonFilterDifficulty or "all"
-                                            end,
-                                            set = function(_, value)
-                                                KOL.db.profile.tracker.dungeonFilterDifficulty = value
-                                                KOL:PopulateTrackerConfigUI()
-                                                LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
-                                            end,
-                                            order = 2,
-                                        },
+                                filterExpansion = {
+                                    type = "select",
+                                    name = "Expansion",
+                                    desc = "Select which expansion's dungeons to display",
+                                    width = 0.65,
+                                    values = {
+                                        [""] = "-- Select --",
+                                        classic = "Classic",
+                                        tbc = "TBC",
+                                        wotlk = "WotLK",
                                     },
+                                    get = function()
+                                        return KOL.db.profile.tracker.dungeonFilterExpansion or ""
+                                    end,
+                                    set = function(_, value)
+                                        KOL.db.profile.tracker.dungeonFilterExpansion = value
+                                        -- Reset difficulty if switching to classic (no heroic)
+                                        if value == "classic" and KOL.db.profile.tracker.dungeonFilterDifficulty == "heroic" then
+                                            KOL.db.profile.tracker.dungeonFilterDifficulty = "all"
+                                        end
+                                        KOL.db.profile.tracker.selectedDungeonInstance = ""
+                                        KOL:PopulateTrackerConfigUI()
+                                        LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
+                                    end,
+                                    order = 1,
+                                },
+                                filterDifficulty = {
+                                    type = "select",
+                                    name = "Difficulty",
+                                    desc = "Filter dungeons by difficulty",
+                                    width = 0.55,
+                                    values = function()
+                                        local expansion = KOL.db.profile.tracker.dungeonFilterExpansion or ""
+                                        if expansion == "classic" then
+                                            return {
+                                                all = "All",
+                                                normal = "Normal",
+                                            }
+                                        else
+                                            return {
+                                                all = "All",
+                                                normal = "Normal",
+                                                heroic = "Heroic",
+                                            }
+                                        end
+                                    end,
+                                    get = function()
+                                        return KOL.db.profile.tracker.dungeonFilterDifficulty or "all"
+                                    end,
+                                    set = function(_, value)
+                                        KOL.db.profile.tracker.dungeonFilterDifficulty = value
+                                        KOL.db.profile.tracker.selectedDungeonInstance = ""
+                                        KOL:PopulateTrackerConfigUI()
+                                        LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
+                                    end,
+                                    order = 2,
                                 },
                                 selectInstance = {
                                     type = "select",
-                                    name = "Select Instance",
+                                    name = "Instance",
                                     desc = "Choose which instance to configure",
+                                    width = 0.8,
                                     values = function()
-                                        -- Build list of instances that match current filters
-                                        local instances = {[""] = "-- Select Instance --"}
+                                        local instances = {[""] = "-- Select --"}
                                         if not KOL.Tracker or not KOL.Tracker.instances then
                                             return instances
                                         end
-                                        
+
                                         local expansion = KOL.db.profile.tracker.dungeonFilterExpansion or ""
                                         local difficulty = KOL.db.profile.tracker.dungeonFilterDifficulty or "all"
-                                        
+
+                                        -- Don't show instances if no expansion selected
+                                        if expansion == "" then
+                                            return instances
+                                        end
+
+                                        local difficultyMap = {normal = 1, heroic = 2, mythic = 3}
+                                        local filterDiffNum = difficultyMap[difficulty]
+
                                         for id, data in pairs(KOL.Tracker.instances) do
                                             if data.type == "dungeon" then
                                                 local include = true
-                                                
-                                                -- Filter by expansion
-                                                if expansion ~= "" and expansion ~= "all" then
-                                                    if data.expansion ~= expansion then
-                                                        include = false
-                                                    end
+
+                                                if expansion ~= "all" and data.expansion ~= expansion then
+                                                    include = false
                                                 end
-                                                
-                                                -- Filter by difficulty
-                                                if difficulty ~= "" and difficulty ~= "all" then
-                                                    if data.difficulty ~= difficulty then
-                                                        include = false
-                                                    end
+
+                                                if filterDiffNum and data.difficulty ~= filterDiffNum then
+                                                    include = false
                                                 end
-                                                
+
                                                 if include then
                                                     instances[id] = data.name
                                                 end
@@ -1927,14 +2094,14 @@ function KOL:InitializeUI()
                                         return instances
                                     end,
                                     get = function()
-                                        return KOL.db.profile.tracker.dungeonFilterInstance or ""
+                                        return KOL.db.profile.tracker.selectedDungeonInstance or ""
                                     end,
                                     set = function(_, value)
-                                        KOL.db.profile.tracker.dungeonFilterInstance = value
+                                        KOL.db.profile.tracker.selectedDungeonInstance = value
                                         KOL:PopulateTrackerConfigUI()
                                         LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
                                     end,
-                                    order = 2,
+                                    order = 3,
                                 },
                         }
                     },
@@ -1949,98 +2116,82 @@ function KOL:InitializeUI()
                                     fontSize = "medium",
                                     order = 0,
                                 },
-                                filterGroup = {
-                                    type = "group",
-                                    name = "Filters",
-                                    inline = true,
-                                    order = 1,
-                                    args = {
-                                        filterExpansion = {
-                                            type = "select",
-                                            name = "Expansion",
-                                            desc = "Select which expansion's raids to display",
-                                            width = 120,
-                                            values = {
-                                                [""] = "-- Select Expansion --",
-                                                classic = "Classic",
-                                                tbc = "The Burning Crusade",
-                                                wotlk = "Wrath of the Lich King",
-                                                all = "All Expansions",
-                                            },
-                                            get = function()
-                                                return KOL.db.profile.tracker.raidFilterExpansion or ""
-                                            end,
-                                            set = function(_, value)
-                                                KOL.db.profile.tracker.raidFilterExpansion = value
-                                                KOL:PopulateTrackerConfigUI()
-                                                LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
-                                            end,
-                                            order = 1,
-                                        },
-                                        filterDifficulty = {
-                                            type = "select",
-                                            name = "Size/Difficulty",
-                                            desc = "Filter raids by size and difficulty (N=Normal, H=Heroic)",
-                                            width = 100,
-                                            values = function()
-                                                local expansion = KOL.db.profile.tracker.raidFilterExpansion or "all"
-                                                -- Unified N/H naming with color coding
-                                                -- Green bullet = Normal, Red bullet = Heroic
-                                                local green = "|cFF66FF66"
-                                                local red = "|cFFFF6666"
-                                                local bullet = string.char(149) .. " "
-
-                                                if expansion == "classic" then
-                                                    return {
-                                                        all = "All",
-                                                        ["20n"] = green .. bullet .. "20N|r",
-                                                        ["40n"] = green .. bullet .. "40N|r",
-                                                    }
-                                                elseif expansion == "tbc" then
-                                                    return {
-                                                        all = "All",
-                                                        ["10n"] = green .. bullet .. "10N|r",
-                                                        ["25n"] = green .. bullet .. "25N|r",
-                                                    }
-                                                elseif expansion == "wotlk" then
-                                                    return {
-                                                        all = "All",
-                                                        ["10n"] = green .. bullet .. "10N|r",
-                                                        ["25n"] = green .. bullet .. "25N|r",
-                                                        ["10h"] = red .. bullet .. "10H|r",
-                                                        ["25h"] = red .. bullet .. "25H|r",
-                                                    }
-                                                else  -- all expansions
-                                                    return {
-                                                        all = "All",
-                                                        ["10n"] = green .. bullet .. "10N|r",
-                                                        ["20n"] = green .. bullet .. "20N|r",
-                                                        ["25n"] = green .. bullet .. "25N|r",
-                                                        ["40n"] = green .. bullet .. "40N|r",
-                                                        ["10h"] = red .. bullet .. "10H|r",
-                                                        ["25h"] = red .. bullet .. "25H|r",
-                                                    }
-                                                end
-                                            end,
-                                            get = function()
-                                                return KOL.db.profile.tracker.raidFilterDifficulty or "all"
-                                            end,
-                                            set = function(_, value)
-                                                KOL.db.profile.tracker.raidFilterDifficulty = value
-                                                KOL:PopulateTrackerConfigUI()
-                                                LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
-                                            end,
-                                            order = 2,
-                                        },
+                                filterExpansion = {
+                                    type = "select",
+                                    name = "Expansion",
+                                    desc = "Select which expansion's raids to display",
+                                    width = 0.65,
+                                    values = {
+                                        [""] = "-- Select --",
+                                        classic = "Classic",
+                                        tbc = "TBC",
+                                        wotlk = "WotLK",
                                     },
+                                    get = function()
+                                        return KOL.db.profile.tracker.raidFilterExpansion or ""
+                                    end,
+                                    set = function(_, value)
+                                        KOL.db.profile.tracker.raidFilterExpansion = value
+                                        -- Reset difficulty when changing expansion
+                                        KOL.db.profile.tracker.raidFilterDifficulty = "all"
+                                        KOL.db.profile.tracker.selectedRaidInstance = ""
+                                        KOL:PopulateTrackerConfigUI()
+                                        LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
+                                    end,
+                                    order = 1,
+                                },
+                                filterDifficulty = {
+                                    type = "select",
+                                    name = "Size",
+                                    desc = "Filter raids by size and difficulty (N=Normal, H=Heroic)",
+                                    width = 0.55,
+                                    values = function()
+                                        local expansion = KOL.db.profile.tracker.raidFilterExpansion or ""
+                                        local green = "|cFF66FF66"
+                                        local red = "|cFFFF6666"
+
+                                        if expansion == "classic" then
+                                            return {
+                                                all = "All",
+                                                ["20n"] = green .. "20-Man|r",
+                                                ["40n"] = green .. "40-Man|r",
+                                            }
+                                        elseif expansion == "tbc" then
+                                            return {
+                                                all = "All",
+                                                ["10n"] = green .. "10-Man|r",
+                                                ["25n"] = green .. "25-Man|r",
+                                            }
+                                        elseif expansion == "wotlk" then
+                                            return {
+                                                all = "All",
+                                                ["10n"] = green .. "10N|r",
+                                                ["25n"] = green .. "25N|r",
+                                                ["10h"] = red .. "10H|r",
+                                                ["25h"] = red .. "25H|r",
+                                            }
+                                        else
+                                            return {all = "All"}
+                                        end
+                                    end,
+                                    get = function()
+                                        return KOL.db.profile.tracker.raidFilterDifficulty or "all"
+                                    end,
+                                    set = function(_, value)
+                                        KOL.db.profile.tracker.raidFilterDifficulty = value
+                                        KOL.db.profile.tracker.selectedRaidInstance = ""
+                                        KOL:PopulateTrackerConfigUI()
+                                        LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
+                                    end,
+                                    order = 2,
                                 },
                                 selectInstance = {
                                     type = "select",
-                                    name = "Select Instance",
+                                    name = "Instance",
                                     desc = "Choose which raid instance to configure",
+                                    width = 0.8,
                                     values = function()
-                                        -- Build list of instances that match current filters
-                                        local instances = {[""] = "-- Select Instance --"}
+                                        local instances = {[""] = "-- Select --"}
                                         if not KOL.Tracker or not KOL.Tracker.instances then
                                             return instances
                                         end
@@ -2048,23 +2199,22 @@ function KOL:InitializeUI()
                                         local filterExpansion = KOL.db.profile.tracker.raidFilterExpansion or ""
                                         local filterDifficulty = KOL.db.profile.tracker.raidFilterDifficulty or "all"
 
-                                        -- Collect raids for sorting
+                                        -- Don't show instances if no expansion selected
+                                        if filterExpansion == "" then
+                                            return instances
+                                        end
+
                                         local raidList = {}
 
                                         for id, data in pairs(KOL.Tracker.instances) do
                                             if data.type == "raid" then
                                                 local include = true
 
-                                                -- Filter by expansion
-                                                if filterExpansion ~= "" and filterExpansion ~= "all" then
-                                                    if data.expansion ~= filterExpansion then
-                                                        include = false
-                                                    end
+                                                if filterExpansion ~= "all" and data.expansion ~= filterExpansion then
+                                                    include = false
                                                 end
 
-                                                -- Filter by unified difficulty code (e.g., "10n", "25h", "40n")
-                                                if include and filterDifficulty ~= "" and filterDifficulty ~= "all" then
-                                                    -- Get this raid's unified code
+                                                if include and filterDifficulty ~= "all" then
                                                     local raidCode = GetUnifiedDifficultyCode(data.expansion, data.difficulty, data.name)
                                                     if raidCode ~= filterDifficulty then
                                                         include = false
@@ -2072,16 +2222,11 @@ function KOL:InitializeUI()
                                                 end
 
                                                 if include then
-                                                    -- Get size and heroic status for sorting
                                                     local size = GetRaidSize(data.expansion, data.difficulty, data.name)
                                                     local isHeroic = IsHeroicRaid(data.expansion, data.difficulty)
-                                                    local expansionOrder = ({classic = 1, tbc = 2, wotlk = 3})[data.expansion] or 4
-
                                                     table.insert(raidList, {
                                                         id = id,
                                                         name = data.name,
-                                                        expansion = data.expansion,
-                                                        expansionOrder = expansionOrder,
                                                         size = size,
                                                         isHeroic = isHeroic,
                                                     })
@@ -2089,21 +2234,12 @@ function KOL:InitializeUI()
                                             end
                                         end
 
-                                        -- Sort by: expansion, then size, then heroic, then name
                                         table.sort(raidList, function(a, b)
-                                            if a.expansionOrder ~= b.expansionOrder then
-                                                return a.expansionOrder < b.expansionOrder
-                                            end
-                                            if a.size ~= b.size then
-                                                return a.size < b.size
-                                            end
-                                            if a.isHeroic ~= b.isHeroic then
-                                                return not a.isHeroic  -- Normal before Heroic
-                                            end
+                                            if a.size ~= b.size then return a.size < b.size end
+                                            if a.isHeroic ~= b.isHeroic then return not a.isHeroic end
                                             return a.name < b.name
                                         end)
 
-                                        -- Build ordered instances table
                                         for _, raid in ipairs(raidList) do
                                             instances[raid.id] = raid.name
                                         end
@@ -2118,7 +2254,7 @@ function KOL:InitializeUI()
                                         KOL:PopulateTrackerConfigUI()
                                         LibStub("AceConfigRegistry-3.0"):NotifyChange("!Koality-of-Life")
                                     end,
-                                    order = 2,
+                                    order = 3,
                                 },
                         }
                     },
@@ -2205,12 +2341,12 @@ function KOL:PopulateTrackerConfigUI()
     end
 
     for k, _ in pairs(dungeonsArgs) do
-        if k ~= "header" and k ~= "filterExpansion" and k ~= "filterDifficulty" and k ~= "selectInstance" and k ~= "spacer" then
+        if k ~= "header" and k ~= "filterExpansion" and k ~= "filterDifficulty" and k ~= "selectInstance" then
             dungeonsArgs[k] = nil
         end
     end
     for k, _ in pairs(raidsArgs) do
-        if k ~= "header" and k ~= "filterExpansion" and k ~= "filterDifficulty" and k ~= "selectInstance" and k ~= "spacer" then
+        if k ~= "header" and k ~= "filterExpansion" and k ~= "filterDifficulty" and k ~= "selectInstance" then
             raidsArgs[k] = nil
         end
     end
@@ -3332,6 +3468,17 @@ function KOL:PopulateTrackerConfigUI()
                     inline = true,
                     order = 20,
                     args = {
+                        useCustomColors = {
+                            type = "toggle",
+                            name = "Use These Instead of Global Colors",
+                            desc = "When enabled, this instance will use the colors below instead of the global defaults from the General tab",
+                            get = function() return GetInstanceSetting(instanceId, "useCustomColors", false) end,
+                            set = function(_, value)
+                                SetInstanceSetting(instanceId, "useCustomColors", value)
+                            end,
+                            width = "full",
+                            order = 0,
+                        },
                         backgroundColor = {
                             type = "color",
                             name = "Background Color",

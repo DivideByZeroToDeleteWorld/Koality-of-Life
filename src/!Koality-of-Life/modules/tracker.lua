@@ -2785,8 +2785,9 @@ function Tracker:CreateWatchFrame(instanceId)
     local showMinimizeBtn = false  -- Removed minimize button - user can double-click titlebar to minimize
     local showScrollButtons = config.showScrollButtons ~= false
 
-    -- Get instance color (check for per-instance title font color)
-    local titleFontColor = GetInstanceSetting(instanceId, "titleFontColor")
+    -- Get instance color (check for per-instance title font color if custom colors enabled, then global config, then default)
+    local useCustomColorsForTitle = GetInstanceSetting(instanceId, "useCustomColors")
+    local titleFontColor = (useCustomColorsForTitle and GetInstanceSetting(instanceId, "titleFontColor")) or config.titleFontColor
     local instanceColor, instanceColorHex
     if titleFontColor then
         instanceColor = titleFontColor
@@ -2869,20 +2870,23 @@ function Tracker:CreateWatchFrame(instanceId)
         edgeSize = 1,
         insets = { left = 0, right = 0, top = 0, bottom = 0 }
     })
-    local bgColor = GetInstanceSetting(instanceId, "backgroundColor")
+    -- Check if this instance uses custom colors (per-instance override)
+    local useCustomColors = GetInstanceSetting(instanceId, "useCustomColors")
+
+    local bgColor = (useCustomColors and GetInstanceSetting(instanceId, "backgroundColor")) or config.backgroundColor
     if bgColor then
         frame:SetBackdropColor(bgColor[1], bgColor[2], bgColor[3], bgColor[4] or 0.95)
     else
         frame:SetBackdropColor(0.05, 0.05, 0.05, 0.95)
     end
-    local borderColor = GetInstanceSetting(instanceId, "borderColor")
+    local borderColor = (useCustomColors and GetInstanceSetting(instanceId, "borderColor")) or config.borderColor
     if borderColor then
         frame:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], borderColor[4] or 1)
     else
         frame:SetBackdropBorderColor(0.2, 0.2, 0.2, 1)
     end
 
-    -- Title bar (with per-instance color)
+    -- Title bar (with per-instance color if custom colors enabled)
     local titleBar = CreateFrame("Frame", nil, frame)
     titleBar:SetSize(frameWidth - 2, 20)
     titleBar:SetPoint("TOPLEFT", frame, "TOPLEFT", 1, -1)
@@ -2891,7 +2895,7 @@ function Tracker:CreateWatchFrame(instanceId)
         bgFile = "Interface\\Buttons\\WHITE8X8",
         tile = false,
     })
-    local titleBarColor = GetInstanceSetting(instanceId, "titleBarColor")
+    local titleBarColor = (useCustomColors and GetInstanceSetting(instanceId, "titleBarColor")) or config.titleBarColor
     if titleBarColor then
         titleBar:SetBackdropColor(titleBarColor[1], titleBarColor[2], titleBarColor[3], titleBarColor[4] or 1)
     else
@@ -3094,24 +3098,24 @@ function Tracker:CreateWatchFrame(instanceId)
         edgeSize = 1,
         insets = { left = 0, right = 0, top = 0, bottom = 0 }
     })
-    local scrollBarColor = GetInstanceSetting(instanceId, "scrollBarColor")
+    local scrollBarColor = (useCustomColors and GetInstanceSetting(instanceId, "scrollBarColor")) or config.scrollBarColor
     if scrollBarColor then
         scrollBar:SetBackdropColor(scrollBarColor[1], scrollBarColor[2], scrollBarColor[3], scrollBarColor[4] or 0.9)
     else
         scrollBar:SetBackdropColor(0.1, 0.1, 0.1, 0.9)
     end
-    local scrollBarBorderColor = GetInstanceSetting(instanceId, "scrollBarBorderColor")
+    local scrollBarBorderColor = (useCustomColors and GetInstanceSetting(instanceId, "scrollBarBorderColor")) or config.scrollBarBorderColor
     if scrollBarBorderColor then
         scrollBar:SetBackdropBorderColor(scrollBarBorderColor[1], scrollBarBorderColor[2], scrollBarBorderColor[3], scrollBarBorderColor[4] or 1)
     else
         scrollBar:SetBackdropBorderColor(0.2, 0.2, 0.2, 1)
     end
 
-    -- Scroll bar thumb (with per-instance color)
+    -- Scroll bar thumb (with per-instance color if custom colors enabled)
     local thumb = scrollBar:CreateTexture(nil, "OVERLAY")
     thumb:SetTexture("Interface\\Buttons\\WHITE8X8")
     thumb:SetSize(scrollBarWidth, 20)
-    local scrollThumbColor = GetInstanceSetting(instanceId, "scrollThumbColor")
+    local scrollThumbColor = (useCustomColors and GetInstanceSetting(instanceId, "scrollThumbColor")) or config.scrollThumbColor
     if scrollThumbColor then
         thumb:SetVertexColor(scrollThumbColor[1], scrollThumbColor[2], scrollThumbColor[3], scrollThumbColor[4] or 1)
     else
@@ -3302,6 +3306,31 @@ function Tracker:UpdateWatchFrame(instanceId)
     -- Config values are just fallback defaults if we can't determine size
     local config = KOL.db.profile.tracker
 
+    -- Update frame colors (background, border, title bar)
+    -- Check if this instance uses custom colors (per-instance override)
+    local useCustomColors = GetInstanceSetting(instanceId, "useCustomColors")
+
+    local bgColor = (useCustomColors and GetInstanceSetting(instanceId, "backgroundColor")) or config.backgroundColor
+    if bgColor then
+        frame:SetBackdropColor(bgColor[1], bgColor[2], bgColor[3], bgColor[4] or 0.95)
+    else
+        frame:SetBackdropColor(0.05, 0.05, 0.05, 0.95)
+    end
+    local borderColor = (useCustomColors and GetInstanceSetting(instanceId, "borderColor")) or config.borderColor
+    if borderColor then
+        frame:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], borderColor[4] or 1)
+    else
+        frame:SetBackdropBorderColor(0.2, 0.2, 0.2, 1)
+    end
+    if frame.titleBar then
+        local titleBarColor = (useCustomColors and GetInstanceSetting(instanceId, "titleBarColor")) or config.titleBarColor
+        if titleBarColor then
+            frame.titleBar:SetBackdropColor(titleBarColor[1], titleBarColor[2], titleBarColor[3], titleBarColor[4] or 1)
+        else
+            frame.titleBar:SetBackdropColor(0.1, 0.1, 0.1, 1)
+        end
+    end
+
     -- Get font settings
     local fontScale = GetInstanceSetting(instanceId, "fontScale") or config.fontScale or 1.0
 
@@ -3373,12 +3402,28 @@ function Tracker:UpdateWatchFrame(instanceId)
     -- Clear existing boss texts and buttons - release to pools for reuse
     self:ReleaseWatchFrameElements(frame)
 
-    -- Get colors
-    local instanceColor = KOL.Colors:GetPastel(data.color or "PINK")
+    -- Get colors (check for per-instance title font color if custom colors enabled, then global config, then default)
+    local titleFontColor = (useCustomColors and GetInstanceSetting(instanceId, "titleFontColor")) or config.titleFontColor
+    local instanceColor, instanceColorHex
+    if titleFontColor then
+        instanceColor = titleFontColor
+        instanceColorHex = KOL.Colors:ToHex(titleFontColor)
+    else
+        instanceColor = KOL.Colors:GetPastel(data.color or "PINK")
+        instanceColorHex = KOL.Colors:ToHex(instanceColor)
+    end
+
+    -- Update title text color
+    if frame.titleText and frame.titleText.text then
+        local titleTextContent = GetInstanceSetting(instanceId, "titleText")
+        if not titleTextContent or titleTextContent == "" then
+            titleTextContent = self:GetShortTitle(data)
+        end
+        frame.titleText.text:SetText("|cFF" .. instanceColorHex .. titleTextContent .. "|r")
+    end
+
     local killedColor = KOL.Colors:GetPastel("GREEN")
     local unkilledColor = KOL.Colors:GetPastel("RED")
-
-    local instanceColorHex = KOL.Colors:ToHex(instanceColor)
     local killedColorHex = KOL.Colors:ToHex(killedColor)
     local unkilledColorHex = KOL.Colors:ToHex(unkilledColor)
 
