@@ -98,7 +98,16 @@ splash.lua
 modules\media.lua
 modules\macroupdater.lua
 modules\tracker.lua
+
+# Tracker Data Files - split by expansion (must load after tracker.lua)
+modules\tracker-dungeons-classic.lua
+modules\tracker-raids-classic.lua
+modules\tracker-dungeons-tbc.lua
+modules\tracker-raids-tbc.lua
+modules\tracker-dungeons-wotlk.lua
+modules\tracker-raids-wotlk.lua
 modules\tracker-data.lua
+
 modules\tracker-editor.lua
 modules\boss-recorder.lua
 

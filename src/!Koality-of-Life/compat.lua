@@ -1,6 +1,17 @@
 -- !Koality-of-Life Compatibility Layer
 -- Polyfills for 3.3.5a: C_Timer, GetInstanceDifficulty fix, IsInGroup/IsInRaid
 
+-- ============================================================================
+-- MINIMAP SHAPE - Must be defined BEFORE LibDBIcon loads
+-- ============================================================================
+-- This tells LibDBIcon (and any other addon) that we use a SQUARE minimap
+-- so it positions the button along square edges instead of circular
+-- This MUST be in compat.lua because it loads before all libraries
+-- ALWAYS override - we use square minimap, period.
+function GetMinimapShape()
+    return "SQUARE"
+end
+
 local KOL_oldGetInstanceDifficulty = GetInstanceDifficulty
 function GetInstanceDifficulty()
     local diff = KOL_oldGetInstanceDifficulty()

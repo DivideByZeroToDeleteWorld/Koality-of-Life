@@ -5,6 +5,7 @@ local UIFactory = KOL.UIFactory
 local debugMessages = {}
 local consoleFrame = nil
 local debugButton = nil
+local searchFilter = ""  -- Current search filter text
 
 local rainbowColors = {
     {r = 1.00, g = 0.00, b = 0.00},
@@ -86,6 +87,14 @@ local function CreateConsoleFrame()
         return consoleFrame
     end
 
+    -- Destroy any existing frame from previous session (ensures fresh scripts after /reload)
+    local existingFrame = _G["KOL_DebugConsole"]
+    if existingFrame then
+        existingFrame:Hide()
+        existingFrame:SetParent(nil)
+        _G["KOL_DebugConsole"] = nil
+    end
+
     local frame = UIFactory:CreateStyledFrame(UIParent, "KOL_DebugConsole", 700, 500, {
         movable = true,
         closable = true,
@@ -94,15 +103,44 @@ local function CreateConsoleFrame()
     })
     frame:SetPoint("CENTER")
 
-    local titleBar, title, titleCloseBtn = UIFactory:CreateTitleBar(frame, 20, "Debug Console", {
+    local titleBar, title, titleCloseBtn = UIFactory:CreateTitleBar(frame, 18, "", {
         showCloseButton = true,
     })
     frame.title = title
 
+    -- Make close button smaller to fit the reduced title bar
+    if titleCloseBtn then
+        titleCloseBtn:SetSize(14, 14)
+    end
+
     local fontPath, fontOutline = GetDebugFont()
+
+    -- Centered title text
+    local centerTitle = titleBar:CreateFontString(nil, "OVERLAY")
+    centerTitle:SetFont(fontPath, 10, fontOutline)
+    centerTitle:SetPoint("CENTER", titleBar, "CENTER", 0, 0)
+    centerTitle:SetText("KoL DEBUG UI Console")
+    centerTitle:SetTextColor(0.9, 0.9, 0.9, 1)
+    frame.centerTitle = centerTitle
+
+    -- Auto-scroll checkbox in title bar
+    local autoScrollCheck = CreateFrame("CheckButton", nil, titleBar, "UICheckButtonTemplate")
+    autoScrollCheck:SetPoint("RIGHT", titleBar, "RIGHT", -22, 0)
+    autoScrollCheck:SetWidth(16)
+    autoScrollCheck:SetHeight(16)
+    autoScrollCheck:SetChecked(true)
+    frame.autoScroll = autoScrollCheck
+
+    local autoScrollLabel = titleBar:CreateFontString(nil, "OVERLAY")
+    autoScrollLabel:SetFont(fontPath, 9, fontOutline)
+    autoScrollLabel:SetPoint("RIGHT", autoScrollCheck, "LEFT", -2, 0)
+    autoScrollLabel:SetText("Auto-scroll")
+    autoScrollLabel:SetTextColor(0.7, 0.7, 0.7, 1)
+
+    -- Message count (to the left of auto-scroll)
     local messageCount = frame:CreateFontString(nil, "OVERLAY")
     messageCount:SetFont(fontPath, 10, fontOutline)
-    messageCount:SetPoint("RIGHT", titleBar, "RIGHT", -26, 0)
+    messageCount:SetPoint("RIGHT", autoScrollLabel, "LEFT", -10, 0)
     messageCount:SetTextColor(0.7, 0.7, 0.7, 1)
     frame.messageCount = messageCount
 
@@ -186,18 +224,97 @@ local function CreateConsoleFrame()
     })
     closeButton:SetPoint("BOTTOMRIGHT", -10, buttonY)
 
-    local autoScrollCheck = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
-    autoScrollCheck:SetPoint("BOTTOM", 0, buttonY + 3)
-    autoScrollCheck:SetWidth(20)
-    autoScrollCheck:SetHeight(20)
-    autoScrollCheck:SetChecked(true)
-    frame.autoScroll = autoScrollCheck
+    -- Search EditBox (stretches from Clear button to Close button)
+    local searchBox = CreateFrame("EditBox", "KOL_DebugSearchBox", frame, "InputBoxTemplate")
+    searchBox:SetHeight(22)
+    searchBox:SetPoint("LEFT", clearButton, "RIGHT", 10, 0)
+    searchBox:SetPoint("RIGHT", closeButton, "LEFT", -10, 0)
+    searchBox:SetAutoFocus(false)
+    searchBox:EnableMouse(true)
+    searchBox:EnableKeyboard(true)
+    searchBox:SetFont(fontPath, 11, fontOutline)
+    searchBox:SetTextInsets(5, 18, 0, 0)  -- Extra right inset for clear button
 
-    local autoScrollLabel = frame:CreateFontString(nil, "OVERLAY")
-    autoScrollLabel:SetFont(fontPath, 11, fontOutline)
-    autoScrollLabel:SetPoint("LEFT", autoScrollCheck, "RIGHT", 5, 0)
-    autoScrollLabel:SetText("Auto-scroll")
-    autoScrollLabel:SetTextColor(0.8, 0.8, 0.8, 1)
+    -- Placeholder text
+    local searchPlaceholder = searchBox:CreateFontString(nil, "OVERLAY")
+    searchPlaceholder:SetFont(fontPath, 10, fontOutline)
+    searchPlaceholder:SetPoint("LEFT", 5, 0)
+    searchPlaceholder:SetText("Search...")
+    searchPlaceholder:SetTextColor(0.5, 0.5, 0.5, 0.8)
+    searchBox.placeholder = searchPlaceholder
+
+    -- Clear button (X) - appears when there's text
+    local clearSearchBtn = CreateFrame("Button", nil, searchBox)
+    clearSearchBtn:SetSize(14, 14)
+    clearSearchBtn:SetPoint("RIGHT", -3, 0)
+    clearSearchBtn:Hide()
+
+    local clearSearchText = clearSearchBtn:CreateFontString(nil, "OVERLAY")
+    clearSearchText:SetFont(fontPath, 12, fontOutline)
+    clearSearchText:SetPoint("CENTER", 0, 0)
+    clearSearchText:SetText("x")
+    clearSearchText:SetTextColor(0.6, 0.6, 0.6, 1)
+    clearSearchBtn.text = clearSearchText
+
+    clearSearchBtn:SetScript("OnEnter", function(self)
+        self.text:SetTextColor(1, 0.3, 0.3, 1)
+    end)
+
+    clearSearchBtn:SetScript("OnLeave", function(self)
+        self.text:SetTextColor(0.6, 0.6, 0.6, 1)
+    end)
+
+    clearSearchBtn:SetScript("OnClick", function()
+        searchFilter = ""  -- Clear filter FIRST
+        searchBox:SetText("")  -- This triggers OnTextChanged which also clears
+        searchPlaceholder:Show()
+        clearSearchBtn:Hide()
+        UpdateConsoleDisplay()  -- Force refresh
+    end)
+
+    searchBox.clearButton = clearSearchBtn
+
+    searchBox:SetScript("OnTextChanged", function(self, userInput)
+        local text = self:GetText() or ""
+        searchFilter = text:lower()
+
+        -- Show/hide placeholder and clear button
+        if text == "" then
+            searchPlaceholder:Show()
+            clearSearchBtn:Hide()
+            searchFilter = ""  -- Explicitly ensure it's empty string
+        else
+            searchPlaceholder:Hide()
+            clearSearchBtn:Show()
+        end
+
+        -- Always update display when text changes (even programmatically)
+        UpdateConsoleDisplay()
+    end)
+
+    searchBox:SetScript("OnEditFocusGained", function(self)
+        searchPlaceholder:Hide()
+    end)
+
+    searchBox:SetScript("OnEditFocusLost", function(self)
+        if self:GetText() == "" then
+            searchPlaceholder:Show()
+        end
+    end)
+
+    searchBox:SetScript("OnEscapePressed", function(self)
+        self:SetText("")
+        searchFilter = ""
+        self:ClearFocus()
+        clearSearchBtn:Hide()
+        UpdateConsoleDisplay()
+    end)
+
+    searchBox:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+    end)
+
+    frame.searchBox = searchBox
 
     consoleFrame = frame
     return frame
@@ -223,30 +340,52 @@ local MAX_SECTION_LENGTH = 10
 function UpdateConsoleDisplay()
     if not consoleFrame then return end
 
+    -- Helper function to check if message matches search filter
+    local function matchesSearch(entry)
+        if searchFilter == "" then return true end
+        return entry.message:lower():find(searchFilter, 1, true) ~= nil
+    end
+
     if consoleFrame.updatesPaused then
         local currentDebugLevel = (KOL.db and KOL.db.profile and KOL.db.profile.debugLevel) or 5
 
         local visibleCount = 0
+        local filteredCount = 0
         for _, entry in ipairs(debugMessages) do
             if entry.level <= currentDebugLevel then
                 visibleCount = visibleCount + 1
+                if matchesSearch(entry) then
+                    filteredCount = filteredCount + 1
+                end
             end
         end
 
-        consoleFrame.messageCount:SetText(visibleCount .. " / " .. #debugMessages .. " messages (PAUSED, L" .. currentDebugLevel .. ")")
+        local statusText = filteredCount .. " / " .. visibleCount .. " messages (PAUSED, L" .. currentDebugLevel .. ")"
+        if searchFilter ~= "" then
+            statusText = statusText .. " [filter: \"" .. searchFilter .. "\"]"
+        end
+        consoleFrame.messageCount:SetText(statusText)
         return
     end
 
     local currentDebugLevel = (KOL.db and KOL.db.profile and KOL.db.profile.debugLevel) or 5
 
     local visibleCount = 0
+    local filteredCount = 0
     for _, entry in ipairs(debugMessages) do
         if entry.level <= currentDebugLevel then
             visibleCount = visibleCount + 1
+            if matchesSearch(entry) then
+                filteredCount = filteredCount + 1
+            end
         end
     end
 
-    consoleFrame.messageCount:SetText(visibleCount .. " / " .. #debugMessages .. " messages (L" .. currentDebugLevel .. ")")
+    local statusText = filteredCount .. " / " .. visibleCount .. " messages (L" .. currentDebugLevel .. ")"
+    if searchFilter ~= "" then
+        statusText = statusText .. " [filter: \"" .. searchFilter .. "\"]"
+    end
+    consoleFrame.messageCount:SetText(statusText)
 
     -- Limit to last 200 visible lines to prevent memory issues
     local MAX_RENDER_LINES = 200
@@ -255,7 +394,7 @@ function UpdateConsoleDisplay()
 
     local visibleMessages = {}
     for i, entry in ipairs(debugMessages) do
-        if entry.level <= currentDebugLevel then
+        if entry.level <= currentDebugLevel and matchesSearch(entry) then
             table.insert(visibleMessages, entry)
         end
     end

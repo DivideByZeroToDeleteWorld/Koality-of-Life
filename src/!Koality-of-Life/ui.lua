@@ -1448,7 +1448,7 @@ function KOL:InitializeUI()
                                         end
                                     end
                                 end,
-                                width = "half",
+                                width = 0.15,
                                 order = 25,
                             },
                             titleFontOutline = {
@@ -1530,7 +1530,7 @@ function KOL:InitializeUI()
                                         end
                                     end
                                 end,
-                                width = "half",
+                                width = 0.15,
                                 order = 29,
                             },
                             groupFontOutline = {
@@ -1612,7 +1612,7 @@ function KOL:InitializeUI()
                                         end
                                     end
                                 end,
-                                width = "half",
+                                width = 0.15,
                                 order = 33,
                             },
                             objectiveFontOutline = {
@@ -1675,60 +1675,8 @@ function KOL:InitializeUI()
                                         end
                                     end
                                 end,
-                                width = "half",
+                                width = "normal",
                                 order = 41,
-                            },
-                            objectiveIncompleteColor = {
-                                type = "color",
-                                name = "Objective Incomplete",
-                                desc = "Color for bosses/objectives that are not yet completed",
-                                hasAlpha = false,
-                                get = function()
-                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.objectiveIncompleteColor
-                                    if color then
-                                        return color[1], color[2], color[3]
-                                    end
-                                    return 1, 0.6, 0.6
-                                end,
-                                set = function(_, r, g, b)
-                                    if not KOL.db.profile.tracker then
-                                        KOL.db.profile.tracker = {}
-                                    end
-                                    KOL.db.profile.tracker.objectiveIncompleteColor = {r, g, b}
-                                    if KOL.Tracker then
-                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
-                                            KOL.Tracker:UpdateWatchFrame(instanceId)
-                                        end
-                                    end
-                                end,
-                                width = "normal",
-                                order = 42,
-                            },
-                            objectiveCompleteColor = {
-                                type = "color",
-                                name = "Objective Complete",
-                                desc = "Color for bosses/objectives that are completed",
-                                hasAlpha = false,
-                                get = function()
-                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.objectiveCompleteColor
-                                    if color then
-                                        return color[1], color[2], color[3]
-                                    end
-                                    return 0.7, 1, 0.7
-                                end,
-                                set = function(_, r, g, b)
-                                    if not KOL.db.profile.tracker then
-                                        KOL.db.profile.tracker = {}
-                                    end
-                                    KOL.db.profile.tracker.objectiveCompleteColor = {r, g, b}
-                                    if KOL.Tracker then
-                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
-                                            KOL.Tracker:UpdateWatchFrame(instanceId)
-                                        end
-                                    end
-                                end,
-                                width = "normal",
-                                order = 43,
                             },
                             groupIncompleteColor = {
                                 type = "color",
@@ -1753,8 +1701,8 @@ function KOL:InitializeUI()
                                         end
                                     end
                                 end,
-                                width = "normal",
-                                order = 44,
+                                width = "half",
+                                order = 42,
                             },
                             groupCompleteColor = {
                                 type = "color",
@@ -1779,7 +1727,59 @@ function KOL:InitializeUI()
                                         end
                                     end
                                 end,
-                                width = "normal",
+                                width = "half",
+                                order = 43,
+                            },
+                            objectiveIncompleteColor = {
+                                type = "color",
+                                name = "Objective Incomplete",
+                                desc = "Color for bosses/objectives that are not yet completed",
+                                hasAlpha = false,
+                                get = function()
+                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.objectiveIncompleteColor
+                                    if color then
+                                        return color[1], color[2], color[3]
+                                    end
+                                    return 1, 0.6, 0.6
+                                end,
+                                set = function(_, r, g, b)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.objectiveIncompleteColor = {r, g, b}
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                width = "half",
+                                order = 44,
+                            },
+                            objectiveCompleteColor = {
+                                type = "color",
+                                name = "Objective Complete",
+                                desc = "Color for bosses/objectives that are completed",
+                                hasAlpha = false,
+                                get = function()
+                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.objectiveCompleteColor
+                                    if color then
+                                        return color[1], color[2], color[3]
+                                    end
+                                    return 0.7, 1, 0.7
+                                end,
+                                set = function(_, r, g, b)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.objectiveCompleteColor = {r, g, b}
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                width = "half",
                                 order = 45,
                             },
 

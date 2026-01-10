@@ -68,6 +68,10 @@ Tracker.lastExitTime = {}
 -- Track current instance player is in (for exit detection)
 Tracker.currentInstanceId = nil
 
+-- Flag to ignore UPDATE_INSTANCE_INFO during initial load/reload
+-- This prevents false resets when the event fires on login/reload
+Tracker.initialLoadComplete = false
+
 -- Hardmode state tracking (which bosses are in hardmode)
 -- Format: [instanceId][bossId] = true/false
 Tracker.hardmodeActive = {}
@@ -196,6 +200,11 @@ Tracker.detectionHandlers = {}
 -- Format: spellLookup[spellId] = { {instanceId, bossIndex, boss}, ... }
 Tracker.spellLookup = {}
 
+-- NPC ID lookup for fast UNIT_DIED detection
+-- Format: npcLookup[npcId] = { {instanceId, bossIndex, boss, groupIndex}, ... }
+-- Multiple entries per NPC ID possible (same boss in different difficulties)
+Tracker.npcLookup = {}
+
 -- Register a detection handler
 -- @param detectType string - The detection type name (e.g., "cast", "buff")
 -- @param eventTypes table - List of combat log event types to listen for
@@ -211,11 +220,27 @@ end
 -- Build lookup tables for all registered detection types
 function Tracker:BuildDetectionLookups()
     self.spellLookup = {}
+    self.npcLookup = {}
+
+    -- Helper to add NPC ID to lookup
+    local function addNpcToLookup(npcId, instanceId, bossIndex, boss, groupIndex)
+        if not npcId then return end
+        if not self.npcLookup[npcId] then
+            self.npcLookup[npcId] = {}
+        end
+        table.insert(self.npcLookup[npcId], {
+            instanceId = instanceId,
+            bossIndex = bossIndex,
+            boss = boss,
+            groupIndex = groupIndex
+        })
+    end
 
     for instanceId, data in pairs(self.instances) do
-        local function processBoss(boss, bossIndex)
+        local function processBoss(boss, bossIndex, groupIndex)
             local detectType = boss.detectType or "death"
 
+            -- Build spell lookup for cast/buff detection
             if detectType == "cast" or detectType == "buff" then
                 local spellId = boss.detectSpellId
                 if spellId then
@@ -231,12 +256,44 @@ function Tracker:BuildDetectionLookups()
                     KOL:DebugPrint("Tracker: Built lookup for " .. boss.name .. " [" .. detectType .. "] spellId=" .. spellId, 3)
                 end
             end
+
+            -- Build NPC lookup for UNIT_DIED detection (all bosses with IDs)
+            local bossId = boss.id
+            if bossId then
+                if type(bossId) == "table" then
+                    -- Multiple IDs (e.g., id = {34928, 35119})
+                    for _, id in ipairs(bossId) do
+                        addNpcToLookup(id, instanceId, bossIndex, boss, groupIndex)
+                    end
+                else
+                    -- Single ID
+                    addNpcToLookup(bossId, instanceId, bossIndex, boss, groupIndex)
+                end
+            end
+
+            -- Also add faction-specific IDs if they exist
+            if boss.idHorde then
+                if type(boss.idHorde) == "table" then
+                    for _, id in ipairs(boss.idHorde) do
+                        addNpcToLookup(id, instanceId, bossIndex, boss, groupIndex)
+                    end
+                else
+                    addNpcToLookup(boss.idHorde, instanceId, bossIndex, boss, groupIndex)
+                end
+            end
+
+            -- Add multikill IDs if present
+            if boss.ids then
+                for _, id in ipairs(boss.ids) do
+                    addNpcToLookup(id, instanceId, bossIndex, boss, groupIndex)
+                end
+            end
         end
 
         -- Check flat bosses list
         if data.bosses then
             for bossIndex, boss in ipairs(data.bosses) do
-                processBoss(boss, bossIndex)
+                processBoss(boss, bossIndex, nil)
             end
         end
 
@@ -247,12 +304,37 @@ function Tracker:BuildDetectionLookups()
                     for bossIndex, boss in ipairs(group.bosses) do
                         -- Calculate global boss index for grouped bosses
                         local globalIndex = self:GetGlobalBossIndex(data, groupIndex, bossIndex)
-                        processBoss(boss, globalIndex)
+                        processBoss(boss, globalIndex, groupIndex)
+                    end
+                end
+            end
+        end
+
+        -- Check entries (new format)
+        if data.entries then
+            for entryIndex, entry in ipairs(data.entries) do
+                if entry.id then
+                    if type(entry.id) == "table" then
+                        for _, id in ipairs(entry.id) do
+                            addNpcToLookup(id, instanceId, entryIndex, entry, nil)
+                        end
+                    else
+                        addNpcToLookup(entry.id, instanceId, entryIndex, entry, nil)
+                    end
+                end
+                if entry.ids then
+                    for _, id in ipairs(entry.ids) do
+                        addNpcToLookup(id, instanceId, entryIndex, entry, nil)
                     end
                 end
             end
         end
     end
+
+    -- Log npcLookup stats
+    local npcCount = 0
+    for _ in pairs(self.npcLookup) do npcCount = npcCount + 1 end
+    KOL:DebugPrint("Tracker: Built npcLookup with " .. npcCount .. " unique NPC IDs", 1)
 end
 
 -- Get global boss index for grouped boss structures
@@ -409,8 +491,12 @@ function Tracker:Initialize()
     self.bossKills = KOL.db.profile.tracker.bossKills or {}
     self.multiNPCKills = KOL.db.profile.tracker.multiNPCKills or {}
     self.multiPhaseKills = KOL.db.profile.tracker.multiPhaseKills or {}
-    self.instanceLockouts = KOL.db.profile.tracker.instanceLockouts or {}
     self.hardmodeActive = KOL.db.profile.tracker.hardmodeActive or {}
+
+    -- IMPORTANT: instanceLockouts are SESSION-ONLY (not persisted)
+    -- GUID-based instance IDs change on /reload, so persisting them causes false resets
+    -- We only use them for within-session detection (e.g., manual reset while playing)
+    self.instanceLockouts = {}
 
     -- Initialize autoShow if not exists (for existing users upgrading)
     -- Default to TRUE so watch frames show automatically
@@ -450,6 +536,13 @@ function Tracker:Initialize()
 
     -- Perform initial zone check (in case we're already in a zone on reload)
     self:UpdateZoneTracking()
+
+    -- After a delay, mark initial load as complete
+    -- This prevents UPDATE_INSTANCE_INFO from resetting progress during login/reload
+    C_Timer.After(3, function()
+        self.initialLoadComplete = true
+        KOL:DebugPrint("Tracker: Initial load complete, reset detection now active", 2)
+    end)
 end
 
 -- ============================================================================
@@ -1154,7 +1247,7 @@ function Tracker:ResetInstance(instanceId)
     KOL.db.profile.tracker.bossKills = self.bossKills
     KOL.db.profile.tracker.multiNPCKills = self.multiNPCKills
     KOL.db.profile.tracker.multiPhaseKills = self.multiPhaseKills
-    KOL.db.profile.tracker.instanceLockouts = self.instanceLockouts
+    -- Note: instanceLockouts is session-only, not persisted
 
     KOL:DebugPrint("Reset triggered for: " .. instanceId, 2)
 
@@ -1264,44 +1357,8 @@ function Tracker:OnCombatLogEvent(...)
         local isElite = bit.band(destFlags, 0x00000010) ~= 0
         local isWorldBoss = bit.band(destFlags, 0x00008000) ~= 0  -- COMBATLOG_OBJECT_SPECIAL_1
 
-        -- Check if this NPC is in our tracked bosses database
-        local isTrackedBoss = false
-        for instanceId, data in pairs(self.instances) do
-            if data.bosses then
-                for _, boss in ipairs(data.bosses) do
-                    local bossId = self:GetBossId(boss)
-                    if type(bossId) == "table" then
-                        for _, id in ipairs(bossId) do
-                            if id == npcId then isTrackedBoss = true break end
-                        end
-                    elseif bossId == npcId then
-                        isTrackedBoss = true
-                        break
-                    end
-                    if isTrackedBoss then break end
-                end
-            end
-            if data.groups then
-                for _, group in ipairs(data.groups) do
-                    if group.bosses then
-                        for _, boss in ipairs(group.bosses) do
-                            local bossId = self:GetBossId(boss)
-                            if type(bossId) == "table" then
-                                for _, id in ipairs(bossId) do
-                                    if id == npcId then isTrackedBoss = true break end
-                                end
-                            elseif bossId == npcId then
-                                isTrackedBoss = true
-                                break
-                            end
-                            if isTrackedBoss then break end
-                        end
-                    end
-                    if isTrackedBoss then break end
-                end
-            end
-            if isTrackedBoss then break end
-        end
+        -- Check if this NPC is in our tracked bosses database (O(1) lookup)
+        local isTrackedBoss = self.npcLookup[npcId] ~= nil
 
         local isBoss = isWorldBoss or isTrackedBoss
         local shouldOutput = false
@@ -1335,11 +1392,11 @@ function Tracker:OnCombatLogEvent(...)
         end
     end
 
-    -- Check all registered instances for matching boss
-    for instanceId, data in pairs(self.instances) do
-        -- ONLY process kills for the currently active instance to avoid cross-difficulty contamination
-        -- (e.g., naxx_10 and naxx_25 have the same NPC IDs but should track separately)
-        if instanceId == self.currentInstanceId then
+    -- Only process kills for the currently active instance (direct access, no loop)
+    -- This avoids cross-difficulty contamination (e.g., naxx_10 vs naxx_25)
+    local instanceId = self.currentInstanceId
+    local data = self.instances[instanceId]
+    if data then
             -- Check custom tracker entries (new format with count support)
             if data.entries and #data.entries > 0 then
                 for _, entry in ipairs(data.entries) do
@@ -1681,8 +1738,7 @@ function Tracker:OnCombatLogEvent(...)
                 end
                 end
             end
-        end  -- End instanceId check
-    end
+    end  -- End data check
 
     -- No match found for this NPC ID
     KOL:DebugPrint("NO MATCH: NPC ID " .. tostring(npcId) .. " (" .. tostring(destName) .. ") is not a tracked boss", 3)
@@ -2458,10 +2514,9 @@ function Tracker:StoreInstanceID(instanceId, wowInstanceId)
         self:ResetInstance(instanceId)
     end
 
-    -- Store the current instance ID
+    -- Store the current instance ID (session-only, not persisted to DB)
     self.instanceLockouts[instanceId] = tostring(wowInstanceId)
-    KOL.db.profile.tracker.instanceLockouts = self.instanceLockouts
-    KOL:DebugPrint("Tracker: WoW Instance ID for " .. instanceId .. " = " .. wowInstanceId, 3)
+    KOL:DebugPrint("Tracker: WoW Instance ID for " .. instanceId .. " = " .. wowInstanceId .. " (session-only)", 3)
 end
 
 -- Check if instance has reset when player re-enters
@@ -2544,6 +2599,12 @@ function Tracker:OnInstanceInfoUpdate()
     end
 
     -- We're OUTSIDE instances - this could be a manual reset!
+    -- But first, check if we're still in initial load phase (login/reload)
+    if not self.initialLoadComplete then
+        KOL:DebugPrint("  -> Ignoring (still in initial load phase, not a manual reset)", 2)
+        return
+    end
+
     -- Check if we have any tracked instances with kills
     KOL:DebugPrint("  -> Outside instances, checking for manual reset", 2)
 
