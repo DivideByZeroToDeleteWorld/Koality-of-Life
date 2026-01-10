@@ -6235,4 +6235,92 @@ function UIFactory:AddTreeGroup(sectionArgs, key, config)
     return sectionArgs[key].args
 end
 
+-- ============================================================================
+-- Shared Font Outline Values (for consistency across all outline dropdowns)
+-- ============================================================================
+UIFactory.FONT_OUTLINE_VALUES = {
+    [""] = "None",
+    ["OUTLINE"] = "Thin",
+    ["THICKOUTLINE"] = "Thick",
+    ["MONOCHROME"] = "Sharp",
+    ["OUTLINE, MONOCHROME"] = "Thin + Sharp",
+    ["THICKOUTLINE, MONOCHROME"] = "Thick + Sharp",
+}
+
+-- Sorting order for outline values (AceConfig sorts by key, so we need to control it)
+UIFactory.FONT_OUTLINE_SORTING = {
+    "", "OUTLINE", "THICKOUTLINE", "MONOCHROME", "OUTLINE, MONOCHROME", "THICKOUTLINE, MONOCHROME"
+}
+
+--[[
+    Helper to add a font outline dropdown to a section
+    Uses the shared FONT_OUTLINE_VALUES for consistency
+
+    Parameters:
+        sectionArgs - The .args table of the section
+        key - Option key
+        config.name - Display name (default: "Outline")
+        config.desc - Tooltip description
+        config.order - Order (default: 10)
+        config.width - Width (default: "half")
+        config.get - Getter function (should return outline string)
+        config.set - Setter function (receives outline string)
+]]
+function UIFactory:AddTreeFontOutline(sectionArgs, key, config)
+    config = config or {}
+
+    sectionArgs[key] = {
+        type = "select",
+        name = config.name or "Outline",
+        desc = config.desc or "Font outline style",
+        values = self.FONT_OUTLINE_VALUES,
+        sorting = self.FONT_OUTLINE_SORTING,
+        order = config.order or 10,
+        width = config.width or "half",
+        get = config.get,
+        set = config.set,
+        hidden = config.hidden,
+        disabled = config.disabled,
+    }
+end
+
+--[[
+    Helper to add a font dropdown to a section
+    Uses LSM30_Font dialogControl for font preview
+
+    Parameters:
+        sectionArgs - The .args table of the section
+        key - Option key
+        config.name - Display name (default: "Font")
+        config.desc - Tooltip description
+        config.order - Order (default: 10)
+        config.width - Width (default: "normal")
+        config.includeDefault - If true, adds "" = "Use Default" option
+        config.get - Getter function (should return font name or "")
+        config.set - Setter function (receives font name)
+]]
+function UIFactory:AddTreeFont(sectionArgs, key, config)
+    config = config or {}
+
+    sectionArgs[key] = {
+        type = "select",
+        name = config.name or "Font",
+        desc = config.desc or "Select font",
+        dialogControl = "LSM30_Font",
+        values = function()
+            local fonts = LibStub("LibSharedMedia-3.0"):HashTable("font")
+            if config.includeDefault then
+                fonts[""] = "Use Default"
+            end
+            return fonts
+        end,
+        order = config.order or 10,
+        width = config.width or "normal",
+        get = config.get,
+        set = config.set,
+        hidden = config.hidden,
+        disabled = config.disabled,
+    }
+end
+
 KOL:DebugPrint("UI Factory loaded with enhanced components", 1)

@@ -1428,20 +1428,21 @@ function KOL:InitializeUI()
                                 order = 24,
                             },
                             titleFontSize = {
-                                type = "range",
+                                type = "input",
                                 name = "Size",
-                                desc = "Font size for title bar (0 = auto)",
-                                min = 0,
-                                max = 32,
-                                step = 1,
+                                desc = "Font size for title bar (0 = auto, 8-32)",
                                 get = function()
-                                    return (KOL.db.profile.tracker and KOL.db.profile.tracker.titleFontSize) or 0
+                                    local size = (KOL.db.profile.tracker and KOL.db.profile.tracker.titleFontSize) or 0
+                                    return tostring(size)
                                 end,
                                 set = function(_, value)
+                                    local num = tonumber(value) or 0
+                                    if num < 0 then num = 0 end
+                                    if num > 32 then num = 32 end
                                     if not KOL.db.profile.tracker then
                                         KOL.db.profile.tracker = {}
                                     end
-                                    KOL.db.profile.tracker.titleFontSize = (value > 0 and value or nil)
+                                    KOL.db.profile.tracker.titleFontSize = (num > 0 and num or nil)
                                     if KOL.Tracker then
                                         for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
                                             KOL.Tracker:UpdateWatchFrame(instanceId)
@@ -1454,14 +1455,13 @@ function KOL:InitializeUI()
                             titleFontOutline = {
                                 type = "select",
                                 name = "Outline",
-                                desc = "Font outline for title bar",
-                                values = {
-                                    ["NONE"] = "None",
-                                    ["OUTLINE"] = "Outline",
-                                    ["THICKOUTLINE"] = "Thick",
-                                },
+                                desc = "Font outline style:\n\n• None - No outline\n• Thin - Subtle outline around text\n• Thick - Bold outline around text\n• Sharp - Crisp edges (no smoothing)\n• Thin + Sharp - Thin outline, crisp edges\n• Thick + Sharp - Bold outline, crisp edges",
+                                values = function() return KOL.UIFactory.FONT_OUTLINE_VALUES end,
+                                sorting = function() return KOL.UIFactory.FONT_OUTLINE_SORTING end,
                                 get = function()
-                                    return (KOL.db.profile.tracker and KOL.db.profile.tracker.titleFontOutline) or "OUTLINE"
+                                    local val = KOL.db.profile.tracker and KOL.db.profile.tracker.titleFontOutline
+                                    if val == "NONE" then val = "" end  -- backwards compat
+                                    return val or "OUTLINE"
                                 end,
                                 set = function(_, value)
                                     if not KOL.db.profile.tracker then
@@ -1474,7 +1474,7 @@ function KOL:InitializeUI()
                                         end
                                     end
                                 end,
-                                width = "half",
+                                width = 0.85,
                                 order = 26,
                             },
                             groupFontDesc = {
@@ -1510,20 +1510,21 @@ function KOL:InitializeUI()
                                 order = 28,
                             },
                             groupFontSize = {
-                                type = "range",
+                                type = "input",
                                 name = "Size",
-                                desc = "Font size for group headers (0 = auto)",
-                                min = 0,
-                                max = 32,
-                                step = 1,
+                                desc = "Font size for group headers (0 = auto, 8-32)",
                                 get = function()
-                                    return (KOL.db.profile.tracker and KOL.db.profile.tracker.groupFontSize) or 0
+                                    local size = (KOL.db.profile.tracker and KOL.db.profile.tracker.groupFontSize) or 0
+                                    return tostring(size)
                                 end,
                                 set = function(_, value)
+                                    local num = tonumber(value) or 0
+                                    if num < 0 then num = 0 end
+                                    if num > 32 then num = 32 end
                                     if not KOL.db.profile.tracker then
                                         KOL.db.profile.tracker = {}
                                     end
-                                    KOL.db.profile.tracker.groupFontSize = (value > 0 and value or nil)
+                                    KOL.db.profile.tracker.groupFontSize = (num > 0 and num or nil)
                                     if KOL.Tracker then
                                         for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
                                             KOL.Tracker:UpdateWatchFrame(instanceId)
@@ -1536,14 +1537,13 @@ function KOL:InitializeUI()
                             groupFontOutline = {
                                 type = "select",
                                 name = "Outline",
-                                desc = "Font outline for group headers",
-                                values = {
-                                    ["NONE"] = "None",
-                                    ["OUTLINE"] = "Outline",
-                                    ["THICKOUTLINE"] = "Thick",
-                                },
+                                desc = "Font outline style:\n\n• None - No outline\n• Thin - Subtle outline around text\n• Thick - Bold outline around text\n• Sharp - Crisp edges (no smoothing)\n• Thin + Sharp - Thin outline, crisp edges\n• Thick + Sharp - Bold outline, crisp edges",
+                                values = function() return KOL.UIFactory.FONT_OUTLINE_VALUES end,
+                                sorting = function() return KOL.UIFactory.FONT_OUTLINE_SORTING end,
                                 get = function()
-                                    return (KOL.db.profile.tracker and KOL.db.profile.tracker.groupFontOutline) or "OUTLINE"
+                                    local val = KOL.db.profile.tracker and KOL.db.profile.tracker.groupFontOutline
+                                    if val == "NONE" then val = "" end  -- backwards compat
+                                    return val or "OUTLINE"
                                 end,
                                 set = function(_, value)
                                     if not KOL.db.profile.tracker then
@@ -1556,7 +1556,7 @@ function KOL:InitializeUI()
                                         end
                                     end
                                 end,
-                                width = "half",
+                                width = 0.85,
                                 order = 30,
                             },
                             objectiveFontDesc = {
@@ -1592,20 +1592,21 @@ function KOL:InitializeUI()
                                 order = 32,
                             },
                             objectiveFontSize = {
-                                type = "range",
+                                type = "input",
                                 name = "Size",
-                                desc = "Font size for objectives (0 = auto)",
-                                min = 0,
-                                max = 32,
-                                step = 1,
+                                desc = "Font size for objectives (0 = auto, 8-32)",
                                 get = function()
-                                    return (KOL.db.profile.tracker and KOL.db.profile.tracker.objectiveFontSize) or 0
+                                    local size = (KOL.db.profile.tracker and KOL.db.profile.tracker.objectiveFontSize) or 0
+                                    return tostring(size)
                                 end,
                                 set = function(_, value)
+                                    local num = tonumber(value) or 0
+                                    if num < 0 then num = 0 end
+                                    if num > 32 then num = 32 end
                                     if not KOL.db.profile.tracker then
                                         KOL.db.profile.tracker = {}
                                     end
-                                    KOL.db.profile.tracker.objectiveFontSize = (value > 0 and value or nil)
+                                    KOL.db.profile.tracker.objectiveFontSize = (num > 0 and num or nil)
                                     if KOL.Tracker then
                                         for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
                                             KOL.Tracker:UpdateWatchFrame(instanceId)
@@ -1618,14 +1619,13 @@ function KOL:InitializeUI()
                             objectiveFontOutline = {
                                 type = "select",
                                 name = "Outline",
-                                desc = "Font outline for objectives",
-                                values = {
-                                    ["NONE"] = "None",
-                                    ["OUTLINE"] = "Outline",
-                                    ["THICKOUTLINE"] = "Thick",
-                                },
+                                desc = "Font outline style:\n\n• None - No outline\n• Thin - Subtle outline around text\n• Thick - Bold outline around text\n• Sharp - Crisp edges (no smoothing)\n• Thin + Sharp - Thin outline, crisp edges\n• Thick + Sharp - Bold outline, crisp edges",
+                                values = function() return KOL.UIFactory.FONT_OUTLINE_VALUES end,
+                                sorting = function() return KOL.UIFactory.FONT_OUTLINE_SORTING end,
                                 get = function()
-                                    return (KOL.db.profile.tracker and KOL.db.profile.tracker.objectiveFontOutline) or "OUTLINE"
+                                    local val = KOL.db.profile.tracker and KOL.db.profile.tracker.objectiveFontOutline
+                                    if val == "NONE" then val = "" end  -- backwards compat
+                                    return val or "OUTLINE"
                                 end,
                                 set = function(_, value)
                                     if not KOL.db.profile.tracker then
@@ -1638,7 +1638,7 @@ function KOL:InitializeUI()
                                         end
                                     end
                                 end,
-                                width = "half",
+                                width = 0.85,
                                 order = 34,
                             },
 
