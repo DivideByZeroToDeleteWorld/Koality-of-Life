@@ -848,6 +848,177 @@ end
 -- Register the widget when this file loads (after a short delay to ensure AceGUI is ready)
 C_Timer.After(0, RegisterAceGUISectionHeader)
 
+-- ============================================================================
+-- AceGUI Custom Widget: KOL_LabeledTextButton
+-- ============================================================================
+-- A label followed by a styled text button with hover/press effects
+-- Usage in AceConfig options:
+--   setLocation = {
+--       type = "execute",
+--       name = "Frame Default Location:|SET",  -- Label|ButtonText
+--       dialogControl = "KOL_LabeledTextButton",
+--       width = "double",
+--       order = 2,
+--   },
+-- ============================================================================
+
+local function RegisterAceGUILabeledTextButton()
+    local AceGUI = LibStub("AceGUI-3.0", true)
+    if not AceGUI then return end
+
+    local Type = "KOL_LabeledTextButton"
+    local Version = 1
+
+    local function Constructor()
+        local frame = CreateFrame("Frame", nil, UIParent)
+        frame:SetHeight(24)
+        frame:Hide()
+
+        -- Label text
+        local fontPath, fontOutline = GetGeneralFont()
+        local label = frame:CreateFontString(nil, "OVERLAY")
+        label:SetFont(fontPath, 11, fontOutline)
+        label:SetPoint("LEFT", 0, 0)
+        label:SetTextColor(0.7, 0.7, 0.7, 1)
+        frame.label = label
+
+        -- Button (text-only style with hover/press effects)
+        local button = CreateFrame("Button", nil, frame)
+        button:SetHeight(20)
+        button:EnableMouse(true)
+
+        local buttonText = button:CreateFontString(nil, "OVERLAY")
+        buttonText:SetFont(fontPath, 11, fontOutline)
+        buttonText:SetPoint("LEFT", 0, 0)
+        buttonText:SetTextColor(0.4, 0.9, 0.9, 1)  -- Cyan default
+        button.text = buttonText
+        frame.button = button
+        frame.buttonText = buttonText
+
+        -- Store colors for hover
+        button.textColor = {r = 0.4, g = 0.9, b = 0.9, a = 1}
+        button.hoverColor = {r = 0.6, g = 1.0, b = 1.0, a = 1}
+        button.pressColor = {r = 1.0, g = 1.0, b = 1.0, a = 1}
+
+        -- Hover effects
+        button:SetScript("OnEnter", function(self)
+            self.text:SetTextColor(self.hoverColor.r, self.hoverColor.g, self.hoverColor.b, 1)
+        end)
+
+        button:SetScript("OnLeave", function(self)
+            self.text:SetTextColor(self.textColor.r, self.textColor.g, self.textColor.b, 1)
+        end)
+
+        -- Press effect (text shifts down-right)
+        button:SetScript("OnMouseDown", function(self)
+            self.text:SetPoint("LEFT", 1, -1)
+            self.text:SetTextColor(self.pressColor.r, self.pressColor.g, self.pressColor.b, 1)
+        end)
+
+        button:SetScript("OnMouseUp", function(self)
+            self.text:SetPoint("LEFT", 0, 0)
+            self.text:SetTextColor(self.hoverColor.r, self.hoverColor.g, self.hoverColor.b, 1)
+        end)
+
+        -- Widget object
+        local widget = {
+            frame = frame,
+            type = Type,
+            label = label,
+            button = button,
+            buttonText = buttonText,
+        }
+
+        -- AceGUI required methods
+        function widget:OnAcquire()
+            local fontPath, fontOutline = GetGeneralFont()
+            self.label:SetFont(fontPath, 11, fontOutline)
+            self.buttonText:SetFont(fontPath, 11, fontOutline)
+            self.frame:Show()
+        end
+
+        function widget:OnRelease()
+            self.frame:ClearAllPoints()
+            self.frame:Hide()
+            self.label:SetText("")
+            self.buttonText:SetText("")
+            self.button:SetScript("OnClick", nil)
+        end
+
+        -- Parse text format: "Label Text|BUTTON TEXT"
+        function widget:SetText(text)
+            if not text then
+                self.label:SetText("")
+                self.buttonText:SetText("")
+                return
+            end
+
+            local labelText, btnText = text:match("^(.+)|(.+)$")
+            if labelText and btnText then
+                self.label:SetText(labelText)
+                self.buttonText:SetText(btnText)
+                -- Position button after label
+                local labelWidth = self.label:GetStringWidth() + 6
+                self.button:SetPoint("LEFT", self.label, "LEFT", labelWidth, 0)
+                self.button:SetWidth(self.buttonText:GetStringWidth() + 4)
+            else
+                self.label:SetText(text)
+                self.buttonText:SetText("")
+            end
+        end
+
+        function widget:SetLabel(text)
+            self:SetText(text)
+        end
+
+        function widget:SetWidth(width)
+            self.frame:SetWidth(width)
+        end
+
+        function widget:SetHeight(height)
+            self.frame:SetHeight(height or 24)
+        end
+
+        function widget:SetDisabled(disabled)
+            if disabled then
+                self.button:Disable()
+                self.buttonText:SetTextColor(0.4, 0.4, 0.4, 1)
+            else
+                self.button:Enable()
+                self.buttonText:SetTextColor(self.button.textColor.r, self.button.textColor.g, self.button.textColor.b, 1)
+            end
+        end
+
+        -- AceConfigDialog calls these on execute widgets
+        function widget:SetCallback(name, func)
+            self.callbacks = self.callbacks or {}
+            self.callbacks[name] = func
+            if name == "OnClick" then
+                self.button:SetScript("OnClick", function()
+                    if func then func(widget) end
+                end)
+            end
+        end
+
+        -- Stub methods that AceConfigDialog might call
+        function widget:SetFontObject(font) end
+        function widget:SetJustifyH(justify) end
+        function widget:SetJustifyV(justify) end
+        function widget:SetImageSize(width, height) end
+        function widget:SetImage(path, ...) end
+        function widget:SetFullWidth(isFull) end
+        function widget:SetFullHeight(isFull) end
+
+        return AceGUI:RegisterAsWidget(widget)
+    end
+
+    AceGUI:RegisterWidgetType(Type, Constructor, Version)
+    KOL:DebugPrint("Registered AceGUI widget: KOL_LabeledTextButton", 2)
+end
+
+-- Register the widget when this file loads
+C_Timer.After(0, RegisterAceGUILabeledTextButton)
+
 --[[
     Creates a content area background (darker inset area)
 

@@ -281,8 +281,14 @@ end
 function Scoots:UpdateSwitchButtonState()
     if not switchButton then return end
 
-    -- SVF.off = false means filtering is ON
-    local isFiltering = SVF and not SVF.off
+    -- Check toggle button text to determine filtering state
+    -- "Use default vendor" = filtering ON, "Use ScootsVendorFilter" = filtering OFF
+    local toggleBtn = _G["SVFToggleOffButton"]
+    local isFiltering = false
+    if toggleBtn then
+        local btnText = toggleBtn:GetText()
+        isFiltering = (btnText == "Use default vendor")
+    end
 
     if isFiltering then
         if switchButton.SetBackdropBorderColor then
@@ -316,62 +322,56 @@ function Scoots:UpdateSwitchButton()
 end
 
 function Scoots:ToggleVendorFilter()
-    if not SVF then
-        KOL:DebugPrint("Scoots: SVF not loaded, cannot toggle", 1)
+    -- SVF is a LOCAL variable in ScootsVendorFilter, so we can't access it directly.
+    -- But we CAN access the frames by their global names and click the toggle button.
+
+    local toggleBtn = _G["SVFToggleOffButton"]
+    local svfFrame = _G["SVFMasterFrame"]
+    local synopsisFrame = _G["SVFSynopsisFrame"]
+
+    -- The toggle button only exists after the options panel has been opened at least once.
+    -- If it exists, click it!
+    if toggleBtn then
+        toggleBtn:Click()
+        C_Timer.After(0.05, function()
+            self:UpdateSwitchButtonState()
+        end)
+        KOL:DebugPrint("Scoots: Toggled via SVFToggleOffButton", 3)
         return
     end
 
-    -- Close options panel if open (so we're working from main view)
-    if SVF.optionsOpen and SVF.closeOptions then
-        SVF.closeOptions()
-    end
+    -- Toggle button doesn't exist yet - manually toggle the frames
+    KOL:DebugPrint("Scoots: SVFToggleOffButton not found - toggling frames manually", 3)
 
-    if SVF.off == true then
-        -- Turn ON the filter (show SVF, hide default merchant)
-        SVF.off = false
+    -- Check current state by seeing if SVF frame is visible
+    if svfFrame and svfFrame:IsShown() then
+        -- SVF is showing, switch to default vendor
+        KOL:DebugPrint("Scoots: SVF frame visible -> hiding SVF, showing default vendor", 3)
+        svfFrame:Hide()
+        if synopsisFrame then synopsisFrame:Hide() end
 
-        -- Hide default merchant UI
-        if SVF.hideMerchantUi then
-            SVF.hideMerchantUi()
+        -- Show default merchant items
+        for i = 1, 10 do
+            local item = _G["MerchantItem" .. i]
+            if item then item:Show() end
         end
-
-        -- Show SVF frames
-        if SVF.frame then
-            SVF.frame:Show()
-        end
-        if SVF.synopsisFrame then
-            SVF.synopsisFrame:Show()
-        end
-
-        -- Update toggle button text if it exists
-        if SVF.toggleOffButton then
-            SVF.toggleOffButton:SetText("Use default vendor")
-        end
-
-        KOL:DebugPrint("Scoots: Switched to FILTERED vendor view", 3)
+        if _G["MerchantPrevPageButton"] then _G["MerchantPrevPageButton"]:Show() end
+        if _G["MerchantPageText"] then _G["MerchantPageText"]:Show() end
+        if _G["MerchantNextPageButton"] then _G["MerchantNextPageButton"]:Show() end
     else
-        -- Turn OFF the filter (hide SVF, show default merchant)
-        SVF.off = true
+        -- Default vendor showing, switch to SVF
+        KOL:DebugPrint("Scoots: SVF frame hidden -> showing SVF, hiding default vendor", 3)
+        if svfFrame then svfFrame:Show() end
+        if synopsisFrame then synopsisFrame:Show() end
 
-        -- Hide SVF frames
-        if SVF.frame then
-            SVF.frame:Hide()
+        -- Hide default merchant items
+        for i = 1, 10 do
+            local item = _G["MerchantItem" .. i]
+            if item then item:Hide() end
         end
-        if SVF.synopsisFrame then
-            SVF.synopsisFrame:Hide()
-        end
-
-        -- Show default merchant UI
-        if SVF.showMerchantUi then
-            SVF.showMerchantUi()
-        end
-
-        -- Update toggle button text if it exists
-        if SVF.toggleOffButton then
-            SVF.toggleOffButton:SetText("Use ScootsVendorFilter")
-        end
-
-        KOL:DebugPrint("Scoots: Switched to DEFAULT vendor view", 3)
+        if _G["MerchantPrevPageButton"] then _G["MerchantPrevPageButton"]:Hide() end
+        if _G["MerchantPageText"] then _G["MerchantPageText"]:Hide() end
+        if _G["MerchantNextPageButton"] then _G["MerchantNextPageButton"]:Hide() end
     end
 
     C_Timer.After(0.05, function()
@@ -380,13 +380,14 @@ function Scoots:ToggleVendorFilter()
 end
 
 function Scoots:CheckAutoSwitch()
-    if not SVF then return end
+    -- Check if SVF frame is visible (meaning filtering is active)
+    local svfFrame = _G["SVFMasterFrame"]
+    if not svfFrame or not svfFrame:IsShown() then return end
 
-    local isFiltering = not SVF.off
-    local noItems = (SVF.items == nil or #SVF.items == 0)
-
-    if isFiltering and noItems then
-        KOL:DebugPrint("Scoots: Auto-switching (no filtered items available)", 2)
+    -- If SVFitemFrame1 doesn't exist or isn't shown, there are no filtered items
+    local firstItem = _G["SVFitemFrame1"]
+    if not firstItem or not firstItem:IsShown() then
+        KOL:DebugPrint("Scoots: Auto-switching (no SVFitemFrame1)", 2)
         self:ToggleVendorFilter()
         KOL:PrintTag("|cFFFFAA00Auto-switched|r vendor to show all items (no filtered items)")
     end

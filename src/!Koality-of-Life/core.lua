@@ -103,6 +103,14 @@ local defaults = {
             active = "Furwin",
             themes = {},
         },
+
+        tweaks = {
+            fishing = {
+                enabled = true,
+                autoUse = true,
+                autoCancel = true,
+            },
+        },
     },
     global = {
         buildManager = {

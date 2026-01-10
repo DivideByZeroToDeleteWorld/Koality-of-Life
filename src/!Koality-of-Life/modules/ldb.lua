@@ -78,6 +78,128 @@ local function GetFont()
     return fontPath, fontOutline
 end
 
+-- ============================================================================
+-- Click Action Tooltip (shows available click actions on hover)
+-- ============================================================================
+
+local clickActionTooltip = nil
+
+local function ShowClickActionTooltip(anchor)
+    if not clickActionTooltip then
+        clickActionTooltip = CreateFrame("Frame", "KOLClickActionTooltip", UIParent)
+        clickActionTooltip:SetFrameStrata("TOOLTIP")
+        clickActionTooltip:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            tile = false,
+            edgeSize = 1,
+            insets = { left = 0, right = 0, top = 0, bottom = 0 }
+        })
+        clickActionTooltip:SetBackdropColor(0.05, 0.05, 0.08, 0.95)
+        clickActionTooltip:SetBackdropBorderColor(0.3, 0.3, 0.35, 1)
+    end
+
+    local fontPath, fontOutline = GetFont()
+    local lineHeight = 14
+    local padding = 8
+    local labelWidth = 90
+    local actionWidth = 120
+
+    -- Clear old text
+    if clickActionTooltip.lines then
+        for _, line in ipairs(clickActionTooltip.lines) do
+            line:Hide()
+            line:SetText("")
+        end
+    else
+        clickActionTooltip.lines = {}
+    end
+
+    -- Define click actions with colors
+    local actions = {
+        {key = "LEFT CLICK",        action = "Open Menu",        keyColor = {0.4, 0.9, 0.4}, actionColor = {0.8, 0.8, 0.8}},
+        {key = "RIGHT CLICK",       action = "Deposit Resources", keyColor = {0.6, 0.8, 1.0}, actionColor = {0.8, 0.8, 0.8}},
+        {key = "SHIFT+LEFT CLICK",  action = "Reload UI",        keyColor = {1.0, 0.8, 0.3}, actionColor = {0.8, 0.8, 0.8}},
+        {key = "SHIFT+RIGHT CLICK", action = "Open Config",      keyColor = {0.4, 0.7, 1.0}, actionColor = {0.8, 0.8, 0.8}},
+        {key = "CTRL CLICK",        action = "Limit Damage",     keyColor = {1.0, 0.5, 0.5}, actionColor = {0.8, 0.8, 0.8}},
+        {key = "ALT CLICK",         action = "Swap Racial",      keyColor = {0.9, 0.5, 1.0}, actionColor = {0.8, 0.8, 0.8}},
+    }
+
+    local yOffset = -padding
+    local maxKeyWidth = 0
+    local maxActionWidth = 0
+
+    -- Create/update lines
+    for i, actionData in ipairs(actions) do
+        -- Key label (left side)
+        local keyLine = clickActionTooltip.lines[i * 2 - 1]
+        if not keyLine then
+            keyLine = clickActionTooltip:CreateFontString(nil, "OVERLAY")
+            clickActionTooltip.lines[i * 2 - 1] = keyLine
+        end
+        keyLine:SetFont(fontPath, 10, fontOutline)
+        keyLine:SetText(actionData.key)
+        keyLine:SetTextColor(actionData.keyColor[1], actionData.keyColor[2], actionData.keyColor[3], 1)
+        keyLine:SetPoint("TOPLEFT", clickActionTooltip, "TOPLEFT", padding, yOffset)
+        keyLine:Show()
+
+        local keyWidth = keyLine:GetStringWidth()
+        if keyWidth > maxKeyWidth then maxKeyWidth = keyWidth end
+
+        -- Action label (right side)
+        local actionLine = clickActionTooltip.lines[i * 2]
+        if not actionLine then
+            actionLine = clickActionTooltip:CreateFontString(nil, "OVERLAY")
+            clickActionTooltip.lines[i * 2] = actionLine
+        end
+        actionLine:SetFont(fontPath, 10, fontOutline)
+        actionLine:SetText(actionData.action)
+        actionLine:SetTextColor(actionData.actionColor[1], actionData.actionColor[2], actionData.actionColor[3], 1)
+        actionLine:ClearAllPoints()
+        actionLine:Show()
+
+        local actionWidth = actionLine:GetStringWidth()
+        if actionWidth > maxActionWidth then maxActionWidth = actionWidth end
+
+        yOffset = yOffset - lineHeight
+    end
+
+    -- Position action labels after measuring
+    local gapWidth = 12
+    yOffset = -padding
+    for i, _ in ipairs(actions) do
+        local actionLine = clickActionTooltip.lines[i * 2]
+        actionLine:SetPoint("TOPLEFT", clickActionTooltip, "TOPLEFT", padding + maxKeyWidth + gapWidth, yOffset)
+        yOffset = yOffset - lineHeight
+    end
+
+    -- Size the tooltip
+    local totalWidth = padding + maxKeyWidth + gapWidth + maxActionWidth + padding
+    local totalHeight = (#actions * lineHeight) + padding
+    clickActionTooltip:SetSize(totalWidth, totalHeight)
+
+    -- Position based on anchor location
+    clickActionTooltip:ClearAllPoints()
+    local anchorY = anchor:GetCenter()
+    local screenHeight = UIParent:GetHeight()
+
+    if anchorY > screenHeight / 2 then
+        -- Anchor is in top half - show tooltip below
+        clickActionTooltip:SetPoint("TOP", anchor, "BOTTOM", 0, -4)
+    else
+        -- Anchor is in bottom half - show tooltip above
+        clickActionTooltip:SetPoint("BOTTOM", anchor, "TOP", 0, 4)
+    end
+
+    clickActionTooltip:Show()
+end
+
+local function HideClickActionTooltip()
+    if clickActionTooltip then
+        clickActionTooltip:Hide()
+    end
+end
+
 local function AcquireTooltip()
     local tooltip = table.remove(tooltipPool)
     if not tooltip then
@@ -1196,15 +1318,51 @@ local chocolateBarHookMaxAttempts = 20  -- Try for 10 seconds (20 * 0.5s)
 local function CreateDataObject()
     if dataObject then return dataObject end
 
-    -- Determine initial text based on saved setting
+    -- Determine initial text based on saved settings
     -- IMPORTANT: Use PLAIN ASCII text initially - no color codes or Unicode!
     -- ChocolateBar can't render those until our font hook applies.
     -- The fancy formatted text will be set by UpdateLDBText after font hook.
     local initialText = "KoL"
-    if KOL.db and KOL.db.profile and KOL.db.profile.ldbTextMode == "speed" then
-        local showPrefix = KOL.db.profile.ldbSpeedPrefix or false
-        -- Simple ASCII only - ChocolateBar will display this correctly
-        initialText = showPrefix and "SPEED: IDLE" or "IDLE"
+    if KOL.db and KOL.db.profile then
+        local profile = KOL.db.profile
+        -- Get display settings with proper defaults
+        -- Speed defaults to true (like old behavior), others default to false
+        local showSpeed = profile.ldbShowSpeed ~= false
+        local showLimit = profile.ldbShowLimit or false
+        local showRacial = profile.ldbShowRacial or false
+
+        -- Check if any display option is enabled
+        if showSpeed or showLimit or showRacial then
+            -- Get positions for ordering
+            local speedPos = profile.ldbSpeedPosition or 1
+            local limitPos = profile.ldbLimitPosition or 2
+            local racialPos = profile.ldbRacialPosition or 3
+
+            -- Build items with positions for sorting
+            local items = {}
+            if showSpeed then
+                table.insert(items, { pos = speedPos, text = profile.ldbShowSpeedLabel and "SPEED: IDLE" or "IDLE" })
+            end
+            if showLimit then
+                table.insert(items, { pos = limitPos, text = profile.ldbShowLimitLabel and "LIMIT: OFF" or "OFF" })
+            end
+            if showRacial then
+                table.insert(items, { pos = racialPos, text = profile.ldbShowRacialLabel and "RACIAL: ?" or "?" })
+            end
+
+            -- Sort by position
+            table.sort(items, function(a, b) return a.pos < b.pos end)
+
+            -- Extract text
+            local parts = {}
+            for _, item in ipairs(items) do
+                table.insert(parts, item.text)
+            end
+
+            if #parts > 0 then
+                initialText = table.concat(parts, " | ")
+            end
+        end
 
         -- DEBUG: Print what we're setting
         if ldbSpeedDebug then
@@ -1222,23 +1380,45 @@ local function CreateDataObject()
             -- Ignore clicks if LDB plugin is hidden
             if LDBModule:IsLDBHidden() then return end
 
+            -- Hide tooltip on any click
+            HideClickActionTooltip()
+
+            -- Check for modifier keys first
+            if IsShiftKeyDown() and button == "RightButton" then
+                -- Shift+Right Click = Open Config
+                KOL:OpenConfig()
+                return
+            elseif IsShiftKeyDown() then
+                -- Shift+Left Click = Reload UI
+                ReloadUI()
+                return
+            elseif IsControlKeyDown() then
+                KOL:ToggleLimitDamage()
+                return
+            elseif IsAltKeyDown() then
+                KOL:ToggleRacial()
+                return
+            end
+
+            -- Normal click actions
             if button == "LeftButton" then
                 LDBModule:ToggleMenu(self)
             elseif button == "RightButton" then
-                KOL:OpenConfig()
-            elseif button == "MiddleButton" then
-                if KOL.ShowTrackerManager then
-                    KOL:ShowTrackerManager()
+                -- Right Click = Deposit Resources
+                local btn = _G["RBankFrame-DepositAll"]
+                if btn then
+                    btn:Click()
                 end
             end
         end,
 
         OnEnter = function(self)
             -- Hover effect: brighten/highlight the icon
-            -- LibDBIcon buttons have an icon texture we can modify
             if self.icon then
                 self.icon:SetVertexColor(1.2, 1.2, 1.2, 1)  -- Slightly brighter
             end
+            -- Show click action tooltip
+            ShowClickActionTooltip(self)
         end,
 
         OnLeave = function(self)
@@ -1246,6 +1426,8 @@ local function CreateDataObject()
             if self.icon then
                 self.icon:SetVertexColor(1, 1, 1, 1)
             end
+            -- Hide click action tooltip
+            HideClickActionTooltip()
         end,
 
         -- No OnTooltipShow - we use custom menu instead
@@ -1516,72 +1698,124 @@ end
 -- LDB Text update (for dynamic text like Speed display)
 local ldbTextUpdateFrame = nil
 
+-- Build the LDB display text based on current settings
+local function BuildLDBDisplayText()
+    local profile = KOL.db.profile
+
+    -- Get display settings (defaults if not set)
+    -- Speed defaults to true (like old behavior), others default to false
+    local showSpeed = profile.ldbShowSpeed ~= false  -- nil or true = show
+    local showSpeedLabel = profile.ldbShowSpeedLabel or false
+    local showLimit = profile.ldbShowLimit or false
+    local showLimitLabel = profile.ldbShowLimitLabel or false
+    local showRacial = profile.ldbShowRacial or false
+    local showRacialLabel = profile.ldbShowRacialLabel or false
+
+    -- Get positions (defaults: speed=1, limit=2, racial=3)
+    local speedPos = profile.ldbSpeedPosition or 1
+    local limitPos = profile.ldbLimitPosition or 2
+    local racialPos = profile.ldbRacialPosition or 3
+
+    -- If nothing is enabled, show default
+    if not showSpeed and not showLimit and not showRacial then
+        return "KoL"
+    end
+
+    -- Build items with their positions
+    local items = {}
+
+    if showSpeed then
+        local speedText = KOL:ReturnSpeedText(showSpeedLabel)
+        if speedText and speedText ~= "" then
+            table.insert(items, { pos = speedPos, text = speedText })
+        end
+    end
+
+    if showLimit then
+        local limitValue = profile.limitDamage or false
+        local limitText = showLimitLabel and "LIMIT: " or ""
+        limitText = limitText .. (limitValue and "|cFF00FF00ON|r" or "|cFFFF4444OFF|r")
+        table.insert(items, { pos = limitPos, text = limitText })
+    end
+
+    if showRacial then
+        local currentRacial = KOL.GetCurrentRacial and KOL:GetCurrentRacial() or "Unknown"
+        local shortName = KOL.GetRacialShortName and KOL:GetRacialShortName(currentRacial) or currentRacial
+        local racialText = showRacialLabel and "RACIAL: " or ""
+        racialText = racialText .. "|cFFDDAAFF" .. shortName .. "|r"
+        table.insert(items, { pos = racialPos, text = racialText })
+    end
+
+    -- Sort by position
+    table.sort(items, function(a, b) return a.pos < b.pos end)
+
+    -- Extract just the text
+    local segments = {}
+    for _, item in ipairs(items) do
+        table.insert(segments, item.text)
+    end
+
+    -- Join with separator
+    if #segments == 0 then
+        return "KoL"
+    end
+
+    return table.concat(segments, " |cFF666666|||r ")
+end
+
+-- Check if any dynamic display is enabled (speed needs continuous updates)
+local function NeedsContinuousUpdate()
+    local profile = KOL.db.profile
+    -- Speed defaults to true, so nil or true means we need continuous updates
+    return profile.ldbShowSpeed ~= false
+end
+
 function LDBModule:UpdateLDBText()
     if not dataObject then return end
 
-    local textMode = KOL.db.profile.ldbTextMode or "none"
+    -- Build and set text
+    local newText = BuildLDBDisplayText()
+    dataObject.text = newText
 
-    if textMode == "speed" then
-        -- Check if prefix should be shown
-        local showPrefix = KOL.db.profile.ldbSpeedPrefix or false
+    -- DEBUG: Print what we're setting
+    if ldbSpeedDebug then
+        print("|cFF00FFFF[LDB DEBUG]|r UpdateLDBText - setting text = '" .. tostring(newText) .. "' (fontHooked=" .. tostring(chocolateBarFontHooked) .. ")")
+    end
 
-        -- Helper to get speed text
-        -- Always use colored text - WoW color codes work in any font
-        -- Only the glyph needs the special ligatures font (handled by HookChocolateBarFont)
-        local function GetSpeedText(withPrefix)
-            return KOL:ReturnSpeedText(withPrefix)
-        end
-
-        -- Update text immediately
-        local newText = GetSpeedText(showPrefix)
-        dataObject.text = newText
-
-        -- DEBUG: Print what we're setting (only until speed works)
-        if ldbSpeedDebug then
-            print("|cFF00FFFF[LDB DEBUG]|r UpdateLDBText - setting text = '" .. tostring(newText) .. "' (fontHooked=" .. tostring(chocolateBarFontHooked) .. ")")
-            print("|cFF00FFFF[LDB DEBUG]|r UpdateLDBText - dataObject.text after = '" .. tostring(dataObject.text) .. "'")
-        end
-
-        -- Start update timer if not already running
+    -- Start/stop update timer based on whether speed display is enabled
+    if NeedsContinuousUpdate() then
         if not ldbTextUpdateFrame then
             ldbTextUpdateFrame = CreateFrame("Frame")
             ldbTextUpdateFrame.elapsed = 0
-            ldbTextUpdateFrame.debugCount = 0  -- Limit debug spam
+            ldbTextUpdateFrame.debugCount = 0
             ldbTextUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
                 self.elapsed = self.elapsed + elapsed
                 if self.elapsed < 0.1 then return end  -- Update every 0.1 seconds
                 self.elapsed = 0
 
-                -- Only update if speed mode is still active
-                local mode = KOL.db.profile.ldbTextMode or "none"
-                if mode == "speed" and dataObject then
-                    local prefix = KOL.db.profile.ldbSpeedPrefix or false
-                    local text = GetSpeedText(prefix)
+                -- Only update if we still need continuous updates
+                if NeedsContinuousUpdate() and dataObject then
+                    local text = BuildLDBDisplayText()
                     dataObject.text = text
 
-                    -- DEBUG: Print first few updates and when it changes from IDLE
+                    -- DEBUG: Print first few updates
                     if ldbSpeedDebug then
                         self.debugCount = (self.debugCount or 0) + 1
                         if self.debugCount <= 5 then
-                            print("|cFF00FFFF[LDB DEBUG]|r OnUpdate #" .. self.debugCount .. " - text = '" .. tostring(text) .. "' (fontHooked=" .. tostring(chocolateBarFontHooked) .. ")")
+                            print("|cFF00FFFF[LDB DEBUG]|r OnUpdate #" .. self.debugCount .. " - text = '" .. tostring(text) .. "'")
                         end
-                        -- Stop debugging once we see actual movement
                         if text and (text:find("%%") or text:find("BASE")) then
-                            print("|cFF00FF00[LDB DEBUG]|r Speed detected! Disabling debug. Final text = '" .. tostring(text) .. "'")
+                            print("|cFF00FF00[LDB DEBUG]|r Speed detected! Disabling debug.")
                             ldbSpeedDebug = false
                         end
                     end
                 else
-                    -- Stop updating if mode changed
                     self:Hide()
                 end
             end)
         end
         ldbTextUpdateFrame:Show()
     else
-        -- Default/none mode - show static text
-        dataObject.text = "KoL"
-
         -- Stop update timer if running
         if ldbTextUpdateFrame then
             ldbTextUpdateFrame:Hide()
@@ -1601,9 +1835,10 @@ local textRetryMaxAttempts = 20  -- Max 20 attempts (2 seconds total at 0.1s int
 function LDBModule:StartTextRetryTimer()
     if not dataObject then return end
 
-    -- Only needed for speed mode
-    local textMode = KOL.db.profile.ldbTextMode or "none"
-    if textMode ~= "speed" then return end
+    -- Only needed if any display option is enabled
+    if not NeedsContinuousUpdate() and not KOL.db.profile.ldbShowLimit and not KOL.db.profile.ldbShowRacial then
+        return
+    end
 
     textRetryAttempts = 0
 
@@ -1618,26 +1853,28 @@ function LDBModule:StartTextRetryTimer()
 
             textRetryAttempts = textRetryAttempts + 1
 
-            -- Set the text with full formatting (color + glyph)
-            local showPrefix = KOL.db.profile.ldbSpeedPrefix or false
-            local newText = KOL:ReturnSpeedText(showPrefix)
+            -- Set the text with full formatting
+            local newText = BuildLDBDisplayText()
             dataObject.text = newText
 
             -- Check if ChocolateBar frame exists and has our text
             local chocolateFrame = _G["Chocolate!Koality-of-Life"]
             local displayedText = chocolateFrame and chocolateFrame.text and chocolateFrame.text:GetText()
 
-            -- Success check: displayed text contains "IDLE" or a speed value (not just "SPEED:...")
+            -- Success check: displayed text contains expected content
             local success = displayedText and (
                 displayedText:find("IDLE") or
                 displayedText:find("BASE") or
-                displayedText:find("%%")
+                displayedText:find("%%") or
+                displayedText:find("ON") or
+                displayedText:find("OFF") or
+                displayedText:find("KoL")
             )
 
             if success then
                 -- It worked! Stop retrying
                 KOL:DebugPrint("LDB: Text retry succeeded after " .. textRetryAttempts .. " attempts", 2)
-                ldbSpeedDebug = false  -- Disable debug spam
+                ldbSpeedDebug = false
                 self:Hide()
                 return
             end
@@ -1945,7 +2182,7 @@ function LDBModule:HookMinimapButton()
             end
 
             -- ============================================================
-            -- Hover effects only (menu requires click)
+            -- Hover effects with click action tooltip
             -- ============================================================
             button:SetScript("OnEnter", function(self)
                 -- Hover effect
@@ -1955,6 +2192,8 @@ function LDBModule:HookMinimapButton()
                 if button.SetBackdropBorderColor then
                     button:SetBackdropBorderColor(0.8, 0.7, 0.3, 1)
                 end
+                -- Show click action tooltip
+                ShowClickActionTooltip(self)
             end)
 
             button:SetScript("OnLeave", function(self)
@@ -1965,10 +2204,28 @@ function LDBModule:HookMinimapButton()
                 if button.SetBackdropBorderColor then
                     button:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
                 end
+                -- Hide click action tooltip
+                HideClickActionTooltip()
             end)
 
-            -- Click toggles menu (left) or toggles config (right)
+            -- Click with modifier support
             button:SetScript("OnClick", function(self, btn)
+                -- Hide tooltip on any click
+                HideClickActionTooltip()
+
+                -- Check for modifier keys first
+                if IsShiftKeyDown() then
+                    ReloadUI()
+                    return
+                elseif IsControlKeyDown() then
+                    KOL:ToggleLimitDamage()
+                    return
+                elseif IsAltKeyDown() then
+                    KOL:ToggleRacial()
+                    return
+                end
+
+                -- Normal click actions
                 if btn == "LeftButton" then
                     LDBModule:ToggleMenu(self)
                 elseif btn == "RightButton" then

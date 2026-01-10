@@ -2650,7 +2650,7 @@ KOL.Tracker:RegisterInstance("swp_25n", {
         {
             name = "Inner Sanctum",
             bosses = {
-                {name = "The Eredar Twins", id = 25166},
+                {name = "The Eredar Twins", id = {25165, 25166}},  -- Lady Sacrolash, Grand Warlock Alythess
                 {name = "M'uru", id = 25840},  -- Entropius (phase 2 form dies)
                 {name = "Kil'jaeden", id = 25315},
             }
