@@ -77,6 +77,105 @@ Tracker.textMeasureFrame = nil
 Tracker.textMeasureString = nil
 
 -- ============================================================================
+-- Frame Pool System (prevents memory leaks from repeated CreateFrame calls)
+-- ============================================================================
+Tracker.framePools = {
+    buttons = {},
+    frames = {},
+    buttonsCreated = 0,
+    framesCreated = 0,
+}
+
+-- Get frame pool statistics for performance monitoring
+function Tracker:GetPoolStats()
+    return {
+        buttonsAvailable = #self.framePools.buttons,
+        buttonsCreated = self.framePools.buttonsCreated,
+        framesAvailable = #self.framePools.frames,
+        framesCreated = self.framePools.framesCreated,
+    }
+end
+
+-- Acquire a button from the pool or create a new one
+-- Reuses existing children (icon, text) instead of creating new ones
+function Tracker:AcquireButton(parent)
+    local pool = self.framePools.buttons
+    local btn = table.remove(pool)
+    if btn then
+        btn:SetParent(parent)
+        btn:ClearAllPoints()
+        btn:Show()
+        btn:EnableMouse(true)
+        -- Show existing children if they exist
+        if btn.cachedIcon then btn.cachedIcon:Show() end
+        if btn.cachedText then btn.cachedText:Show() end
+        return btn
+    end
+    self.framePools.buttonsCreated = self.framePools.buttonsCreated + 1
+    return CreateFrame("Button", nil, parent)
+end
+
+-- Acquire a frame from the pool or create a new one
+function Tracker:AcquireFrame(parent)
+    local pool = self.framePools.frames
+    local frame = table.remove(pool)
+    if frame then
+        frame:SetParent(parent)
+        frame:ClearAllPoints()
+        frame:Show()
+        frame:EnableMouse(true)
+        return frame
+    end
+    self.framePools.framesCreated = self.framePools.framesCreated + 1
+    return CreateFrame("Frame", nil, parent)
+end
+
+-- Release a button back to the pool
+function Tracker:ReleaseButton(btn)
+    if not btn then return end
+    btn:Hide()
+    btn:EnableMouse(false)
+    btn:SetScript("OnClick", nil)
+    btn:SetScript("OnEnter", nil)
+    btn:SetScript("OnLeave", nil)
+    btn:ClearAllPoints()
+    -- Hide cached children
+    if btn.cachedIcon then btn.cachedIcon:Hide() end
+    if btn.cachedText then btn.cachedText:Hide() end
+    table.insert(self.framePools.buttons, btn)
+end
+
+-- Release a frame back to the pool
+function Tracker:ReleaseFrame(frame)
+    if not frame then return end
+    frame:Hide()
+    frame:EnableMouse(false)
+    frame:SetScript("OnEnter", nil)
+    frame:SetScript("OnLeave", nil)
+    frame:ClearAllPoints()
+    table.insert(self.framePools.frames, frame)
+end
+
+-- Release all elements from bossTexts back to pools
+function Tracker:ReleaseWatchFrameElements(frame)
+    if not frame or not frame.bossTexts then return end
+
+    for _, element in ipairs(frame.bossTexts) do
+        if element then
+            if element.RegisterForClicks then
+                self:ReleaseButton(element)
+            elseif element.EnableMouse and not element.GetText then
+                self:ReleaseFrame(element)
+            else
+                if element.Hide then element:Hide() end
+            end
+        end
+    end
+
+    frame.bossTexts = {}
+end
+
+-- ============================================================================
 -- Universal Boss Detection System
 -- ============================================================================
 -- Supports multiple detection types so bosses can specify how they're detected:
@@ -3101,6 +3200,9 @@ function Tracker:CreateWatchFrame(instanceId)
         end
     end
 
+    -- Store function on frame so it can be called externally
+    frame.UpdateUIVisibility = UpdateUIVisibility
+
     -- Initialize UI visibility
     UpdateUIVisibility(false)
 
@@ -3207,23 +3309,8 @@ function Tracker:UpdateWatchFrame(instanceId)
     local contentWidth = newFrameWidth - scrollBarPadding - 8
     content:SetWidth(contentWidth)
 
-    -- Clear existing boss texts and buttons
-    for _, element in ipairs(frame.bossTexts) do
-        if element.Hide then
-            element:Hide()
-        end
-        -- Disable mouse interaction to prevent hidden frames from capturing clicks
-        if element.EnableMouse then
-            element:EnableMouse(false)
-        end
-        -- Clear scripts for buttons to prevent memory leaks
-        if element.SetScript then
-            element:SetScript("OnClick", nil)
-            element:SetScript("OnEnter", nil)
-            element:SetScript("OnLeave", nil)
-        end
-    end
-    frame.bossTexts = {}
+    -- Clear existing boss texts and buttons - release to pools for reuse
+    self:ReleaseWatchFrameElements(frame)
 
     -- Get colors
     local instanceColor = KOL.Colors:GetPastel(data.color or "PINK")
@@ -3323,7 +3410,7 @@ function Tracker:UpdateWatchFrame(instanceId)
                 bestText:SetText("  BEST: |cFF00FF00" .. bestTimeStr .. "|r")
 
                 -- Create invisible frame for timer log tooltip (spans all three text elements)
-                local timerTooltipFrame = CreateFrame("Frame", nil, content)
+                local timerTooltipFrame = Tracker:AcquireFrame(content)
                 timerTooltipFrame:SetPoint("TOPLEFT", timerText, "TOPLEFT", 0, 0)
                 timerTooltipFrame:SetPoint("BOTTOMRIGHT", bestText, "BOTTOMRIGHT", 0, 0)
                 timerTooltipFrame:EnableMouse(true)
@@ -3407,6 +3494,7 @@ function Tracker:UpdateWatchFrame(instanceId)
                 table.insert(frame.bossTexts, timerText)
                 table.insert(frame.bossTexts, timerSeparator)
                 table.insert(frame.bossTexts, bestText)
+                table.insert(frame.bossTexts, timerTooltipFrame)
                 yOffset = yOffset - timerText:GetStringHeight() - 2
                 contentHeight = contentHeight + timerText:GetStringHeight() + 2
             end
@@ -3429,12 +3517,12 @@ function Tracker:UpdateWatchFrame(instanceId)
                 speedArrowText:SetPoint("LEFT", speedDisplayText, "RIGHT", 0, 0)
 
                 -- Create invisible frame for tooltip (spans both text elements)
-                local speedTooltipFrame = CreateFrame("Frame", nil, content)
+                local speedTooltipFrame = Tracker:AcquireFrame(content)
                 speedTooltipFrame:SetPoint("TOPLEFT", speedDisplayText, "TOPLEFT", 0, 0)
                 speedTooltipFrame:SetPoint("BOTTOMRIGHT", speedArrowText, "BOTTOMRIGHT", 0, 0)
                 speedTooltipFrame:EnableMouse(true)
-                speedTooltipFrame:SetScript("OnEnter", function(self)
-                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                speedTooltipFrame:SetScript("OnEnter", function(tooltipFrame)
+                    GameTooltip:SetOwner(tooltipFrame, "ANCHOR_RIGHT")
                     GameTooltip:AddLine("Movement Speed", 1, 1, 1)
                     GameTooltip:AddDoubleLine("Total Speed:", speedData.speedTotal .. "%", 1, 1, 1, 0, 1, 0)
                     GameTooltip:AddDoubleLine("Over Base:", speedData.speedIncrease .. "%", 1, 1, 1, 0, 1, 0)
@@ -3446,6 +3534,7 @@ function Tracker:UpdateWatchFrame(instanceId)
 
                 table.insert(frame.bossTexts, speedDisplayText)
                 table.insert(frame.bossTexts, speedArrowText)
+                table.insert(frame.bossTexts, speedTooltipFrame)
                 yOffset = yOffset - speedDisplayText:GetStringHeight() - 4
                 contentHeight = contentHeight + speedDisplayText:GetStringHeight() + 4
             end
@@ -3464,21 +3553,35 @@ function Tracker:UpdateWatchFrame(instanceId)
             local colorHex = killed and killedColorHex or unkilledColorHex
             local checkMark = killed and CHAR_OBJECTIVE_COMPLETE or CHAR_OBJECTIVE_BOX
 
-            -- Create a clickable button wrapper for the boss
-            local bossBtn = CreateFrame("Button", nil, content)
+            -- Create or reuse a clickable button wrapper for the boss
+            local bossBtn = self:AcquireButton(content)
             bossBtn:SetPoint("TOPLEFT", content, "TOPLEFT", 0, yOffset)
             bossBtn:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, yOffset)
-            bossBtn:EnableMouse(true)
             bossBtn:RegisterForClicks("AnyUp")
 
-            -- Icon (using ligatures font for proper Unicode rendering)
-            local bossIcon = KOL.UIFactory:CreateGlyph(bossBtn, checkMark, colorHex, scaledObjectiveFontSize)
+            -- Icon - reuse cached or create new
+            local bossIcon = bossBtn.cachedIcon
+            if not bossIcon then
+                bossIcon = KOL.UIFactory:CreateGlyph(bossBtn, checkMark, colorHex, scaledObjectiveFontSize)
+                bossBtn.cachedIcon = bossIcon
+            else
+                bossIcon:Show()
+                bossIcon:SetGlyph(checkMark, colorHex)
+                bossIcon:SetFont(CHAR_LIGATURESFONT, scaledObjectiveFontSize, CHAR_LIGATURESOUTLINE or "OUTLINE")
+            end
+            bossIcon:ClearAllPoints()
             bossIcon:SetPoint("LEFT", bossBtn, "LEFT", 4, 0)
 
-            -- Text (using configured objective font)
-            -- Note: Hardmode indicator "(HM)" is added via GetBossNameWithHardmode, no separate glyph
-            local bossText = bossBtn:CreateFontString(nil, "OVERLAY")
+            -- Text - reuse cached or create new
+            local bossText = bossBtn.cachedText
+            if not bossText then
+                bossText = bossBtn:CreateFontString(nil, "OVERLAY")
+                bossBtn.cachedText = bossText
+            else
+                bossText:Show()
+            end
             bossText:SetFont(objectiveFontPath, scaledObjectiveFontSize, objectiveFontOutline)
+            bossText:ClearAllPoints()
             bossText:SetPoint("LEFT", bossIcon, "RIGHT", 2, 0)
             bossText:SetPoint("RIGHT", bossBtn, "RIGHT", -4, 0)
             bossText:SetJustifyH("LEFT")
@@ -3543,12 +3646,12 @@ function Tracker:UpdateWatchFrame(instanceId)
             speedArrowText:SetPoint("LEFT", speedDisplayText, "RIGHT", 0, 0)
 
             -- Create invisible frame for tooltip (spans both text elements)
-            local speedTooltipFrame = CreateFrame("Frame", nil, content)
+            local speedTooltipFrame = Tracker:AcquireFrame(content)
             speedTooltipFrame:SetPoint("TOPLEFT", speedDisplayText, "TOPLEFT", 0, 0)
             speedTooltipFrame:SetPoint("BOTTOMRIGHT", speedArrowText, "BOTTOMRIGHT", 0, 0)
             speedTooltipFrame:EnableMouse(true)
-            speedTooltipFrame:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            speedTooltipFrame:SetScript("OnEnter", function(tooltipFrame)
+                GameTooltip:SetOwner(tooltipFrame, "ANCHOR_RIGHT")
                 GameTooltip:AddLine("Movement Speed", 1, 1, 1)
                 GameTooltip:AddDoubleLine("Total Speed:", speedData.speedTotal .. "%", 1, 1, 1, 0, 1, 0)
                 GameTooltip:AddDoubleLine("Over Base:", speedData.speedIncrease .. "%", 1, 1, 1, 0, 1, 0)
@@ -3560,6 +3663,7 @@ function Tracker:UpdateWatchFrame(instanceId)
 
             table.insert(frame.bossTexts, speedDisplayText)
             table.insert(frame.bossTexts, speedArrowText)
+            table.insert(frame.bossTexts, speedTooltipFrame)
             yOffset = yOffset - speedDisplayText:GetStringHeight() - 6
             contentHeight = contentHeight + speedDisplayText:GetStringHeight() + 6
         end
@@ -3631,15 +3735,23 @@ function Tracker:UpdateWatchFrame(instanceId)
             local colorHex = completed and killedColorHex or unkilledColorHex
             local checkMark = completed and CHAR_OBJECTIVE_COMPLETE or CHAR_OBJECTIVE_BOX
 
-            -- Create clickable button for the entry
-            local entryBtn = CreateFrame("Button", nil, content)
+            -- Create or reuse clickable button for the entry
+            local entryBtn = Tracker:AcquireButton(content)
             entryBtn:SetPoint("TOPLEFT", content, "TOPLEFT", indent, yOffset)
             entryBtn:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, yOffset)
-            entryBtn:EnableMouse(true)
             entryBtn:RegisterForClicks("AnyUp")
 
-            -- Icon (using ligatures font for proper Unicode rendering)
-            local entryIcon = KOL.UIFactory:CreateGlyph(entryBtn, checkMark, colorHex, scaledObjectiveFontSize)
+            -- Icon - reuse cached or create new
+            local entryIcon = entryBtn.cachedIcon
+            if not entryIcon then
+                entryIcon = KOL.UIFactory:CreateGlyph(entryBtn, checkMark, colorHex, scaledObjectiveFontSize)
+                entryBtn.cachedIcon = entryIcon
+            else
+                entryIcon:Show()
+                entryIcon:SetGlyph(checkMark, colorHex)
+                entryIcon:SetFont(CHAR_LIGATURESFONT, scaledObjectiveFontSize, CHAR_LIGATURESOUTLINE or "OUTLINE")
+            end
+            entryIcon:ClearAllPoints()
             entryIcon:SetPoint("LEFT", entryBtn, "LEFT", 0, 0)
 
             -- Text - ONLY show name, no note
@@ -3692,8 +3804,16 @@ function Tracker:UpdateWatchFrame(instanceId)
             local bracketColor = "888888"
             displayText = displayText .. " |cFF" .. bracketColor .. "[|r|cFF" .. progressHex .. currentProgress .. "|r|cFF" .. bracketColor .. "/|r|cFF" .. progressHex .. requiredCount .. "|r|cFF" .. bracketColor .. "]|r"
 
-            local entryText = entryBtn:CreateFontString(nil, "OVERLAY")
+            -- Text - reuse cached or create new
+            local entryText = entryBtn.cachedText
+            if not entryText then
+                entryText = entryBtn:CreateFontString(nil, "OVERLAY")
+                entryBtn.cachedText = entryText
+            else
+                entryText:Show()
+            end
             entryText:SetFont(objectiveFontPath, scaledObjectiveFontSize, objectiveFontOutline)
+            entryText:ClearAllPoints()
             entryText:SetPoint("LEFT", entryIcon, "RIGHT", 2, 0)
             entryText:SetPoint("RIGHT", entryBtn, "RIGHT", -4, 0)
             entryText:SetJustifyH("LEFT")
@@ -3880,21 +4000,36 @@ function Tracker:UpdateWatchFrame(instanceId)
             local collapseIcon = isCollapsed and CHAR_ARROW_RIGHTFILLED or CHAR_ARROW_DOWNFILLED
 
             -- Group header (clickable button for collapse/expand)
-            local groupHeaderBtn = CreateFrame("Button", nil, content)
+            local groupHeaderBtn = Tracker:AcquireButton(content)
             groupHeaderBtn:SetPoint("TOPLEFT", content, "TOPLEFT", 2, yOffset)
             groupHeaderBtn:SetPoint("TOPRIGHT", content, "TOPRIGHT", -2, yOffset)
             groupHeaderBtn:SetHeight(scaledGroupFontSize + 4)
-            groupHeaderBtn:EnableMouse(true)
             groupHeaderBtn:RegisterForClicks("AnyUp")
 
-            -- Icon (using symbol font for proper Unicode rendering)
-            local groupIcon = KOL.UIFactory:CreateGlyph(groupHeaderBtn, collapseIcon, groupHeaderColorHex, scaledGroupFontSize)
+            -- Icon - reuse cached or create new (stored as .icon for compatibility)
+            local groupIcon = groupHeaderBtn.cachedIcon
+            if not groupIcon then
+                groupIcon = KOL.UIFactory:CreateGlyph(groupHeaderBtn, collapseIcon, groupHeaderColorHex, scaledGroupFontSize)
+                groupHeaderBtn.cachedIcon = groupIcon
+            else
+                groupIcon:Show()
+                groupIcon:SetGlyph(collapseIcon, groupHeaderColorHex)
+                groupIcon:SetFont(CHAR_LIGATURESFONT, scaledGroupFontSize, CHAR_LIGATURESOUTLINE or "OUTLINE")
+            end
+            groupIcon:ClearAllPoints()
             groupIcon:SetPoint("LEFT", groupHeaderBtn, "LEFT", 0, 0)
             groupHeaderBtn.icon = groupIcon
 
-            -- Text (using configured group font)
-            local groupHeader = groupHeaderBtn:CreateFontString(nil, "OVERLAY")
+            -- Text - reuse cached or create new (stored as .text for compatibility)
+            local groupHeader = groupHeaderBtn.cachedText
+            if not groupHeader then
+                groupHeader = groupHeaderBtn:CreateFontString(nil, "OVERLAY")
+                groupHeaderBtn.cachedText = groupHeader
+            else
+                groupHeader:Show()
+            end
             groupHeader:SetFont(groupFontPath, scaledGroupFontSize, groupFontOutline)
+            groupHeader:ClearAllPoints()
             groupHeader:SetPoint("LEFT", groupIcon, "RIGHT", 4, 0)
             groupHeader:SetJustifyH("LEFT")
             groupHeader:SetText("|cFF" .. groupHeaderColorHex .. "[" .. groupName .. "]|r")
@@ -3968,21 +4103,36 @@ function Tracker:UpdateWatchFrame(instanceId)
             local groupHeaderColorHex = KOL.Colors:ToHex(groupHeaderColor)
 
             -- Group header (clickable button for collapse/expand)
-            local groupHeaderBtn = CreateFrame("Button", nil, content)
+            local groupHeaderBtn = Tracker:AcquireButton(content)
             groupHeaderBtn:SetPoint("TOPLEFT", content, "TOPLEFT", 2, yOffset)
             groupHeaderBtn:SetPoint("TOPRIGHT", content, "TOPRIGHT", -2, yOffset)
             groupHeaderBtn:SetHeight(scaledGroupFontSize + 4)
-            groupHeaderBtn:EnableMouse(true)
             groupHeaderBtn:RegisterForClicks("AnyUp")
 
-            -- Icon (using symbol font for proper Unicode rendering)
-            local groupIcon = KOL.UIFactory:CreateGlyph(groupHeaderBtn, collapseIcon, groupHeaderColorHex, scaledGroupFontSize)
+            -- Icon - reuse cached or create new
+            local groupIcon = groupHeaderBtn.cachedIcon
+            if not groupIcon then
+                groupIcon = KOL.UIFactory:CreateGlyph(groupHeaderBtn, collapseIcon, groupHeaderColorHex, scaledGroupFontSize)
+                groupHeaderBtn.cachedIcon = groupIcon
+            else
+                groupIcon:Show()
+                groupIcon:SetGlyph(collapseIcon, groupHeaderColorHex)
+                groupIcon:SetFont(CHAR_LIGATURESFONT, scaledGroupFontSize, CHAR_LIGATURESOUTLINE or "OUTLINE")
+            end
+            groupIcon:ClearAllPoints()
             groupIcon:SetPoint("LEFT", groupHeaderBtn, "LEFT", 0, 0)
             groupHeaderBtn.icon = groupIcon
 
-            -- Text (using configured group font)
-            local groupHeader = groupHeaderBtn:CreateFontString(nil, "OVERLAY")
+            -- Text - reuse cached or create new
+            local groupHeader = groupHeaderBtn.cachedText
+            if not groupHeader then
+                groupHeader = groupHeaderBtn:CreateFontString(nil, "OVERLAY")
+                groupHeaderBtn.cachedText = groupHeader
+            else
+                groupHeader:Show()
+            end
             groupHeader:SetFont(groupFontPath, scaledGroupFontSize, groupFontOutline)
+            groupHeader:ClearAllPoints()
             groupHeader:SetPoint("LEFT", groupIcon, "RIGHT", 4, 0)
             groupHeader:SetJustifyH("LEFT")
             groupHeader:SetText("|cFF" .. groupHeaderColorHex .. "[" .. group.name .. "]|r")
@@ -4024,21 +4174,35 @@ function Tracker:UpdateWatchFrame(instanceId)
                     local colorHex = killed and killedColorHex or unkilledColorHex
                     local checkMark = killed and CHAR_OBJECTIVE_COMPLETE or CHAR_OBJECTIVE_BOX
 
-                    -- Create a clickable button wrapper for the boss
-                    local bossBtn = CreateFrame("Button", nil, content)
+                    -- Create or reuse a clickable button wrapper for the boss
+                    local bossBtn = Tracker:AcquireButton(content)
                     bossBtn:SetPoint("TOPLEFT", content, "TOPLEFT", 8, yOffset)  -- Indent bosses
                     bossBtn:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, yOffset)
-                    bossBtn:EnableMouse(true)
                     bossBtn:RegisterForClicks("AnyUp")
 
-                    -- Icon (using ligatures font for proper Unicode rendering)
-                    local bossIcon = KOL.UIFactory:CreateGlyph(bossBtn, checkMark, colorHex, scaledObjectiveFontSize)
+                    -- Icon - reuse cached or create new
+                    local bossIcon = bossBtn.cachedIcon
+                    if not bossIcon then
+                        bossIcon = KOL.UIFactory:CreateGlyph(bossBtn, checkMark, colorHex, scaledObjectiveFontSize)
+                        bossBtn.cachedIcon = bossIcon
+                    else
+                        bossIcon:Show()
+                        bossIcon:SetGlyph(checkMark, colorHex)
+                        bossIcon:SetFont(CHAR_LIGATURESFONT, scaledObjectiveFontSize, CHAR_LIGATURESOUTLINE or "OUTLINE")
+                    end
+                    bossIcon:ClearAllPoints()
                     bossIcon:SetPoint("LEFT", bossBtn, "LEFT", 0, 0)
 
-                    -- Text (using configured objective font)
-                    -- Note: Hardmode indicator "(HM)" is added via GetBossNameWithHardmode, no separate glyph
-                    local bossText = bossBtn:CreateFontString(nil, "OVERLAY")
+                    -- Text - reuse cached or create new
+                    local bossText = bossBtn.cachedText
+                    if not bossText then
+                        bossText = bossBtn:CreateFontString(nil, "OVERLAY")
+                        bossBtn.cachedText = bossText
+                    else
+                        bossText:Show()
+                    end
                     bossText:SetFont(objectiveFontPath, scaledObjectiveFontSize, objectiveFontOutline)
+                    bossText:ClearAllPoints()
                     bossText:SetPoint("LEFT", bossIcon, "RIGHT", 2, 0)
                     bossText:SetPoint("RIGHT", bossBtn, "RIGHT", -4, 0)
                     bossText:SetJustifyH("LEFT")
@@ -4319,11 +4483,29 @@ function Tracker:RefreshAllWatchFrames()
     for instanceId, frame in pairs(self.activeFrames) do
         if frame and frame:IsShown() then
             KOL:DebugPrint("Tracker: Refreshing frame for: " .. instanceId, 3)
+            -- Re-apply position (handles growUpward changes for default-positioned frames)
+            self:RestoreFramePosition(instanceId)
             self:UpdateWatchFrame(instanceId)
         end
     end
 
     KOL:DebugPrint("Tracker: All watch frames refreshed", 2)
+end
+
+-- Refresh UI visibility on all active frames (for when Show BG on Mouseover setting changes)
+function Tracker:RefreshUIVisibility()
+    KOL:DebugPrint("Tracker: Refreshing UI visibility on all active watch frames", 2)
+
+    for instanceId, frame in pairs(self.activeFrames) do
+        if frame and frame:IsShown() and frame.UpdateUIVisibility then
+            -- Call UpdateUIVisibility with current mouse state
+            local isMouseOver = MouseIsOver(frame)
+            frame.UpdateUIVisibility(isMouseOver)
+            KOL:DebugPrint("Tracker: Refreshed UI visibility for: " .. instanceId .. " (mouseOver=" .. tostring(isMouseOver) .. ")", 3)
+        end
+    end
+
+    KOL:DebugPrint("Tracker: UI visibility refresh complete", 2)
 end
 
 -- Toggle minimize/maximize
@@ -4402,6 +4584,7 @@ function Tracker:SaveFramePosition(instanceId)
         relativePoint = relativePoint,
         x = x,
         y = y,
+        hasCustomPosition = true,  -- Mark that user manually positioned this frame
     }
 
     KOL:DebugPrint("Tracker: Saved position for: " .. instanceId, 3)
@@ -4412,18 +4595,184 @@ function Tracker:RestoreFramePosition(instanceId)
     local frame = self.activeFrames[instanceId]
     if not frame then return end
 
-    local pos = KOL.db.profile.tracker.framePositions and KOL.db.profile.tracker.framePositions[instanceId]
+    local config = KOL.db.profile.tracker
+    local pos = config.framePositions and config.framePositions[instanceId]
 
-    if pos then
+    if pos and pos.point then
+        -- Position exists - restore it (backwards compatible with saves before hasCustomPosition flag)
         frame:ClearAllPoints()
         frame:SetPoint(pos.point, UIParent, pos.relativePoint, pos.x, pos.y)
-        KOL:DebugPrint("Tracker: Restored position for: " .. instanceId, 3)
+        KOL:DebugPrint("Tracker: Restored saved position for: " .. instanceId, 3)
+    elseif config.defaultFrameX and config.defaultFrameY then
+        -- Use default frame location if set (for frames that have never been positioned)
+        frame:ClearAllPoints()
+        local anchorPoint = config.growUpward and "BOTTOMLEFT" or "TOPLEFT"
+        frame:SetPoint(anchorPoint, UIParent, "BOTTOMLEFT", config.defaultFrameX, config.defaultFrameY)
+        KOL:DebugPrint("Tracker: Using default location for: " .. instanceId, 3)
     else
-        -- Default position (center)
+        -- Fallback: center of screen
         frame:ClearAllPoints()
         frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-        KOL:DebugPrint("Tracker: Using default position for: " .. instanceId, 3)
+        KOL:DebugPrint("Tracker: Using center position for: " .. instanceId, 3)
     end
+end
+
+-- Show draggable frame picker for setting default frame location
+function Tracker:ShowDefaultLocationPicker()
+    -- Hide existing picker if any
+    if self.defaultLocationPickerFrame then
+        self.defaultLocationPickerFrame:Hide()
+        self.defaultLocationPickerFrame = nil
+    end
+
+    local config = KOL.db.profile.tracker
+
+    -- Create picker frame
+    local frame = CreateFrame("Frame", "KOLDefaultLocationPicker", UIParent)
+    frame:SetSize(200, 150)
+    frame:SetFrameStrata("DIALOG")
+    frame:SetMovable(true)
+    frame:SetClampedToScreen(true)
+    frame:EnableMouse(true)
+
+    -- Position at current default or center
+    frame:ClearAllPoints()
+    if config.defaultFrameX and config.defaultFrameY then
+        local anchorPoint = config.growUpward and "BOTTOMLEFT" or "TOPLEFT"
+        frame:SetPoint(anchorPoint, UIParent, "BOTTOMLEFT", config.defaultFrameX, config.defaultFrameY)
+    else
+        frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    end
+
+    -- Backdrop
+    frame:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        tile = false,
+        edgeSize = 2,
+        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    })
+    frame:SetBackdropColor(0.1, 0.1, 0.1, 0.9)
+    frame:SetBackdropBorderColor(0.4, 0.8, 0.4, 1)
+
+    -- Title bar
+    local titleBar = CreateFrame("Frame", nil, frame)
+    titleBar:SetSize(196, 24)
+    titleBar:SetPoint("TOPLEFT", frame, "TOPLEFT", 2, -2)
+    titleBar:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        tile = false,
+    })
+    titleBar:SetBackdropColor(0.2, 0.5, 0.2, 1)
+
+    -- Title text
+    local titleText = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    titleText:SetPoint("CENTER", titleBar, "CENTER", 0, 0)
+    titleText:SetText("|cFFFFFFFFDrag to Set Default Position|r")
+
+    -- Instructions
+    local instructions = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    instructions:SetPoint("TOP", titleBar, "BOTTOM", 0, -12)
+    instructions:SetWidth(180)
+    instructions:SetJustifyH("CENTER")
+    instructions:SetText("|cFFCCCCCCNew watch frames will\nappear at this location.\n\nDrag me, then click Save.|r")
+
+    -- Save button (using UIFactory styled button)
+    local saveBtn
+    if KOL.UIFactory and KOL.UIFactory.CreateButton then
+        saveBtn = KOL.UIFactory:CreateButton(frame, "Save", {
+            type = "styled",
+            width = 80,
+            height = 24,
+            fontSize = 11,
+            textColor = {r = 0.4, g = 1, b = 0.4, a = 1},
+            hoverColor = {r = 0.6, g = 1, b = 0.6, a = 1},
+            bgColor = {r = 0.15, g = 0.25, b = 0.15, a = 1},
+            borderColor = {r = 0.3, g = 0.6, b = 0.3, a = 1},
+            hoverBgColor = {r = 0.2, g = 0.35, b = 0.2, a = 1},
+            hoverBorderColor = {r = 0.4, g = 0.9, b = 0.4, a = 1},
+            onClick = function()
+                -- Get position relative to screen bottom-left
+                local left = frame:GetLeft()
+                local bottom = frame:GetBottom()
+
+                config.defaultFrameX = left
+                config.defaultFrameY = bottom
+
+                KOL:PrintTag(GREEN("Default frame location saved!"))
+                frame:Hide()
+                Tracker.defaultLocationPickerFrame = nil
+            end,
+        })
+    else
+        -- Fallback to basic button if UIFactory not available
+        saveBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+        saveBtn:SetSize(80, 24)
+        saveBtn:SetText("Save")
+        saveBtn:SetScript("OnClick", function()
+            local left = frame:GetLeft()
+            local bottom = frame:GetBottom()
+            config.defaultFrameX = left
+            config.defaultFrameY = bottom
+            KOL:PrintTag(GREEN("Default frame location saved!"))
+            frame:Hide()
+            Tracker.defaultLocationPickerFrame = nil
+        end)
+    end
+    saveBtn:SetPoint("BOTTOM", frame, "BOTTOM", -45, 10)
+
+    -- Cancel button (using UIFactory styled button)
+    local cancelBtn
+    if KOL.UIFactory and KOL.UIFactory.CreateButton then
+        cancelBtn = KOL.UIFactory:CreateButton(frame, "Cancel", {
+            type = "styled",
+            width = 80,
+            height = 24,
+            fontSize = 11,
+            textColor = {r = 1, g = 0.5, b = 0.5, a = 1},
+            hoverColor = {r = 1, g = 0.7, b = 0.7, a = 1},
+            bgColor = {r = 0.25, g = 0.12, b = 0.12, a = 1},
+            borderColor = {r = 0.5, g = 0.25, b = 0.25, a = 1},
+            hoverBgColor = {r = 0.35, g = 0.15, b = 0.15, a = 1},
+            hoverBorderColor = {r = 0.8, g = 0.3, b = 0.3, a = 1},
+            onClick = function()
+                frame:Hide()
+                Tracker.defaultLocationPickerFrame = nil
+            end,
+        })
+    else
+        -- Fallback to basic button if UIFactory not available
+        cancelBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+        cancelBtn:SetSize(80, 24)
+        cancelBtn:SetText("Cancel")
+        cancelBtn:SetScript("OnClick", function()
+            frame:Hide()
+            Tracker.defaultLocationPickerFrame = nil
+        end)
+    end
+    cancelBtn:SetPoint("BOTTOM", frame, "BOTTOM", 45, 10)
+
+    -- Dragging from title bar
+    titleBar:EnableMouse(true)
+    titleBar:RegisterForDrag("LeftButton")
+    titleBar:SetScript("OnDragStart", function()
+        frame:StartMoving()
+    end)
+    titleBar:SetScript("OnDragStop", function()
+        frame:StopMovingOrSizing()
+    end)
+
+    -- Also allow dragging from main frame
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", function(self)
+        self:StartMoving()
+    end)
+    frame:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+    end)
+
+    frame:Show()
+    self.defaultLocationPickerFrame = frame
 end
 
 -- ============================================================================
@@ -4638,6 +4987,7 @@ function Tracker:DebugCommand(...)
         KOL:Print("Difficulty index: " .. tostring(difficultyIndex))
         KOL:Print("Difficulty name: " .. tostring(difficultyName))
         KOL:Print("Max players: " .. tostring(maxPlayers))
+        KOL:Print("Current instanceId: " .. tostring(self.currentInstanceId))
         KOL:Print("AutoShow enabled: " .. tostring(KOL.db.profile.tracker.autoShow))
 
         -- Check all matching instances

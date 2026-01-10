@@ -194,46 +194,208 @@ function KOL:InitializeUI()
                                 width = 1.0,
                                 order = 3.2,
                             },
-                            ldbText = {
-                                type = "select",
-                                name = "LDB Text",
-                                desc = "What to display as the LDB text on data broker bars.\n\n|cFF00FF00None:|r Shows 'KoL' (default)\n|cFF00FF00Speed:|r Shows current movement speed with colors and glyph",
-                                values = {
-                                    ["none"] = "-- None --",
-                                    ["speed"] = "Speed",
-                                },
-                                get = function()
-                                    return self.db.profile.ldbTextMode or "none"
-                                end,
-                                set = function(_, value)
-                                    self.db.profile.ldbTextMode = value
-                                    if self.LDB and self.LDB.UpdateLDBText then
-                                        self.LDB:UpdateLDBText()
-                                    end
-                                    local displayName = value == "speed" and "Speed" or "None"
-                                    self:PrintTag("LDB Text set to: " .. PASTEL_YELLOW(displayName))
-                                end,
-                                width = 1.0,
+                            ldbTextHeader = {
+                                type = "description",
+                                name = "LDB TEXT DISPLAY|0.6,0.7,1",  -- Light blue accent
+                                dialogControl = "KOL_SectionHeader",
+                                width = "full",
                                 order = 3.3,
                             },
-                            ldbSpeedPrefix = {
+                            ldbTextDesc = {
+                                type = "description",
+                                name = "|cFFAAAAAAChoose what information to display in your LDB plugin text.|r",
+                                fontSize = "small",
+                                order = 3.31,
+                            },
+                            -- Row 1: Show toggles (3 columns)
+                            ldbShowSpeed = {
                                 type = "toggle",
-                                name = "Show SPEED: Text",
-                                desc = "When enabled, the LDB speed display will include 'SPEED: ' prefix.\n\n|cFF00FF00ON:|r SPEED: +40% ↑\n|cFFFF6666OFF:|r +40% ↑",
-                                get = function()
-                                    return self.db.profile.ldbSpeedPrefix or false
-                                end,
+                                name = "Show Speed",
+                                desc = "Display your current movement speed in the LDB text.\n\n|cFFAAAAAAExample:|r |cFF00FF00+40%|r |cFFFFFF00*|r",
+                                get = function() return self.db.profile.ldbShowSpeed ~= false end,
                                 set = function(_, value)
-                                    self.db.profile.ldbSpeedPrefix = value
+                                    self.db.profile.ldbShowSpeed = value
                                     if self.LDB and self.LDB.UpdateLDBText then
                                         self.LDB:UpdateLDBText()
                                     end
                                 end,
-                                width = 1.0,
-                                order = 3.4,
-                                hidden = function()
-                                    return (self.db.profile.ldbTextMode or "none") ~= "speed"
+                                width = 0.55,
+                                order = 3.320,
+                            },
+                            ldbShowLimit = {
+                                type = "toggle",
+                                name = "Show Limit Damage",
+                                desc = "Display the current Limit Damage state in the LDB text.\n\n|cFFAAAAAAExample:|r |cFF00FF00ON|r or |cFFFF4444OFF|r",
+                                get = function() return self.db.profile.ldbShowLimit or false end,
+                                set = function(_, value)
+                                    self.db.profile.ldbShowLimit = value
+                                    if self.LDB and self.LDB.UpdateLDBText then
+                                        self.LDB:UpdateLDBText()
+                                    end
                                 end,
+                                width = 0.65,
+                                order = 3.321,
+                            },
+                            ldbShowRacial = {
+                                type = "toggle",
+                                name = "Show Racial",
+                                desc = "Display your currently chosen racial in the LDB text.\n\n|cFFAAAAAAExample:|r |cFFDDAAFFHuman|r",
+                                get = function() return self.db.profile.ldbShowRacial or false end,
+                                set = function(_, value)
+                                    self.db.profile.ldbShowRacial = value
+                                    if self.LDB and self.LDB.UpdateLDBText then
+                                        self.LDB:UpdateLDBText()
+                                    end
+                                end,
+                                width = 0.55,
+                                order = 3.322,
+                            },
+                            ldbRow1Break = {
+                                type = "description",
+                                name = "",
+                                width = "full",
+                                order = 3.323,
+                            },
+                            ldbLabelsHeader = {
+                                type = "description",
+                                name = "|cFFAAAAAAShow LDB Text Prefixes:|r",
+                                fontSize = "small",
+                                width = "full",
+                                order = 3.324,
+                            },
+                            -- Row 2: Label toggles (3 columns)
+                            ldbShowSpeedLabel = {
+                                type = "toggle",
+                                name = "+ SPEED:",
+                                desc = "Include 'SPEED:' prefix before the speed value.\n\n|cFF00FF00ON:|r SPEED: +40% *\n|cFFFF6666OFF:|r +40% *",
+                                get = function() return self.db.profile.ldbShowSpeedLabel or false end,
+                                set = function(_, value)
+                                    self.db.profile.ldbShowSpeedLabel = value
+                                    if self.LDB and self.LDB.UpdateLDBText then
+                                        self.LDB:UpdateLDBText()
+                                    end
+                                end,
+                                width = 0.55,
+                                order = 3.330,
+                                disabled = function() return self.db.profile.ldbShowSpeed == false end,
+                            },
+                            ldbShowLimitLabel = {
+                                type = "toggle",
+                                name = "+ LIMIT:",
+                                desc = "Include 'LIMIT:' prefix before the limit damage state.\n\n|cFF00FF00ON:|r LIMIT: ON\n|cFFFF6666OFF:|r ON",
+                                get = function() return self.db.profile.ldbShowLimitLabel or false end,
+                                set = function(_, value)
+                                    self.db.profile.ldbShowLimitLabel = value
+                                    if self.LDB and self.LDB.UpdateLDBText then
+                                        self.LDB:UpdateLDBText()
+                                    end
+                                end,
+                                width = 0.65,
+                                order = 3.331,
+                                disabled = function() return not self.db.profile.ldbShowLimit end,
+                            },
+                            ldbShowRacialLabel = {
+                                type = "toggle",
+                                name = "+ RACIAL:",
+                                desc = "Include 'RACIAL:' prefix before the racial name.\n\n|cFF00FF00ON:|r RACIAL: Human\n|cFFFF6666OFF:|r Human",
+                                get = function() return self.db.profile.ldbShowRacialLabel or false end,
+                                set = function(_, value)
+                                    self.db.profile.ldbShowRacialLabel = value
+                                    if self.LDB and self.LDB.UpdateLDBText then
+                                        self.LDB:UpdateLDBText()
+                                    end
+                                end,
+                                width = 0.55,
+                                order = 3.332,
+                                disabled = function() return not self.db.profile.ldbShowRacial end,
+                            },
+                            ldbRow2Break = {
+                                type = "description",
+                                name = "",
+                                width = "full",
+                                order = 3.333,
+                            },
+                            -- Row 3: Position dropdowns (3 columns)
+                            ldbSpeedPosition = {
+                                type = "select",
+                                name = "Speed Position",
+                                desc = "Set the display position for Speed in the LDB text.",
+                                values = { [1] = "1st", [2] = "2nd", [3] = "3rd" },
+                                get = function() return self.db.profile.ldbSpeedPosition or 1 end,
+                                set = function(_, value)
+                                    local oldPos = self.db.profile.ldbSpeedPosition or 1
+                                    if value == oldPos then return end
+                                    -- Find what's currently in the target position and swap
+                                    local limitPos = self.db.profile.ldbLimitPosition or 2
+                                    local racialPos = self.db.profile.ldbRacialPosition or 3
+                                    if limitPos == value then
+                                        self.db.profile.ldbLimitPosition = oldPos
+                                    elseif racialPos == value then
+                                        self.db.profile.ldbRacialPosition = oldPos
+                                    end
+                                    self.db.profile.ldbSpeedPosition = value
+                                    if self.LDB and self.LDB.UpdateLDBText then
+                                        self.LDB:UpdateLDBText()
+                                    end
+                                end,
+                                width = 0.55,
+                                order = 3.340,
+                            },
+                            ldbLimitPosition = {
+                                type = "select",
+                                name = "Limit Position",
+                                desc = "Set the display position for Limit Damage in the LDB text.",
+                                values = { [1] = "1st", [2] = "2nd", [3] = "3rd" },
+                                get = function() return self.db.profile.ldbLimitPosition or 2 end,
+                                set = function(_, value)
+                                    local oldPos = self.db.profile.ldbLimitPosition or 2
+                                    if value == oldPos then return end
+                                    -- Find what's currently in the target position and swap
+                                    local speedPos = self.db.profile.ldbSpeedPosition or 1
+                                    local racialPos = self.db.profile.ldbRacialPosition or 3
+                                    if speedPos == value then
+                                        self.db.profile.ldbSpeedPosition = oldPos
+                                    elseif racialPos == value then
+                                        self.db.profile.ldbRacialPosition = oldPos
+                                    end
+                                    self.db.profile.ldbLimitPosition = value
+                                    if self.LDB and self.LDB.UpdateLDBText then
+                                        self.LDB:UpdateLDBText()
+                                    end
+                                end,
+                                width = 0.65,
+                                order = 3.341,
+                            },
+                            ldbRacialPosition = {
+                                type = "select",
+                                name = "Racial Position",
+                                desc = "Set the display position for Racial in the LDB text.",
+                                values = { [1] = "1st", [2] = "2nd", [3] = "3rd" },
+                                get = function() return self.db.profile.ldbRacialPosition or 3 end,
+                                set = function(_, value)
+                                    local oldPos = self.db.profile.ldbRacialPosition or 3
+                                    if value == oldPos then return end
+                                    -- Find what's currently in the target position and swap
+                                    local speedPos = self.db.profile.ldbSpeedPosition or 1
+                                    local limitPos = self.db.profile.ldbLimitPosition or 2
+                                    if speedPos == value then
+                                        self.db.profile.ldbSpeedPosition = oldPos
+                                    elseif limitPos == value then
+                                        self.db.profile.ldbLimitPosition = oldPos
+                                    end
+                                    self.db.profile.ldbRacialPosition = value
+                                    if self.LDB and self.LDB.UpdateLDBText then
+                                        self.LDB:UpdateLDBText()
+                                    end
+                                end,
+                                width = 0.55,
+                                order = 3.342,
+                            },
+                            ldbRow3Break = {
+                                type = "description",
+                                name = "",
+                                width = "full",
+                                order = 3.343,
                             },
                             minimapButtonSize = {
                                 type = "range",
@@ -426,6 +588,19 @@ function KOL:InitializeUI()
                                 end
                             end
 
+                            -- Get frame pool stats from Tracker
+                            local poolStats = ""
+                            if KOL.Tracker and KOL.Tracker.GetPoolStats then
+                                local stats = KOL.Tracker:GetPoolStats()
+                                local buttonsInUse = stats.buttonsCreated - stats.buttonsAvailable
+                                local framesInUse = stats.framesCreated - stats.framesAvailable
+                                poolStats = string.format(
+                                    "\n|cFFFFDD00Frame Pool:|r |cFFAAAA00%d|r/|cFF888888%d|r buttons, |cFFAAAA00%d|r/|cFF888888%d|r frames |cFF888888(in use/created)|r",
+                                    buttonsInUse, stats.buttonsCreated,
+                                    framesInUse, stats.framesCreated
+                                )
+                            end
+
                             KOL.cachedStats.text = string.format(
                                 "|cFFFFDD00Memory Usage:|r %s%s|r\n" ..
                                 "|cFFFFDD00Batch Channels:|r |cFF88DDFF%d running|r / |cFFAAAA00%d total|r\n" ..
@@ -433,7 +608,7 @@ function KOL:InitializeUI()
                                 memColor, memText,
                                 runningChannels, totalChannels,
                                 debugCount, debugMax
-                            )
+                            ) .. poolStats
                             return KOL.cachedStats.text
                         end,
                         fontSize = "medium",
@@ -962,10 +1137,51 @@ function KOL:InitializeUI()
                         name = "|cFFFFDD00General|r",
                         order = 1,
                         args = {
-                            generalHeader = {
-                                type = "header",
-                                name = "Watch Frame Settings",
+                            -- ================================================================
+                            -- GLOBAL SECTION
+                            -- ================================================================
+                            globalHeader = {
+                                type = "description",
+                                name = "GLOBAL|0.1,0.9,0.2",
+                                dialogControl = "KOL_SectionHeader",
+                                width = "full",
                                 order = 1,
+                            },
+                            setDefaultLocation = {
+                                type = "execute",
+                                name = "Frame Default Location: |SET",
+                                desc = "Click to show a draggable frame. Position it where you want new watch frames to appear by default.",
+                                dialogControl = "KOL_LabeledTextButton",
+                                func = function()
+                                    if KOL.Tracker and KOL.Tracker.ShowDefaultLocationPicker then
+                                        KOL.Tracker:ShowDefaultLocationPicker()
+                                    else
+                                        KOL:PrintTag(RED("Default location picker not yet implemented"))
+                                    end
+                                end,
+                                width = "double",
+                                order = 2,
+                            },
+                            growUpward = {
+                                type = "toggle",
+                                name = "Grow Upward",
+                                desc = "Frames expand upward from their anchor point instead of downward. This keeps frame bottoms aligned regardless of content height.",
+                                get = function()
+                                    return KOL.db.profile.tracker and KOL.db.profile.tracker.growUpward or false
+                                end,
+                                set = function(_, value)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.growUpward = value
+                                    KOL:PrintTag("Grow upward: " .. (value and GREEN("Enabled") or RED("Disabled")))
+                                    -- Refresh all active frames to apply new anchoring
+                                    if KOL.Tracker and KOL.Tracker.RefreshAllWatchFrames then
+                                        KOL.Tracker:RefreshAllWatchFrames()
+                                    end
+                                end,
+                                width = "normal",
+                                order = 3,
                             },
                             autoShow = {
                                 type = "toggle",
@@ -981,22 +1197,12 @@ function KOL:InitializeUI()
                                     KOL.db.profile.tracker.autoShow = value
                                     KOL:PrintTag("Auto-show watch frames: " .. (value and GREEN("Enabled") or RED("Disabled")))
                                 end,
-                                width = "full",
-                                order = 2,
-                            },
-                            spacerUI1 = {
-                                type = "description",
-                                name = " ",
-                                order = 3,
-                            },
-                            uiHeader = {
-                                type = "header",
-                                name = "UI Visibility",
+                                width = "normal",
                                 order = 4,
                             },
                             showBgOnHover = {
                                 type = "toggle",
-                                name = "Show Background on Mouseover Only",
+                                name = "Show BG on Mouseover",
                                 desc = "Hide the frame background by default, show it only when hovering (creates a floating text look)",
                                 get = function()
                                     return KOL.db.profile.tracker and KOL.db.profile.tracker.showBgOnHover or false
@@ -1006,23 +1212,27 @@ function KOL:InitializeUI()
                                         KOL.db.profile.tracker = {}
                                     end
                                     KOL.db.profile.tracker.showBgOnHover = value
-                                    -- Also set the old values for compatibility
                                     KOL.db.profile.tracker.hideUI = value
                                     KOL.db.profile.tracker.showUIOnMouseover = value
                                     KOL:PrintTag("Show BG on hover: " .. (value and GREEN("Enabled") or RED("Disabled")))
+                                    -- Immediately apply to all active watch frames
+                                    if KOL.Tracker and KOL.Tracker.RefreshUIVisibility then
+                                        KOL.Tracker:RefreshUIVisibility()
+                                    end
                                 end,
-                                width = "full",
+                                width = "normal",
                                 order = 5,
                             },
-                            spacerButtons = {
+
+                            -- ================================================================
+                            -- FRAME SETTINGS SECTION
+                            -- ================================================================
+                            frameHeader = {
                                 type = "description",
-                                name = " ",
-                                order = 7,
-                            },
-                            buttonsHeader = {
-                                type = "header",
-                                name = "Button Options",
-                                order = 8,
+                                name = "FRAME SETTINGS|0.2,0.6,1.0",
+                                dialogControl = "KOL_SectionHeader",
+                                width = "full",
+                                order = 10,
                             },
                             showMinimizeButton = {
                                 type = "toggle",
@@ -1037,7 +1247,6 @@ function KOL:InitializeUI()
                                     end
                                     KOL.db.profile.tracker.showMinimizeButton = value
                                     KOL:PrintTag("Show minimize button: " .. (value and GREEN("Enabled") or RED("Disabled")))
-                                    -- Refresh all active frames
                                     if KOL.Tracker then
                                         for instanceId, frame in pairs(KOL.Tracker.activeFrames) do
                                             if frame.minimizeBtn then
@@ -1050,12 +1259,12 @@ function KOL:InitializeUI()
                                         end
                                     end
                                 end,
-                                width = "full",
-                                order = 9,
+                                width = "normal",
+                                order = 11,
                             },
                             showScrollButtons = {
                                 type = "toggle",
-                                name = "Show Scroll Arrow Buttons",
+                                name = "Show Scroll Arrows",
                                 desc = "Show up/down arrow buttons on scrollbars",
                                 get = function()
                                     return KOL.db.profile.tracker and KOL.db.profile.tracker.showScrollButtons ~= false
@@ -1067,17 +1276,7 @@ function KOL:InitializeUI()
                                     KOL.db.profile.tracker.showScrollButtons = value
                                     KOL:PrintTag("Show scroll arrows: " .. (value and GREEN("Enabled") or RED("Disabled")))
                                 end,
-                                width = "full",
-                                order = 10,
-                            },
-                            spacer0 = {
-                                type = "description",
-                                name = " ",
-                                order = 11,
-                            },
-                            frameHeader = {
-                                type = "header",
-                                name = "Frame Control",
+                                width = "normal",
                                 order = 12,
                             },
                             showScrollBar = {
@@ -1085,8 +1284,8 @@ function KOL:InitializeUI()
                                 name = "Scrollbar Visibility",
                                 desc = "Control scrollbar visibility for all watch frames",
                                 values = {
-                                    [false] = "Hidden",
-                                    [true] = "Visible",
+                                    [false] = "Always Hidden",
+                                    [true] = "Always Shown",
                                 },
                                 get = function()
                                     if KOL.db.profile.tracker and KOL.db.profile.tracker.showScrollBar ~= nil then
@@ -1099,18 +1298,17 @@ function KOL:InitializeUI()
                                         KOL.db.profile.tracker = {}
                                     end
                                     KOL.db.profile.tracker.showScrollBar = value
-
-                                    -- Refresh all active frames to apply new visibility
                                     if KOL.Tracker and KOL.Tracker.RefreshAllWatchFrames then
                                         KOL.Tracker:RefreshAllWatchFrames()
                                     end
                                 end,
-                                order = 15,
+                                width = "normal",
+                                order = 13,
                             },
                             scrollBarWidth = {
                                 type = "range",
                                 name = "Scrollbar Width",
-                                desc = "Width of the scrollbar (in pixels, minimum 6 to prevent font size issues)",
+                                desc = "Width of the scrollbar in pixels",
                                 min = 6,
                                 max = 32,
                                 step = 1,
@@ -1122,11 +1320,8 @@ function KOL:InitializeUI()
                                         KOL.db.profile.tracker = {}
                                     end
                                     KOL.db.profile.tracker.scrollBarWidth = value
-
-                                    -- Recreate all active frames to apply new scrollbar width
                                     if KOL.Tracker and KOL.Tracker.activeFrames then
                                         for instanceId, frame in pairs(KOL.Tracker.activeFrames) do
-                                            -- Only recreate if this instance doesn't have a per-instance override
                                             local hasOverride = KOL.db.profile.tracker.instances and
                                                                KOL.db.profile.tracker.instances[instanceId] and
                                                                KOL.db.profile.tracker.instances[instanceId].scrollBarWidth and
@@ -1139,153 +1334,19 @@ function KOL:InitializeUI()
                                         end
                                     end
                                 end,
-                                order = 16,
+                                width = "normal",
+                                order = 14,
                             },
-                            spacer1 = {
-                                type = "description",
-                                name = " ",
-                                order = 17,
-                            },
-                            colorHeader = {
-                                type = "header",
-                                name = "Colors",
-                                order = 18,
-                            },
-                            titleFontColor = {
-                                type = "color",
-                                name = "Title Font Color",
-                                desc = "Color for the instance title text",
-                                hasAlpha = false,
-                                get = function()
-                                    return 0.7, 0.9, 1
-                                end,
-                                set = function(_, r, g, b)
-                                    if not KOL.db.profile.tracker then
-                                        KOL.db.profile.tracker = {}
-                                    end
-                                    KOL.db.profile.tracker.titleFontColor = {r, g, b}
-                                    -- Refresh all active frames
-                                    if KOL.Tracker then
-                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
-                                            KOL.Tracker:UpdateWatchFrame(instanceId)
-                                        end
-                                    end
-                                end,
-                                order = 19,
-                            },
-                            groupIncompleteColor = {
-                                type = "color",
-                                name = "Group Header Incomplete Color",
-                                desc = "Color for group headers when not all bosses are killed (uses instance color by default)",
-                                hasAlpha = false,
-                                get = function()
-                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.groupIncompleteColor
-                                    if color then
-                                        return color[1], color[2], color[3]
-                                    end
-                                    return 0.7, 0.9, 1
-                                end,
-                                set = function(_, r, g, b)
-                                    if not KOL.db.profile.tracker then
-                                        KOL.db.profile.tracker = {}
-                                    end
-                                    KOL.db.profile.tracker.groupIncompleteColor = {r, g, b}
-                                    -- Refresh all active frames
-                                    if KOL.Tracker then
-                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
-                                            KOL.Tracker:UpdateWatchFrame(instanceId)
-                                        end
-                                    end
-                                end,
-                                order = 20,
-                            },
-                            groupCompleteColor = {
-                                type = "color",
-                                name = "Group Header Complete Color",
-                                desc = "Color for group headers when all bosses are killed",
-                                hasAlpha = false,
-                                get = function()
-                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.groupCompleteColor
-                                    if color then
-                                        return color[1], color[2], color[3]
-                                    end
-                                    return 0.75, 1, 0.75
-                                end,
-                                set = function(_, r, g, b)
-                                    if not KOL.db.profile.tracker then
-                                        KOL.db.profile.tracker = {}
-                                    end
-                                    KOL.db.profile.tracker.groupCompleteColor = {r, g, b}
-                                    -- Refresh all active frames
-                                    if KOL.Tracker then
-                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
-                                            KOL.Tracker:UpdateWatchFrame(instanceId)
-                                        end
-                                    end
-                                end,
-                                order = 21,
-                            },
-                            objectiveIncompleteColor = {
-                                type = "color",
-                                name = "Objective Incomplete Color",
-                                desc = "Color for bosses/objectives that are not yet killed/completed",
-                                hasAlpha = false,
-                                get = function()
-                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.objectiveIncompleteColor
-                                    if color then
-                                        return color[1], color[2], color[3]
-                                    end
-                                    return 1, 0.6, 0.6
-                                end,
-                                set = function(_, r, g, b)
-                                    if not KOL.db.profile.tracker then
-                                        KOL.db.profile.tracker = {}
-                                    end
-                                    KOL.db.profile.tracker.objectiveIncompleteColor = {r, g, b}
-                                    -- Refresh all active frames
-                                    if KOL.Tracker then
-                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
-                                            KOL.Tracker:UpdateWatchFrame(instanceId)
-                                        end
-                                    end
-                                end,
-                                order = 22,
-                            },
-                            objectiveCompleteColor = {
-                                type = "color",
-                                name = "Objective Complete Color",
-                                desc = "Color for bosses/objectives that are killed/completed",
-                                hasAlpha = false,
-                                get = function()
-                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.objectiveCompleteColor
-                                    if color then
-                                        return color[1], color[2], color[3]
-                                    end
-                                    return 0.7, 1, 0.7
-                                end,
-                                set = function(_, r, g, b)
-                                    if not KOL.db.profile.tracker then
-                                        KOL.db.profile.tracker = {}
-                                    end
-                                    KOL.db.profile.tracker.objectiveCompleteColor = {r, g, b}
-                                    -- Refresh all active frames
-                                    if KOL.Tracker then
-                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
-                                            KOL.Tracker:UpdateWatchFrame(instanceId)
-                                        end
-                                    end
-                                end,
-                                order = 23,
-                            },
-                            spacerColors = {
-                                type = "description",
-                                name = " ",
-                                order = 24,
-                            },
+
+                            -- ================================================================
+                            -- FONT SETTINGS SECTION
+                            -- ================================================================
                             fontHeader = {
-                                type = "header",
-                                name = "Fonts",
-                                order = 25,
+                                type = "description",
+                                name = "FONT SETTINGS|1.0,0.5,0.0",
+                                dialogControl = "KOL_SectionHeader",
+                                width = "full",
+                                order = 20,
                             },
                             globalFont = {
                                 type = "select",
@@ -1301,19 +1362,18 @@ function KOL:InitializeUI()
                                         KOL.db.profile.tracker = {}
                                     end
                                     KOL.db.profile.tracker.baseFont = value
-                                    -- Refresh all active frames
                                     if KOL.Tracker then
                                         for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
                                             KOL.Tracker:UpdateWatchFrame(instanceId)
                                         end
                                     end
                                 end,
-                                order = 26,
                                 width = "double",
+                                order = 21,
                             },
                             fontScale = {
                                 type = "range",
-                                name = "Font Scale (All Content)",
+                                name = "Font Scale",
                                 desc = "Scale multiplier for all tracker fonts",
                                 min = 0.5,
                                 max = 2.0,
@@ -1326,25 +1386,24 @@ function KOL:InitializeUI()
                                         KOL.db.profile.tracker = {}
                                     end
                                     KOL.db.profile.tracker.fontScale = value
-                                    -- Refresh all active frames
                                     if KOL.Tracker then
                                         for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
                                             KOL.Tracker:UpdateWatchFrame(instanceId)
                                         end
                                     end
                                 end,
-                                order = 27,
-                                width = "full",
+                                width = "double",
+                                order = 22,
                             },
-                            spacerFonts1 = {
+                            fontSettingsDesc = {
                                 type = "description",
-                                name = "\n|cFFFFFFFFSpecific Font Settings:|r",
-                                order = 28,
+                                name = "\n|cFF888888Title Bar|r",
+                                order = 23,
                             },
                             titleFont = {
                                 type = "select",
-                                name = "Title Bar Font",
-                                desc = "Font for instance title bar (leave empty to use Global Font)",
+                                name = "Font",
+                                desc = "Font for instance title bar",
                                 dialogControl = "LSM30_Font",
                                 values = function()
                                     local fonts = LibStub("LibSharedMedia-3.0"):HashTable("font")
@@ -1359,20 +1418,19 @@ function KOL:InitializeUI()
                                         KOL.db.profile.tracker = {}
                                     end
                                     KOL.db.profile.tracker.titleFont = (value ~= "" and value or nil)
-                                    -- Refresh all active frames
                                     if KOL.Tracker then
                                         for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
                                             KOL.Tracker:UpdateWatchFrame(instanceId)
                                         end
                                     end
                                 end,
-                                order = 29,
-                                width = "double",
+                                width = "normal",
+                                order = 24,
                             },
                             titleFontSize = {
                                 type = "range",
-                                name = "Title Bar Size",
-                                desc = "Font size for title bar (0 = auto, min: 8, max: 32)",
+                                name = "Size",
+                                desc = "Font size for title bar (0 = auto)",
                                 min = 0,
                                 max = 32,
                                 step = 1,
@@ -1384,26 +1442,23 @@ function KOL:InitializeUI()
                                         KOL.db.profile.tracker = {}
                                     end
                                     KOL.db.profile.tracker.titleFontSize = (value > 0 and value or nil)
-                                    -- Refresh all active frames
                                     if KOL.Tracker then
                                         for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
                                             KOL.Tracker:UpdateWatchFrame(instanceId)
                                         end
                                     end
                                 end,
-                                order = 29,
-                                width = "normal",
+                                width = "half",
+                                order = 25,
                             },
                             titleFontOutline = {
                                 type = "select",
-                                name = "Title Bar Outline",
+                                name = "Outline",
                                 desc = "Font outline for title bar",
                                 values = {
                                     ["NONE"] = "None",
                                     ["OUTLINE"] = "Outline",
-                                    ["THICKOUTLINE"] = "Thick Outline",
-                                    ["MONOCHROME"] = "Monochrome",
-                                    ["OUTLINE, MONOCHROME"] = "Outline + Monochrome",
+                                    ["THICKOUTLINE"] = "Thick",
                                 },
                                 get = function()
                                     return (KOL.db.profile.tracker and KOL.db.profile.tracker.titleFontOutline) or "OUTLINE"
@@ -1413,20 +1468,24 @@ function KOL:InitializeUI()
                                         KOL.db.profile.tracker = {}
                                     end
                                     KOL.db.profile.tracker.titleFontOutline = value
-                                    -- Refresh all active frames
                                     if KOL.Tracker then
                                         for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
                                             KOL.Tracker:UpdateWatchFrame(instanceId)
                                         end
                                     end
                                 end,
-                                order = 29.5,
-                                width = "normal",
+                                width = "half",
+                                order = 26,
+                            },
+                            groupFontDesc = {
+                                type = "description",
+                                name = "\n|cFF888888Group Headers|r",
+                                order = 27,
                             },
                             groupFont = {
                                 type = "select",
-                                name = "Group Header Font",
-                                desc = "Font for group headers (leave empty to use Global Font)",
+                                name = "Font",
+                                desc = "Font for group headers",
                                 dialogControl = "LSM30_Font",
                                 values = function()
                                     local fonts = LibStub("LibSharedMedia-3.0"):HashTable("font")
@@ -1441,20 +1500,19 @@ function KOL:InitializeUI()
                                         KOL.db.profile.tracker = {}
                                     end
                                     KOL.db.profile.tracker.groupFont = (value ~= "" and value or nil)
-                                    -- Refresh all active frames
                                     if KOL.Tracker then
                                         for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
                                             KOL.Tracker:UpdateWatchFrame(instanceId)
                                         end
                                     end
                                 end,
-                                order = 30,
-                                width = "double",
+                                width = "normal",
+                                order = 28,
                             },
                             groupFontSize = {
                                 type = "range",
-                                name = "Group Header Size",
-                                desc = "Font size for group headers (0 = auto, min: 8, max: 32)",
+                                name = "Size",
+                                desc = "Font size for group headers (0 = auto)",
                                 min = 0,
                                 max = 32,
                                 step = 1,
@@ -1466,26 +1524,23 @@ function KOL:InitializeUI()
                                         KOL.db.profile.tracker = {}
                                     end
                                     KOL.db.profile.tracker.groupFontSize = (value > 0 and value or nil)
-                                    -- Refresh all active frames
                                     if KOL.Tracker then
                                         for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
                                             KOL.Tracker:UpdateWatchFrame(instanceId)
                                         end
                                     end
                                 end,
-                                order = 31,
-                                width = "normal",
+                                width = "half",
+                                order = 29,
                             },
                             groupFontOutline = {
                                 type = "select",
-                                name = "Group Header Outline",
+                                name = "Outline",
                                 desc = "Font outline for group headers",
                                 values = {
                                     ["NONE"] = "None",
                                     ["OUTLINE"] = "Outline",
-                                    ["THICKOUTLINE"] = "Thick Outline",
-                                    ["MONOCHROME"] = "Monochrome",
-                                    ["OUTLINE, MONOCHROME"] = "Outline + Monochrome",
+                                    ["THICKOUTLINE"] = "Thick",
                                 },
                                 get = function()
                                     return (KOL.db.profile.tracker and KOL.db.profile.tracker.groupFontOutline) or "OUTLINE"
@@ -1495,20 +1550,24 @@ function KOL:InitializeUI()
                                         KOL.db.profile.tracker = {}
                                     end
                                     KOL.db.profile.tracker.groupFontOutline = value
-                                    -- Refresh all active frames
                                     if KOL.Tracker then
                                         for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
                                             KOL.Tracker:UpdateWatchFrame(instanceId)
                                         end
                                     end
                                 end,
-                                order = 31.5,
-                                width = "normal",
+                                width = "half",
+                                order = 30,
+                            },
+                            objectiveFontDesc = {
+                                type = "description",
+                                name = "\n|cFF888888Objectives|r",
+                                order = 31,
                             },
                             objectiveFont = {
                                 type = "select",
-                                name = "Objective Font",
-                                desc = "Font for boss names and objectives (leave empty to use Global Font)",
+                                name = "Font",
+                                desc = "Font for boss names and objectives",
                                 dialogControl = "LSM30_Font",
                                 values = function()
                                     local fonts = LibStub("LibSharedMedia-3.0"):HashTable("font")
@@ -1523,20 +1582,19 @@ function KOL:InitializeUI()
                                         KOL.db.profile.tracker = {}
                                     end
                                     KOL.db.profile.tracker.objectiveFont = (value ~= "" and value or nil)
-                                    -- Refresh all active frames
                                     if KOL.Tracker then
                                         for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
                                             KOL.Tracker:UpdateWatchFrame(instanceId)
                                         end
                                     end
                                 end,
+                                width = "normal",
                                 order = 32,
-                                width = "double",
                             },
                             objectiveFontSize = {
                                 type = "range",
-                                name = "Objective Size",
-                                desc = "Font size for boss names and objectives (0 = auto, min: 8, max: 32)",
+                                name = "Size",
+                                desc = "Font size for objectives (0 = auto)",
                                 min = 0,
                                 max = 32,
                                 step = 1,
@@ -1548,26 +1606,23 @@ function KOL:InitializeUI()
                                         KOL.db.profile.tracker = {}
                                     end
                                     KOL.db.profile.tracker.objectiveFontSize = (value > 0 and value or nil)
-                                    -- Refresh all active frames
                                     if KOL.Tracker then
                                         for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
                                             KOL.Tracker:UpdateWatchFrame(instanceId)
                                         end
                                     end
                                 end,
+                                width = "half",
                                 order = 33,
-                                width = "normal",
                             },
                             objectiveFontOutline = {
                                 type = "select",
-                                name = "Objective Outline",
-                                desc = "Font outline for boss names and objectives",
+                                name = "Outline",
+                                desc = "Font outline for objectives",
                                 values = {
                                     ["NONE"] = "None",
                                     ["OUTLINE"] = "Outline",
-                                    ["THICKOUTLINE"] = "Thick Outline",
-                                    ["MONOCHROME"] = "Monochrome",
-                                    ["OUTLINE, MONOCHROME"] = "Outline + Monochrome",
+                                    ["THICKOUTLINE"] = "Thick",
                                 },
                                 get = function()
                                     return (KOL.db.profile.tracker and KOL.db.profile.tracker.objectiveFontOutline) or "OUTLINE"
@@ -1577,25 +1632,166 @@ function KOL:InitializeUI()
                                         KOL.db.profile.tracker = {}
                                     end
                                     KOL.db.profile.tracker.objectiveFontOutline = value
-                                    -- Refresh all active frames
                                     if KOL.Tracker then
                                         for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
                                             KOL.Tracker:UpdateWatchFrame(instanceId)
                                         end
                                     end
                                 end,
-                                order = 33.5,
-                                width = "normal",
-                            },
-                            spacer2 = {
-                                type = "description",
-                                name = " ",
+                                width = "half",
                                 order = 34,
                             },
-                            resetHeader = {
-                                type = "header",
-                                name = "Reset Progress",
-                                order = 28,
+
+                            -- ================================================================
+                            -- COLORS SECTION
+                            -- ================================================================
+                            colorHeader = {
+                                type = "description",
+                                name = "COLORS|1.0,0.3,0.7",
+                                dialogControl = "KOL_SectionHeader",
+                                width = "full",
+                                order = 40,
+                            },
+                            titleFontColor = {
+                                type = "color",
+                                name = "Title",
+                                desc = "Color for the instance title text",
+                                hasAlpha = false,
+                                get = function()
+                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.titleFontColor
+                                    if color then
+                                        return color[1], color[2], color[3]
+                                    end
+                                    return 0.7, 0.9, 1
+                                end,
+                                set = function(_, r, g, b)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.titleFontColor = {r, g, b}
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                width = "half",
+                                order = 41,
+                            },
+                            objectiveIncompleteColor = {
+                                type = "color",
+                                name = "Objective Incomplete",
+                                desc = "Color for bosses/objectives that are not yet completed",
+                                hasAlpha = false,
+                                get = function()
+                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.objectiveIncompleteColor
+                                    if color then
+                                        return color[1], color[2], color[3]
+                                    end
+                                    return 1, 0.6, 0.6
+                                end,
+                                set = function(_, r, g, b)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.objectiveIncompleteColor = {r, g, b}
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                width = "normal",
+                                order = 42,
+                            },
+                            objectiveCompleteColor = {
+                                type = "color",
+                                name = "Objective Complete",
+                                desc = "Color for bosses/objectives that are completed",
+                                hasAlpha = false,
+                                get = function()
+                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.objectiveCompleteColor
+                                    if color then
+                                        return color[1], color[2], color[3]
+                                    end
+                                    return 0.7, 1, 0.7
+                                end,
+                                set = function(_, r, g, b)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.objectiveCompleteColor = {r, g, b}
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                width = "normal",
+                                order = 43,
+                            },
+                            groupIncompleteColor = {
+                                type = "color",
+                                name = "Group Incomplete",
+                                desc = "Color for group headers when not all objectives are done",
+                                hasAlpha = false,
+                                get = function()
+                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.groupIncompleteColor
+                                    if color then
+                                        return color[1], color[2], color[3]
+                                    end
+                                    return 0.7, 0.9, 1
+                                end,
+                                set = function(_, r, g, b)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.groupIncompleteColor = {r, g, b}
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                width = "normal",
+                                order = 44,
+                            },
+                            groupCompleteColor = {
+                                type = "color",
+                                name = "Group Complete",
+                                desc = "Color for group headers when all objectives are done",
+                                hasAlpha = false,
+                                get = function()
+                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.groupCompleteColor
+                                    if color then
+                                        return color[1], color[2], color[3]
+                                    end
+                                    return 0.75, 1, 0.75
+                                end,
+                                set = function(_, r, g, b)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.groupCompleteColor = {r, g, b}
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                width = "normal",
+                                order = 45,
+                            },
+
+                            -- ================================================================
+                            -- ACTIONS SECTION
+                            -- ================================================================
+                            actionsHeader = {
+                                type = "description",
+                                name = "ACTIONS|1.0,0.1,0.1",
+                                dialogControl = "KOL_SectionHeader",
+                                width = "full",
+                                order = 50,
                             },
                             resetAll = {
                                 type = "execute",
@@ -1606,38 +1802,11 @@ function KOL:InitializeUI()
                                         KOL.Tracker:ResetAll()
                                     end
                                 end,
-                                width = "full",
-                                order = 23,
+                                width = "double",
+                                order = 51,
                                 confirm = function()
                                     return "Are you sure you want to reset ALL boss kill tracking? This cannot be undone."
                                 end,
-                            },
-                            spacer3 = {
-                                type = "description",
-                                name = " ",
-                                order = 24,
-                            },
-                            infoHeader = {
-                                type = "header",
-                                name = "About Progress Tracker",
-                                order = 25,
-                            },
-                            info = {
-                                type = "description",
-                                name = "|cFFAAAAFFThe Progress Tracker automatically tracks your dungeon and raid boss kills.\n\n" ..
-                                      "|cFFFFFFFF• Auto-Show|r - Watch frames appear when entering tracked zones\n" ..
-                                      "|cFFFFFF• Draggable|r - Drag from title text to move frames\n" ..
-                                      "|cFFFFFFFF• Minimize|r - Double-click title text to collapse frames\n" ..
-                                      "|cFFFFFFFF• Boss Detection|r - Automatically detects boss kills via combat log\n" ..
-                                      "|cFFFFFFFF• Zone Detection|r - Matches main zone and subzone names\n\n" ..
-                                      "|cFFFF8888Commands:|r\n" ..
-                                      "|cFFCCCCCC/kol tracker list|r - List all registered instances\n" ..
-                                      "|cFFCCCCCC/kol tracker zone|r - Show current zone info\n" ..
-                                      "|cFFCCCCCC/kol tracker test|r - Show test watch frame\n" ..
-                                      "|cFFCCCCCC/kol tracker reset|r - Reset all boss kills\n" ..
-                                      "|cFFCCCCCC/kol tracker refresh|r - Refresh watch frames (after fontScale change)|r",
-                                fontSize = "medium",
-                                order = 26,
                             },
                         }
                     },
@@ -2422,6 +2591,13 @@ function KOL:PopulateTrackerConfigUI()
                                         -- Also set the old values for compatibility
                                         SetInstanceSetting(instanceId, "hideUI", value)
                                         SetInstanceSetting(instanceId, "showUIOnMouseover", value)
+                                        -- Immediately apply to this specific frame
+                                        if KOL.Tracker and KOL.Tracker.activeFrames and KOL.Tracker.activeFrames[instanceId] then
+                                            local frame = KOL.Tracker.activeFrames[instanceId]
+                                            if frame.UpdateUIVisibility then
+                                                frame.UpdateUIVisibility(MouseIsOver(frame))
+                                            end
+                                        end
                                     end,
                                     width = "full",
                                     order = 5,
@@ -3276,6 +3452,13 @@ function KOL:PopulateTrackerConfigUI()
                                 SetInstanceSetting(instanceId, "hideUI", value)
                                 SetInstanceSetting(instanceId, "showUIOnMouseover", value)
                                 KOL:PrintTag(data.name .. " Show BG on hover: " .. (value and GREEN("Enabled") or RED("Disabled")))
+                                -- Immediately apply to this specific frame
+                                if KOL.Tracker and KOL.Tracker.activeFrames and KOL.Tracker.activeFrames[instanceId] then
+                                    local frame = KOL.Tracker.activeFrames[instanceId]
+                                    if frame.UpdateUIVisibility then
+                                        frame.UpdateUIVisibility(MouseIsOver(frame))
+                                    end
+                                end
                             end,
                             width = "full",
                             order = 1,
