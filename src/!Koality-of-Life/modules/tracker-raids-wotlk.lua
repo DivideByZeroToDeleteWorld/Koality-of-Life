@@ -256,10 +256,7 @@ KOL.Tracker:RegisterInstance("uld_10", {
                     name = "Flame Leviathan",
                     id = 33113,
                     hardmode = {
-                        yells = {
-                            "Systems overload in 5",
-                            "Circuit overload",
-                        }
+                        spells = {65075, 65076, 65077, 64482},  -- Tower buffs: Flames, Storms, Frost, Life
                     }
                 },
                 {name = "Razorscale", id = 33186},
@@ -268,9 +265,7 @@ KOL.Tracker:RegisterInstance("uld_10", {
                     name = "XT-002 Deconstructor",
                     id = 33293,
                     hardmode = {
-                        yells = {
-                            "heart is exposed",
-                        }
+                        spells = {64193},  -- Heartbreak buff - XT-002 gains this when Heart is destroyed
                     }
                 },
             }
@@ -284,8 +279,8 @@ KOL.Tracker:RegisterInstance("uld_10", {
                     id = {32867, 32927, 32857},  -- Steelbreaker, Runemaster Molgeim, Stormcaller Brundir
                     multiKill = {"Steelbreaker", "Runemaster Molgeim", "Stormcaller Brundir"},
                     hardmode = {
-                        yells = {
-                            "Molgeim, Brundir, your defiance ends here",
+                        killOrder = {
+                            lastKill = 32867,  -- Steelbreaker must die last for hardmode
                         }
                     }
                 },
@@ -309,7 +304,7 @@ KOL.Tracker:RegisterInstance("uld_10", {
                     yell = "Stay your arms! I yield!",
                     hardmode = {
                         yells = {
-                            "Sif, they",
+                            "I will bring your foes a frigid death",  -- Sif's yell when hardmode activates
                         }
                     }
                 },
@@ -320,7 +315,7 @@ KOL.Tracker:RegisterInstance("uld_10", {
                     yell = "His hold on me dissipates. I can see clearly once more. Thank you, heroes.",
                     hardmode = {
                         yells = {
-                            "Nature's Fury is no match",
+                            "Elders grant me your strength",  -- Pull yell when elders are alive (hardmode)
                         }
                     }
                 },
@@ -332,6 +327,10 @@ KOL.Tracker:RegisterInstance("uld_10", {
                     hardmode = {
                         interactions = {
                             {objectId = 194739},
+                        },
+                        yells = {
+                            "Self-destruct sequence initiated",  -- Computer yell when button is pressed
+                            "DO NOT PUSH THIS BUTTON",  -- Part of Mimiron's yell
                         }
                     }
                 },
@@ -344,19 +343,18 @@ KOL.Tracker:RegisterInstance("uld_10", {
                     name = "General Vezax",
                     id = 33271,
                     hardmode = {
-                        yells = {
-                            "Behold the armies",
-                        }
+                        spells = {63364},  -- Saronite Animus spawn
                     }
                 },
                 {
                     name = "Yogg-Saron",
+                    type = "yell",
                     id = 33288,
-                    hardmode = {
-                        yells = {
-                            "Impossible!",
-                        }
-                    }
+                    yell = "Your fate is sealed",
+                    useBackup = true,
+                    backupType = "kill",
+                    backupID = 33288,
+                    -- Hardmode determined by keeper count at fight start, no reliable trigger
                 },
             }
         },
@@ -387,10 +385,7 @@ KOL.Tracker:RegisterInstance("uld_25", {
                     name = "Flame Leviathan",
                     id = 33113,
                     hardmode = {
-                        yells = {
-                            "Systems overload in 5",
-                            "Circuit overload",
-                        }
+                        spells = {65075, 65076, 65077, 64482},  -- Tower buffs: Flames, Storms, Frost, Life
                     }
                 },
                 {name = "Razorscale", id = 33186},
@@ -399,9 +394,7 @@ KOL.Tracker:RegisterInstance("uld_25", {
                     name = "XT-002 Deconstructor",
                     id = 33293,
                     hardmode = {
-                        yells = {
-                            "heart is exposed",
-                        }
+                        spells = {64193},  -- Heartbreak buff - XT-002 gains this when Heart is destroyed
                     }
                 },
             }
@@ -415,8 +408,8 @@ KOL.Tracker:RegisterInstance("uld_25", {
                     id = {32867, 32927, 32857},  -- Steelbreaker, Runemaster Molgeim, Stormcaller Brundir
                     multiKill = {"Steelbreaker", "Runemaster Molgeim", "Stormcaller Brundir"},
                     hardmode = {
-                        yells = {
-                            "Molgeim, Brundir, your defiance ends here",
+                        killOrder = {
+                            lastKill = 32867,  -- Steelbreaker must die last for hardmode
                         }
                     }
                 },
@@ -440,7 +433,7 @@ KOL.Tracker:RegisterInstance("uld_25", {
                     yell = "Stay your arms! I yield!",
                     hardmode = {
                         yells = {
-                            "Sif, they",
+                            "I will bring your foes a frigid death",  -- Sif's yell when hardmode activates
                         }
                     }
                 },
@@ -451,7 +444,7 @@ KOL.Tracker:RegisterInstance("uld_25", {
                     yell = "His hold on me dissipates. I can see clearly once more. Thank you, heroes.",
                     hardmode = {
                         yells = {
-                            "Nature's Fury is no match",
+                            "Elders grant me your strength",  -- Pull yell when elders are alive (hardmode)
                         }
                     }
                 },
@@ -463,6 +456,10 @@ KOL.Tracker:RegisterInstance("uld_25", {
                     hardmode = {
                         interactions = {
                             {objectId = 194739},
+                        },
+                        yells = {
+                            "Self-destruct sequence initiated",  -- Computer yell when button is pressed
+                            "DO NOT PUSH THIS BUTTON",  -- Part of Mimiron's yell
                         }
                     }
                 },
@@ -475,19 +472,18 @@ KOL.Tracker:RegisterInstance("uld_25", {
                     name = "General Vezax",
                     id = 33271,
                     hardmode = {
-                        yells = {
-                            "Behold the armies",
-                        }
+                        spells = {63364},  -- Saronite Animus spawn
                     }
                 },
                 {
                     name = "Yogg-Saron",
+                    type = "yell",
                     id = 33288,
-                    hardmode = {
-                        yells = {
-                            "Impossible!",
-                        }
-                    }
+                    yell = "Your fate is sealed",
+                    useBackup = true,
+                    backupType = "kill",
+                    backupID = 33288,
+                    -- Hardmode determined by keeper count at fight start, no reliable trigger
                 },
             }
         },

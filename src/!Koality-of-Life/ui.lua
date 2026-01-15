@@ -149,6 +149,15 @@ function KOL:InitializeUI()
                                 width = 1.0,
                                 order = 1.2,
                             },
+                            showPrints = {
+                                type = "toggle",
+                                name = "Show Chat Messages",
+                                desc = "Show addon status messages in chat (boss kills, quarter completions, etc.)",
+                                get = function() return self.db.profile.showPrints ~= false end,
+                                set = function(_, value) self.db.profile.showPrints = value end,
+                                width = 1.0,
+                                order = 1.3,
+                            },
                             spacer1 = {
                                 type = "description",
                                 name = "\n",
@@ -1483,6 +1492,30 @@ function KOL:InitializeUI()
                                 width = 0.85,
                                 order = 26,
                             },
+                            titleBarHeight = {
+                                type = "range",
+                                name = "Title Bar Height",
+                                desc = "Height of the title bar in pixels",
+                                min = 16,
+                                max = 48,
+                                step = 1,
+                                get = function()
+                                    return (KOL.db.profile.tracker and KOL.db.profile.tracker.titleBarHeight) or 28
+                                end,
+                                set = function(_, value)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.titleBarHeight = value
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                width = "double",
+                                order = 26.5,
+                            },
                             groupFontDesc = {
                                 type = "description",
                                 name = "\n|cFF888888Group Headers|r",
@@ -1876,7 +1909,60 @@ function KOL:InitializeUI()
                                 width = 1,
                                 order = 48,
                             },
-                            -- Row 5: Scrollbar BG + Scrollbar Thumb
+                            -- Row 5: Hardmode Incomplete + Hardmode Complete
+                            hardmodeIncompleteColor = {
+                                type = "color",
+                                name = "Hardmode Incomplete",
+                                desc = "Color for bosses with hardmode available but not yet triggered",
+                                hasAlpha = false,
+                                get = function()
+                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.hardmodeIncompleteColor
+                                    if color then
+                                        return color[1], color[2], color[3]
+                                    end
+                                    return 1.0, 0.6, 1.0  -- FF99FF - matches red incomplete pattern
+                                end,
+                                set = function(_, r, g, b)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.hardmodeIncompleteColor = {r, g, b}
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                width = 1,
+                                order = 49,
+                            },
+                            hardmodeCompleteColor = {
+                                type = "color",
+                                name = "Hardmode Complete",
+                                desc = "Color for bosses killed in hardmode",
+                                hasAlpha = false,
+                                get = function()
+                                    local color = KOL.db.profile.tracker and KOL.db.profile.tracker.hardmodeCompleteColor
+                                    if color then
+                                        return color[1], color[2], color[3]
+                                    end
+                                    return 0.7, 0.7, 1.0  -- B3B3FF - matches green complete pattern
+                                end,
+                                set = function(_, r, g, b)
+                                    if not KOL.db.profile.tracker then
+                                        KOL.db.profile.tracker = {}
+                                    end
+                                    KOL.db.profile.tracker.hardmodeCompleteColor = {r, g, b}
+                                    if KOL.Tracker then
+                                        for instanceId, _ in pairs(KOL.Tracker.activeFrames) do
+                                            KOL.Tracker:UpdateWatchFrame(instanceId)
+                                        end
+                                    end
+                                end,
+                                width = 1,
+                                order = 50,
+                            },
+                            -- Row 6: Scrollbar BG + Scrollbar Thumb
                             scrollBarColor = {
                                 type = "color",
                                 name = "Scrollbar BG",
@@ -2733,6 +2819,19 @@ function KOL:PopulateTrackerConfigUI()
                                         SetInstanceSetting(instanceId, "frameHeight", value)
                                     end,
                                     order = 2,
+                                },
+                                titleBarHeight = {
+                                    type = "range",
+                                    name = "Title Bar Height",
+                                    desc = "Override title bar height (0 = use global setting)",
+                                    min = 0,
+                                    max = 48,
+                                    step = 1,
+                                    get = function() return GetInstanceSetting(instanceId, "titleBarHeight", 0) end,
+                                    set = function(_, value)
+                                        SetInstanceSetting(instanceId, "titleBarHeight", value == 0 and nil or value)
+                                    end,
+                                    order = 2.5,
                                 },
                                 showScrollBar = {
                                     type = "select",
@@ -3711,6 +3810,22 @@ function KOL:PopulateTrackerConfigUI()
                                 end
                             end,
                             order = 2,
+                        },
+                        titleBarHeight = {
+                            type = "range",
+                            name = "Title Bar Height",
+                            desc = "Override title bar height (0 = use global setting)",
+                            min = 0,
+                            max = 48,
+                            step = 1,
+                            get = function() return GetInstanceSetting(instanceId, "titleBarHeight", 0) end,
+                            set = function(_, value)
+                                SetInstanceSetting(instanceId, "titleBarHeight", value == 0 and nil or value)
+                                if KOL.Tracker and KOL.Tracker.UpdateWatchFrame then
+                                    KOL.Tracker:UpdateWatchFrame(instanceId)
+                                end
+                            end,
+                            order = 2.5,
                         },
                         scrollBarWidth = {
                             type = "range",

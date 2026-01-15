@@ -57,6 +57,10 @@ Tracker.multiNPCKills = {}
 -- Format: [instanceId][bossId] = killCount
 Tracker.multiPhaseKills = {}
 
+-- Kill order tracking (for hardmodes that depend on kill order, e.g., Assembly of Iron)
+-- Format: [instanceId][bossId] = {npcId1, npcId2, ...} (order of deaths)
+Tracker.killOrderTracking = {}
+
 -- Instance lockout IDs (to detect resets)
 -- Format: [instanceId] = lockoutInstanceID
 Tracker.instanceLockouts = {}
@@ -160,6 +164,7 @@ function Tracker:ReleaseButton(btn)
     -- Hide cached children
     if btn.cachedIcon then btn.cachedIcon:Hide() end
     if btn.cachedText then btn.cachedText:Hide() end
+    if btn.cachedHmGlyph then btn.cachedHmGlyph:Hide() end
     table.insert(self.framePools.buttons, btn)
 end
 
@@ -302,6 +307,18 @@ function Tracker:BuildDetectionLookups()
                     addNpcToLookup(id, instanceId, bossIndex, boss, groupIndex)
                 end
             end
+
+            -- Add backup detection ID if enabled (for bosses where primary detection might fail)
+            if boss.useBackup and boss.backupType == "kill" and boss.backupID then
+                if type(boss.backupID) == "table" then
+                    for _, id in ipairs(boss.backupID) do
+                        addNpcToLookup(id, instanceId, bossIndex, boss, groupIndex)
+                    end
+                else
+                    addNpcToLookup(boss.backupID, instanceId, bossIndex, boss, groupIndex)
+                end
+                KOL:DebugPrint("Tracker: Added backup detection for " .. boss.name .. " [backupID=" .. tostring(boss.backupID) .. "]", 3)
+            end
         end
 
         -- Check flat bosses list
@@ -369,8 +386,8 @@ function Tracker:InitializeDetectionHandlers()
     -- Cast detection handler (SPELL_CAST_START, SPELL_CAST_SUCCESS)
     self:RegisterDetectionHandler("cast", {"SPELL_CAST_START", "SPELL_CAST_SUCCESS"}, function(self, args)
         local eventType = args[2]
-        local spellId = args[10]  -- WotLK 3.3.5: arg10 is spellId for spell events
-        local spellName = args[11]
+        local spellId = args[9]   -- WotLK 3.3.5: args[9] is spellId for spell events
+        local spellName = args[10]
 
         if not spellId then return end
 
@@ -389,8 +406,8 @@ function Tracker:InitializeDetectionHandlers()
     -- Buff detection handler (SPELL_AURA_APPLIED)
     self:RegisterDetectionHandler("buff", {"SPELL_AURA_APPLIED"}, function(self, args)
         local eventType = args[2]
-        local spellId = args[10]
-        local spellName = args[11]
+        local spellId = args[9]
+        local spellName = args[10]
 
         if not spellId then return end
 
@@ -501,11 +518,45 @@ function Tracker:Initialize()
     end
     end
 
-    -- Load boss kills from DB
-    self.bossKills = KOL.db.profile.tracker.bossKills or {}
-    self.multiNPCKills = KOL.db.profile.tracker.multiNPCKills or {}
-    self.multiPhaseKills = KOL.db.profile.tracker.multiPhaseKills or {}
-    self.hardmodeActive = KOL.db.profile.tracker.hardmodeActive or {}
+    -- Ensure kill tracking tables exist (for existing users upgrading)
+    -- AceDB doesn't add new defaults to existing profiles, so we must create them manually
+    if not KOL.db.profile.tracker.bossKills then
+        KOL.db.profile.tracker.bossKills = {}
+        KOL:DebugPrint("Tracker: Created bossKills table (new field for existing user)", 2)
+    end
+    if not KOL.db.profile.tracker.multiNPCKills then
+        KOL.db.profile.tracker.multiNPCKills = {}
+    end
+    if not KOL.db.profile.tracker.multiPhaseKills then
+        KOL.db.profile.tracker.multiPhaseKills = {}
+    end
+    if not KOL.db.profile.tracker.hardmodeActive then
+        KOL.db.profile.tracker.hardmodeActive = {}
+    end
+
+    -- Reference the DB tables directly so any changes are automatically persisted
+    self.bossKills = KOL.db.profile.tracker.bossKills
+    self.multiNPCKills = KOL.db.profile.tracker.multiNPCKills
+    self.multiPhaseKills = KOL.db.profile.tracker.multiPhaseKills
+    self.hardmodeActive = KOL.db.profile.tracker.hardmodeActive
+
+    -- Debug: Log what we loaded from the DB (level 1 so it's always visible in debug mode)
+    local killCount = 0
+    for instanceId, kills in pairs(self.bossKills) do
+        for bossId, _ in pairs(kills) do
+            killCount = killCount + 1
+        end
+    end
+    KOL:DebugPrint("Tracker: Loaded " .. killCount .. " boss kills from SavedVariables", 1)
+    if killCount > 0 then
+        for instanceId, kills in pairs(self.bossKills) do
+            local instanceKills = 0
+            for _ in pairs(kills) do instanceKills = instanceKills + 1 end
+            if instanceKills > 0 then
+                KOL:DebugPrint("  -> " .. instanceId .. ": " .. instanceKills .. " kills", 1)
+            end
+        end
+    end
 
     -- IMPORTANT: instanceLockouts are SESSION-ONLY (not persisted)
     -- GUID-based instance IDs change on /reload, so persisting them causes false resets
@@ -523,6 +574,7 @@ function Tracker:Initialize()
     if not KOL.db.profile.tracker.collapsedGroups then
         KOL.db.profile.tracker.collapsedGroups = {}
     end
+    self.collapsedGroups = KOL.db.profile.tracker.collapsedGroups
 
     -- Initialize entry progress tracking (for count-based objectives)
     -- Structure: entryProgress[instanceId][entryId] = currentCount
@@ -542,6 +594,9 @@ function Tracker:Initialize()
 
     -- Register event handlers
     self:RegisterEvents()
+
+    -- Hook ResetInstances to detect manual resets
+    self:HookResetInstances()
 
     -- Start dungeon challenge update ticker (updates every 0.5 seconds)
     self:StartDungeonChallengeUpdates()
@@ -656,19 +711,37 @@ function Tracker:GetBossName(boss)
     return boss.name or "Unknown"
 end
 
+-- Get hardmode color for a boss (returns hex string or nil if not hardmode)
+-- Used for both text and glyph coloring
+function Tracker:GetHardmodeColor(instanceId, bossIndex, boss)
+    -- Only process if boss supports hardmode AND hardmode is active
+    if not boss or not boss.hardmode then
+        return nil
+    end
+
+    if not self:IsBossHardmode(instanceId, bossIndex) then
+        return nil
+    end
+
+    -- Hardmode is active - get complete color from config
+    local configColor = KOL.db.profile.tracker and KOL.db.profile.tracker.hardmodeCompleteColor
+    local color = configColor or {0.7, 0.7, 1.0}  -- Default: B3B3FF (matches green complete)
+
+    return string.format("%02X%02X%02X",
+        math.floor(color[1] * 255),
+        math.floor(color[2] * 255),
+        math.floor(color[3] * 255))
+end
+
 -- Get formatted boss name with hardmode indicator if active
--- Only shows (HM) if the boss actually has a hardmode definition in the data
+-- Returns boss name with (HM) suffix if hardmode - glyph is added separately in rendering
 function Tracker:GetBossNameWithHardmode(instanceId, bossIndex, boss)
     local bossName = self:GetBossName(boss)
 
-    -- Only show hardmode indicator if the boss actually supports hardmode
-    -- (has a hardmode definition in its data) AND is currently in hardmode
-    if boss and boss.hardmode and self:IsBossHardmode(instanceId, bossIndex) then
-        local nuclearPurple = "CC66FF"  -- Nuclear purple
-        if KOL.Colors and KOL.Colors.GetNuclear then
-            nuclearPurple = KOL.Colors:GetNuclear("PURPLE") or nuclearPurple
-        end
-        return bossName .. " |cFF" .. nuclearPurple .. "(HM)|r"
+    local hmColor = self:GetHardmodeColor(instanceId, bossIndex, boss)
+    if hmColor then
+        -- Hardmode active - return colored name with (HM) suffix (glyph added separately)
+        return "|cFF" .. hmColor .. bossName .. " (HM)|r"
     end
 
     return bossName
@@ -803,7 +876,12 @@ function Tracker:MarkBossHardmode(instanceId, bossIndex)
     -- Save to DB
     KOL.db.profile.tracker.hardmodeActive = self.hardmodeActive
 
-    KOL:DebugPrint("Tracker: Marked boss " .. bossIndex .. " as hardmode in " .. instanceId, 2)
+    KOL:DebugPrint("Tracker: Marked boss " .. bossIndex .. " as hardmode in " .. instanceId, 3)
+
+    -- Refresh watch frame to show (HM) indicator
+    if self.activeFrames and self.activeFrames[instanceId] then
+        self:UpdateWatchFrame(instanceId)
+    end
 end
 
 -- Clear hardmode status for a boss
@@ -816,32 +894,43 @@ function Tracker:ClearBossHardmode(instanceId, bossIndex)
     -- Save to DB
     KOL.db.profile.tracker.hardmodeActive = self.hardmodeActive
 
-    KOL:DebugPrint("Tracker: Cleared hardmode for boss " .. bossIndex .. " in " .. instanceId, 2)
+    KOL:DebugPrint("Tracker: Cleared hardmode for boss " .. bossIndex .. " in " .. instanceId, 3)
 end
 
 -- Clear all hardmode states for an instance
 function Tracker:ClearInstanceHardmodes(instanceId)
     self.hardmodeActive[instanceId] = {}
     KOL.db.profile.tracker.hardmodeActive = self.hardmodeActive
-    KOL:DebugPrint("Tracker: Cleared all hardmodes for " .. instanceId, 2)
+    KOL:DebugPrint("Tracker: Cleared all hardmodes for " .. instanceId, 3)
 end
 
 -- Detect hardmode activation based on boss configuration
 function Tracker:DetectHardmode(instanceId, bossIndex, triggerType, triggerData)
+    -- Skip if already marked as hardmode
+    if self:IsBossHardmode(instanceId, bossIndex) then
+        return
+    end
+
     local data = self.instances[instanceId]
-    if not data then return end
+    if not data then
+        return
+    end
 
     local boss
-    if data.bosses then
-        boss = data.bosses[bossIndex]
-    elseif data.groups then
-        -- Find boss in groups
-        for _, group in ipairs(data.groups) do
-            if group.bosses then
-                boss = group.bosses[bossIndex]
-                if boss then break end
+    -- Check grouped bosses first (most common for raids with hardmodes)
+    if data.groups and type(bossIndex) == "string" then
+        local groupIdx, bossIdx = bossIndex:match("g(%d+)%-b(%d+)")
+        if groupIdx and bossIdx then
+            groupIdx = tonumber(groupIdx)
+            bossIdx = tonumber(bossIdx)
+            if data.groups[groupIdx] and data.groups[groupIdx].bosses then
+                boss = data.groups[groupIdx].bosses[bossIdx]
             end
         end
+    end
+    -- Fallback to flat bosses
+    if not boss and data.bosses and type(bossIndex) == "number" then
+        boss = data.bosses[bossIndex]
     end
 
     if not boss or not boss.hardmode then
@@ -849,13 +938,15 @@ function Tracker:DetectHardmode(instanceId, bossIndex, triggerType, triggerData)
     end
 
     local hm = boss.hardmode
+    local bossName = self:GetBossName(boss)
 
     -- Check yell triggers
     if triggerType == "yell" and hm.yells then
+        KOL:DebugPrint("Hardmode check [yell]: " .. bossName, 3)
         for _, yellPattern in ipairs(hm.yells) do
             if triggerData and string.find(triggerData, yellPattern, 1, true) then
                 self:MarkBossHardmode(instanceId, bossIndex)
-                KOL:PrintTag("Hardmode activated: " .. self:GetBossName(boss) .. " ⚡")
+                KOL:Print("|cFFFF8800HARDMODE ACTIVATED:|r " .. bossName .. " |cFFFFFF00[yell: '" .. yellPattern .. "']|r")
                 self:RefreshAllWatchFrames()
                 return true
             end
@@ -864,10 +955,11 @@ function Tracker:DetectHardmode(instanceId, bossIndex, triggerType, triggerData)
 
     -- Check interaction triggers (button presses, etc)
     if triggerType == "interaction" and hm.interactions then
+        KOL:DebugPrint("Hardmode check [interaction]: " .. bossName .. " - objectId=" .. tostring(triggerData), 3)
         for _, interaction in ipairs(hm.interactions) do
             if triggerData == interaction.objectId or triggerData == interaction.gossipId then
                 self:MarkBossHardmode(instanceId, bossIndex)
-                KOL:PrintTag("Hardmode activated: " .. self:GetBossName(boss) .. " ⚡")
+                KOL:Print("|cFFFF8800HARDMODE ACTIVATED:|r " .. bossName .. " |cFFFFFF00[interaction]|r")
                 self:RefreshAllWatchFrames()
                 return true
             end
@@ -876,18 +968,46 @@ function Tracker:DetectHardmode(instanceId, bossIndex, triggerType, triggerData)
 
     -- Check spell triggers (specific spells cast = hardmode)
     if triggerType == "spell" and hm.spells then
+        KOL:DebugPrint("Hardmode check [spell]: " .. bossName .. " - spellId=" .. tostring(triggerData), 3)
         for _, spellId in ipairs(hm.spells) do
             if triggerData == spellId then
                 self:MarkBossHardmode(instanceId, bossIndex)
-                KOL:PrintTag("Hardmode activated: " .. self:GetBossName(boss) .. " ⚡")
+                KOL:Print("|cFFFF8800HARDMODE ACTIVATED:|r " .. bossName .. " |cFFFFFF00[spell: " .. spellId .. "]|r")
                 self:RefreshAllWatchFrames()
                 return true
             end
         end
     end
 
+    -- Check emote triggers (raid boss emotes/system messages)
+    if triggerType == "emote" and hm.emotes then
+        KOL:DebugPrint("Hardmode check [emote]: " .. bossName, 3)
+        for _, emotePattern in ipairs(hm.emotes) do
+            if triggerData and string.find(triggerData, emotePattern, 1, true) then
+                self:MarkBossHardmode(instanceId, bossIndex)
+                KOL:Print("|cFFFF8800HARDMODE ACTIVATED:|r " .. bossName .. " |cFFFFFF00[emote: '" .. emotePattern .. "']|r")
+                self:RefreshAllWatchFrames()
+                return true
+            end
+        end
+    end
+
+    -- Check kill order triggers (hardmode based on which NPC dies last)
+    -- triggerData should be the hardmode target NPC ID (the one that must die last)
+    if triggerType == "killOrder" and hm.killOrder then
+        KOL:DebugPrint("Hardmode check [killOrder]: " .. bossName .. " - npcId=" .. tostring(triggerData) .. ", target=" .. tostring(hm.killOrder.lastKill), 3)
+        local lastKillNpcId = triggerData
+        if lastKillNpcId == hm.killOrder.lastKill then
+            self:MarkBossHardmode(instanceId, bossIndex)
+            KOL:Print("|cFFFF8800HARDMODE ACTIVATED:|r " .. bossName .. " |cFFFFFF00[kill order]|r")
+            self:RefreshAllWatchFrames()
+            return true
+        end
+    end
+
     return false
 end
+
 
 -- Destroy a watch frame and free resources
 -- @param instanceId: Instance identifier
@@ -897,7 +1017,8 @@ function Tracker:DestroyWatchFrame(instanceId)
         return
     end
 
-    KOL:DebugPrint("Tracker: Destroying watch frame: " .. instanceId, 2)
+    -- ALERT: Print when frame is destroyed (force=true to always show)
+    KOL:PrintTag("|cFFFF8800DESTROY WATCH FRAME|r: " .. instanceId, true)
 
     -- Reset dungeon challenge state for this instance
     if self.dungeonChallengeState[instanceId] then
@@ -1021,9 +1142,14 @@ function Tracker:MarkBossKilled(instanceId, bossId)
     end
 
     self.bossKills[instanceId][bossId] = true
+
+    -- Explicitly write back to DB (defensive - ensures persistence even if reference is broken)
     KOL.db.profile.tracker.bossKills = self.bossKills
 
-    KOL:DebugPrint("SAVED TO DB: Boss killed " .. instanceId .. " / " .. tostring(bossId), 2)
+    -- Count kills for this instance
+    local instanceKillCount = 0
+    for _ in pairs(self.bossKills[instanceId]) do instanceKillCount = instanceKillCount + 1 end
+    KOL:DebugPrint("Boss killed: " .. instanceId .. " / " .. tostring(bossId) .. " (total: " .. instanceKillCount .. ") - SAVED TO DB", 1)
 
     -- Check if this boss is part of a group, and if so, check for group completion
     local instanceData = self.instances[instanceId]
@@ -1111,8 +1237,8 @@ end
 function Tracker:UnmarkBossKilled(instanceId, bossId)
     if self.bossKills[instanceId] then
         self.bossKills[instanceId][bossId] = nil
-        KOL.db.profile.tracker.bossKills = self.bossKills
-        KOL:DebugPrint("SAVED TO DB: Boss unmarked " .. instanceId .. " / " .. tostring(bossId), 2)
+        -- Note: self.bossKills IS KOL.db.profile.tracker.bossKills, so changes are auto-persisted
+        KOL:DebugPrint("Boss unmarked: " .. instanceId .. " / " .. tostring(bossId), 2)
     end
 
     -- Update watch frame if active
@@ -1224,9 +1350,27 @@ end
 
 -- Reset boss kills for an instance
 function Tracker:ResetInstance(instanceId)
-    self.bossKills[instanceId] = {}
-    self.multiNPCKills[instanceId] = {}
-    self.multiPhaseKills[instanceId] = {}
+    -- ALERT: Always print when reset is called (force=true to always show)
+    KOL:PrintTag("|cFFFF0000RESET INSTANCE CALLED:|r " .. instanceId, true)
+
+    -- Clear instance-specific data (use wipe or set to empty table)
+    -- Since these are sub-tables, setting to {} is fine (parent table reference is maintained)
+    if self.bossKills[instanceId] then
+        wipe(self.bossKills[instanceId])
+    else
+        self.bossKills[instanceId] = {}
+    end
+    if self.multiNPCKills[instanceId] then
+        wipe(self.multiNPCKills[instanceId])
+    else
+        self.multiNPCKills[instanceId] = {}
+    end
+    if self.multiPhaseKills[instanceId] then
+        wipe(self.multiPhaseKills[instanceId])
+    else
+        self.multiPhaseKills[instanceId] = {}
+    end
+    self.killOrderTracking[instanceId] = nil  -- Clear kill order tracking
     self.lastExitTime[instanceId] = nil  -- Clear exit time tracking
     self.instanceLockouts[instanceId] = nil  -- Clear lockout ID
 
@@ -1248,20 +1392,22 @@ function Tracker:ResetInstance(instanceId)
     end
 
     -- Clear collapsed groups for this instance
-    if KOL.db.profile.tracker.collapsedGroups then
-        KOL.db.profile.tracker.collapsedGroups[instanceId] = {}
+    if self.collapsedGroups then
+        if self.collapsedGroups[instanceId] then
+            wipe(self.collapsedGroups[instanceId])
+        else
+            self.collapsedGroups[instanceId] = {}
+        end
     end
 
     -- Clear entry progress for this instance
-    if self.entryProgress then
+    if self.entryProgress and self.entryProgress[instanceId] then
+        wipe(self.entryProgress[instanceId])
+    else
         self.entryProgress[instanceId] = {}
-        KOL.db.profile.tracker.entryProgress = self.entryProgress
     end
 
-    KOL.db.profile.tracker.bossKills = self.bossKills
-    KOL.db.profile.tracker.multiNPCKills = self.multiNPCKills
-    KOL.db.profile.tracker.multiPhaseKills = self.multiPhaseKills
-    -- Note: instanceLockouts is session-only, not persisted
+    -- Note: self.bossKills IS KOL.db.profile.tracker.bossKills, so changes are auto-persisted
 
     KOL:DebugPrint("Reset triggered for: " .. instanceId, 2)
 
@@ -1273,25 +1419,28 @@ end
 
 -- Reset all boss kills
 function Tracker:ResetAll()
-    self.bossKills = {}
-    self.multiNPCKills = {}
-    self.multiPhaseKills = {}
-    self.lastExitTime = {}
-    self.instanceLockouts = {}
+    -- DEBUG: Track who is calling ResetAll
+    KOL:DebugPrint("|cFFFF0000RESET ALL CALLED!|r", 1)
+
+    -- Use wipe() to clear tables while maintaining DB references
+    -- (self.bossKills IS KOL.db.profile.tracker.bossKills, so wipe clears both)
+    wipe(self.bossKills)
+    wipe(self.multiNPCKills)
+    wipe(self.multiPhaseKills)
+    wipe(self.hardmodeActive)
+    wipe(self.killOrderTracking)
+    wipe(self.lastExitTime)
+    wipe(self.instanceLockouts)
 
     -- Clear all collapsed groups
     if KOL.db.profile.tracker.collapsedGroups then
-        KOL.db.profile.tracker.collapsedGroups = {}
+        wipe(KOL.db.profile.tracker.collapsedGroups)
     end
 
     -- Clear all entry progress
-    self.entryProgress = {}
-    KOL.db.profile.tracker.entryProgress = self.entryProgress
+    wipe(self.entryProgress)
 
-    KOL.db.profile.tracker.bossKills = self.bossKills
-    KOL.db.profile.tracker.multiNPCKills = self.multiNPCKills
-    KOL.db.profile.tracker.multiPhaseKills = self.multiPhaseKills
-    KOL.db.profile.tracker.instanceLockouts = self.instanceLockouts
+    -- Note: instanceLockouts is session-only, not persisted to DB
 
     KOL:DebugPrint("Tracker: Reset all instances", 2)
 
@@ -1310,15 +1459,15 @@ function Tracker:OnCombatLogEvent(...)
     local args = {...}
 
     -- WotLK 3.3.5 combat log structure:
-    -- arg1: timestamp
-    -- arg2: eventType
-    -- arg3: sourceGUID
-    -- arg4: sourceName
-    -- arg5: sourceFlags
-    -- arg6: destGUID
-    -- arg7: destName
-    -- arg8: destFlags
-    -- For spell events: arg10 = spellId, arg11 = spellName
+    -- args[1]: timestamp
+    -- args[2]: eventType
+    -- args[3]: sourceGUID
+    -- args[4]: sourceName
+    -- args[5]: sourceFlags
+    -- args[6]: destGUID
+    -- args[7]: destName
+    -- args[8]: destFlags
+    -- For spell events: args[9] = spellId, args[10] = spellName, args[11] = spellSchool
     local timestamp = args[1]
     local eventType = args[2]
     local sourceGUID = args[3]
@@ -1335,19 +1484,64 @@ function Tracker:OnCombatLogEvent(...)
             for _, eventName in ipairs(handlerInfo.eventTypes) do
                 if eventType == eventName then
                     handlerInfo.handler(self, args)
-                    return
+                end
+            end
+        end
+
+        -- Check for hardmode spell triggers (SPELL_AURA_APPLIED, SPELL_CAST_SUCCESS)
+        if eventType == "SPELL_AURA_APPLIED" or eventType == "SPELL_CAST_SUCCESS" then
+            local spellId = args[9]
+            local spellName = args[10]
+            -- DEBUG: Log spell events for hardmode detection (only for boss-related spells)
+            if spellId and destName and (destName:find("XT") or destName:find("Flame Leviathan") or spellId == 64193 or spellId == 65075 or spellId == 65076 or spellId == 65077 or spellId == 64482) then
+                KOL:Print("DEBUG SPELL: " .. eventType .. " - " .. tostring(spellId) .. " (" .. tostring(spellName) .. ") on " .. tostring(destName))
+            end
+            if spellId and self.currentInstanceId then
+                local data = self.instances[self.currentInstanceId]
+                if data then
+                    -- Check flat bosses (only those with spell-based hardmode)
+                    if data.bosses then
+                        for i, boss in ipairs(data.bosses) do
+                            if boss.hardmode and boss.hardmode.spells then
+                                -- Only call DetectHardmode if spell matches
+                                for _, hmSpellId in ipairs(boss.hardmode.spells) do
+                                    if hmSpellId == spellId then
+                                        self:DetectHardmode(self.currentInstanceId, i, "spell", spellId)
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    -- Check grouped bosses (only those with spell-based hardmode)
+                    if data.groups then
+                        for groupIndex, group in ipairs(data.groups) do
+                            if group.bosses then
+                                for bossIndex, boss in ipairs(group.bosses) do
+                                    if boss.hardmode and boss.hardmode.spells then
+                                        -- Only call DetectHardmode if spell matches
+                                        for _, hmSpellId in ipairs(boss.hardmode.spells) do
+                                            if hmSpellId == spellId then
+                                                local bossId = "g" .. groupIndex .. "-b" .. bossIndex
+                                                self:DetectHardmode(self.currentInstanceId, bossId, "spell", spellId)
+                                                break
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
                 end
             end
         end
         return
     end
 
-    KOL:DebugPrint("UNIT_DIED: " .. tostring(destName) .. " | GUID: " .. tostring(destGUID), 3)
 
     -- Extract NPC ID from GUID
     local npcId = self:ExtractNPCID(destGUID)
     if not npcId then
-        KOL:DebugPrint("ERROR: Could not extract NPC ID from GUID: " .. tostring(destGUID), 1)
         return
     end
 
@@ -1395,13 +1589,15 @@ function Tracker:OnCombatLogEvent(...)
                 classification = "|cFFAAAAAA Normal|r"
             end
 
-            local separatorColor = KOL.Colors:ToHex(KOL.Colors.NUCLEAR_SEPARATOR)
-            local separator = " |cFF" .. separatorColor .. CHAR_SEPARATOR .. "|r "
+            -- Use bullet separator instead of pipe (pipe breaks WoW color codes)
+            local sep = " |cFF888888•|r "
+            local instanceInfo = self.currentInstanceId and (" |cFFFFAA00[" .. self.currentInstanceId .. "]|r") or ""
             KOL:PrintTag(
                 "|cFF00FFFFName:|r " .. tostring(destName) ..
-                separator .. "|cFF00FFFFGUID:|r " .. tostring(destGUID) ..
-                separator .. "|cFF00FFFF NPC ID:|r " .. tostring(npcId) ..
-                separator .. "|cFF00FFFFClass:|r " .. classification
+                sep .. "|cFF00FFFFGUID:|r " .. tostring(destGUID) ..
+                sep .. "|cFF00FFFFNPC:|r " .. tostring(npcId) ..
+                sep .. "|cFF00FFFFClass:|r " .. classification ..
+                instanceInfo
             )
         end
     end
@@ -1411,6 +1607,51 @@ function Tracker:OnCombatLogEvent(...)
     local instanceId = self.currentInstanceId
     local data = self.instances[instanceId]
     if data then
+            -- Check for hardmode npcKill triggers (e.g., Heart of the Deconstructor for XT-002)
+            -- This NPC death might trigger hardmode for a boss
+            local function checkHardmodeNpcKill(boss, bossIndex)
+                if boss.hardmode and boss.hardmode.npcKill then
+                    local npcKillId = boss.hardmode.npcKill
+                    local bossName = self:GetBossName(boss)
+                    KOL:PrintTag("HM Check [npcKill]: " .. bossName .. " - killed NPC " .. npcId .. " (" .. destName .. "), looking for: " .. tostring(type(npcKillId) == "table" and table.concat(npcKillId, ", ") or npcKillId))
+                    if type(npcKillId) == "table" then
+                        for _, id in ipairs(npcKillId) do
+                            if id == npcId then
+                                self:MarkBossHardmode(instanceId, bossIndex)
+                                KOL:PrintTag("Hardmode activated: " .. bossName .. " ⚡ (" .. destName .. " killed)")
+                                self:RefreshAllWatchFrames()
+                                return true
+                            end
+                        end
+                    elseif npcKillId == npcId then
+                        self:MarkBossHardmode(instanceId, bossIndex)
+                        KOL:PrintTag("Hardmode activated: " .. bossName .. " ⚡ (" .. destName .. " killed)")
+                        self:RefreshAllWatchFrames()
+                        return true
+                    end
+                end
+                return false
+            end
+
+            -- Check flat bosses for hardmode npcKill
+            if data.bosses then
+                for bossIndex, boss in ipairs(data.bosses) do
+                    checkHardmodeNpcKill(boss, bossIndex)
+                end
+            end
+
+            -- Check grouped bosses for hardmode npcKill
+            if data.groups then
+                for groupIndex, group in ipairs(data.groups) do
+                    if group.bosses then
+                        for bossIndex, boss in ipairs(group.bosses) do
+                            local groupedBossId = "g" .. groupIndex .. "-b" .. bossIndex
+                            checkHardmodeNpcKill(boss, groupedBossId)
+                        end
+                    end
+                end
+            end
+
             -- Check custom tracker entries (new format with count support)
             if data.entries and #data.entries > 0 then
                 for _, entry in ipairs(data.entries) do
@@ -1547,6 +1788,20 @@ function Tracker:OnCombatLogEvent(...)
                                 if watchLevel >= 1 then
                                     KOL:PrintTag(destName .. " defeated (" .. boss.name .. " encounter - " .. deadCount .. "/" .. totalCount .. ")")
                                 end
+
+                                -- Check for kill-order based hardmode on 2nd-to-last kill
+                                -- (e.g., Assembly of Iron - if Steelbreaker is still alive after 2 kills, it's hardmode)
+                                if boss.hardmode and boss.hardmode.killOrder and deadCount == totalCount - 1 then
+                                    local lastKillTarget = boss.hardmode.killOrder.lastKill
+                                    local isTargetAlive = not self.multiNPCKills[instanceId][bossIndex][lastKillTarget]
+                                    KOL:Print("DEBUG: Kill order check - target=" .. tostring(lastKillTarget) .. ", alive=" .. tostring(isTargetAlive))
+                                    -- Check if the hardmode target NPC is still alive (not in our kill tracking)
+                                    if lastKillTarget and isTargetAlive then
+                                        -- The hardmode target is the last one alive - hardmode confirmed!
+                                        KOL:Print("DEBUG: HARDMODE DETECTED! Marking " .. boss.name .. " as hardmode...")
+                                        self:DetectHardmode(instanceId, bossIndex, "killOrder", lastKillTarget)
+                                    end
+                                end
                             end
                         end
                     else
@@ -1666,7 +1921,7 @@ function Tracker:OnCombatLogEvent(...)
                                     self.multiNPCKills[instanceId][groupedBossId][npcId] = true
                                     KOL.db.profile.tracker.multiNPCKills = self.multiNPCKills
 
-                                    KOL:DebugPrint("Marked NPC " .. npcId .. " as dead for " .. boss.name .. " (bossId=" .. groupedBossId .. ")", 2)
+                                    KOL:Print("DEBUG: Marked NPC " .. npcId .. " as dead for " .. boss.name .. " (bossId=" .. groupedBossId .. ")")
 
                                     -- Check if ALL NPCs for this boss are now dead
                                     local allDead = true
@@ -1680,11 +1935,11 @@ function Tracker:OnCombatLogEvent(...)
                                         end
                                     end
 
-                                    KOL:DebugPrint(boss.name .. " progress: " .. deadCount .. "/" .. totalCount .. " killed", 2)
+                                    KOL:Print("DEBUG: " .. boss.name .. " progress: " .. deadCount .. "/" .. totalCount .. " killed")
 
                                     if allDead then
                                         -- All NPCs dead - mark boss as killed!
-                                        KOL:DebugPrint("ALL NPCs dead! Marking " .. boss.name .. " as complete", 2)
+                                        KOL:Print("DEBUG: ALL NPCs dead! Marking " .. boss.name .. " as complete")
                                         self:MarkBossKilled(instanceId, groupedBossId)
                                         local watchLevel = KOL.db.profile.watchDeathsLevel or 0
                                         if watchLevel >= 1 then
@@ -1693,6 +1948,21 @@ function Tracker:OnCombatLogEvent(...)
                                     else
                                         -- Partial progress
                                         KOL:PrintTag(destName .. " defeated (" .. boss.name .. " encounter - " .. deadCount .. "/" .. totalCount .. ")")
+
+                                        -- Check for kill-order based hardmode on 2nd-to-last kill
+                                        -- (e.g., Assembly of Iron - if Steelbreaker is still alive after 2 kills, it's hardmode)
+                                        KOL:Print("DEBUG: Kill order check: hasHardmode=" .. tostring(boss.hardmode ~= nil) .. ", hasKillOrder=" .. tostring(boss.hardmode and boss.hardmode.killOrder ~= nil) .. ", deadCount=" .. deadCount .. ", totalCount=" .. totalCount)
+                                        if boss.hardmode and boss.hardmode.killOrder and deadCount == totalCount - 1 then
+                                            local lastKillTarget = boss.hardmode.killOrder.lastKill
+                                            local isTargetAlive = not self.multiNPCKills[instanceId][groupedBossId][lastKillTarget]
+                                            KOL:Print("DEBUG: Kill order check - target=" .. tostring(lastKillTarget) .. ", alive=" .. tostring(isTargetAlive))
+                                            -- Check if the hardmode target NPC is still alive (not in our kill tracking)
+                                            if lastKillTarget and isTargetAlive then
+                                                -- The hardmode target is the last one alive - hardmode confirmed!
+                                                KOL:Print("DEBUG: HARDMODE DETECTED! Marking " .. boss.name .. " as hardmode...")
+                                                self:DetectHardmode(instanceId, groupedBossId, "killOrder", lastKillTarget)
+                                            end
+                                        end
                                     end
                                 end
                             else
@@ -2043,20 +2313,81 @@ function Tracker:OnMonsterYell(text, npcName, ...)
     if self.currentInstanceId then
         local data = self.instances[self.currentInstanceId]
         if data then
-            -- Check flat bosses
+            -- Check flat bosses (only those with yell-based hardmode)
             if data.bosses and #data.bosses > 0 then
                 for i, boss in ipairs(data.bosses) do
-                    self:DetectHardmode(self.currentInstanceId, i, "yell", text)
+                    if boss.hardmode and boss.hardmode.yells then
+                        -- Only call DetectHardmode if yell matches
+                        for _, yellPattern in ipairs(boss.hardmode.yells) do
+                            if text:find(yellPattern, 1, true) then
+                                self:DetectHardmode(self.currentInstanceId, i, "yell", text)
+                                break
+                            end
+                        end
+                    end
                 end
             end
 
-            -- Check grouped bosses
+            -- Check grouped bosses (only those with yell-based hardmode)
             if data.groups and #data.groups > 0 then
                 for groupIndex, group in ipairs(data.groups) do
                     if group.bosses then
                         for bossIndex, boss in ipairs(group.bosses) do
-                            local bossId = "g" .. groupIndex .. "-b" .. bossIndex
-                            self:DetectHardmode(self.currentInstanceId, bossId, "yell", text)
+                            if boss.hardmode and boss.hardmode.yells then
+                                -- Only call DetectHardmode if yell matches
+                                for _, yellPattern in ipairs(boss.hardmode.yells) do
+                                    if text:find(yellPattern, 1, true) then
+                                        local bossId = "g" .. groupIndex .. "-b" .. bossIndex
+                                        self:DetectHardmode(self.currentInstanceId, bossId, "yell", text)
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- Check for hardmode yells in any text (used by chat frame hook as fallback)
+function Tracker:CheckHardmodeYells(text)
+    if not text or not self.currentInstanceId then return end
+
+    local data = self.instances[self.currentInstanceId]
+    if not data then return end
+
+    -- Check flat bosses (only those with yell-based hardmode)
+    if data.bosses and #data.bosses > 0 then
+        for i, boss in ipairs(data.bosses) do
+            if boss.hardmode and boss.hardmode.yells then
+                for _, yellPattern in ipairs(boss.hardmode.yells) do
+                    if text:find(yellPattern, 1, true) then
+                        local bossName = self:GetBossName(boss)
+                        KOL:DebugPrint("Hardmode yell detected: '" .. yellPattern .. "' -> " .. bossName, 3)
+                        self:DetectHardmode(self.currentInstanceId, i, "yell", text)
+                        return  -- Only detect one hardmode per message
+                    end
+                end
+            end
+        end
+    end
+
+    -- Check grouped bosses (only those with yell-based hardmode)
+    if data.groups and #data.groups > 0 then
+        for groupIndex, group in ipairs(data.groups) do
+            if group.bosses then
+                for bossIndex, boss in ipairs(group.bosses) do
+                    if boss.hardmode and boss.hardmode.yells then
+                        for _, yellPattern in ipairs(boss.hardmode.yells) do
+                            if text:find(yellPattern, 1, true) then
+                                local bossId = "g" .. groupIndex .. "-b" .. bossIndex
+                                local bossName = self:GetBossName(boss)
+                                KOL:DebugPrint("Hardmode yell detected: '" .. yellPattern .. "' -> " .. bossName, 3)
+                                self:DetectHardmode(self.currentInstanceId, bossId, "yell", text)
+                                return  -- Only detect one hardmode per message
+                            end
                         end
                     end
                 end
@@ -2122,6 +2453,46 @@ function Tracker:OnRaidBossEmote(text, npcName, ...)
                                 KOL.BossRecorder:OnBossDetected(boss.name, fakeGUID, npcId, "Boss (Emote)")
                             end
                             return
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Check for hardmode emote triggers (e.g., XT-002 "heart is severed")
+    if self.currentInstanceId then
+        local data = self.instances[self.currentInstanceId]
+        if data then
+            -- Check flat bosses for hardmode emote triggers (only those with emote-based hardmode)
+            if data.bosses then
+                for i, boss in ipairs(data.bosses) do
+                    if boss.hardmode and boss.hardmode.emotes then
+                        -- Only call DetectHardmode if emote matches
+                        for _, emotePattern in ipairs(boss.hardmode.emotes) do
+                            if text:find(emotePattern, 1, true) then
+                                self:DetectHardmode(self.currentInstanceId, i, "emote", text)
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+            -- Check grouped bosses for hardmode emote triggers (only those with emote-based hardmode)
+            if data.groups then
+                for groupIndex, group in ipairs(data.groups) do
+                    if group.bosses then
+                        for bossIndex, boss in ipairs(group.bosses) do
+                            if boss.hardmode and boss.hardmode.emotes then
+                                -- Only call DetectHardmode if emote matches
+                                for _, emotePattern in ipairs(boss.hardmode.emotes) do
+                                    if text:find(emotePattern, 1, true) then
+                                        local bossId = "g" .. groupIndex .. "-b" .. bossIndex
+                                        self:DetectHardmode(self.currentInstanceId, bossId, "emote", text)
+                                        break
+                                    end
+                                end
+                            end
                         end
                     end
                 end
@@ -2439,23 +2810,47 @@ function Tracker:UpdateZoneTracking()
 
         -- Only consider it an "exit" if we're leaving an instance/raid/dungeon to go to the world
         -- Don't trigger on subzone changes within the same instance
-        if prevInstanceData and (not instanceId or (instanceType == "none")) then
+        -- IMPORTANT: instanceType must be "none" AND instanceId must be nil for a true exit
+        -- Some subzones (like Yogg-Saron's mind) return instanceType="none" but we're still in the raid
+        if prevInstanceData and (not instanceId) and (instanceType == "none") then
             -- We genuinely left the instance - we're now in the world
             self:OnInstanceExit(self.currentInstanceId)
             KOL:DebugPrint("Tracker: Detected genuine exit from " .. self.currentInstanceId .. " to outside", 2)
         else
-            -- Just a zone/difficulty change within instances, ignore
-            KOL:DebugPrint("Tracker: Zone change from " .. tostring(self.currentInstanceId) .. " to " .. tostring(instanceId) .. " (not an exit)", 3)
+            -- Just a zone/difficulty change within instances, or entering a raid subzone, ignore
+            KOL:DebugPrint("Tracker: Zone change from " .. tostring(self.currentInstanceId) .. " to " .. tostring(instanceId) .. " (instanceType=" .. tostring(instanceType) .. ", not an exit)", 3)
         end
     end
 
     -- Update current instance
-    self.currentInstanceId = instanceId
+    -- Clear currentInstanceId when we're truly in the world (instanceType="none")
+    -- Keep it if we're still in a raid/party instance (subzones like Yogg's mind)
+    local prevInstanceId = self.currentInstanceId
+    if instanceId then
+        -- We matched a new instance
+        self.currentInstanceId = instanceId
+    elseif instanceType == "none" then
+        -- We're in the world - clear tracking
+        -- This handles leaving an instance (Naxx -> Dalaran)
+        self.currentInstanceId = nil
+    elseif instanceType ~= "raid" and instanceType ~= "party" then
+        -- We're in a different type of zone (pvp, arena, etc), clear tracking
+        self.currentInstanceId = nil
+    end
+    -- If instanceId is nil but instanceType is "raid"/"party", keep currentInstanceId
+    -- (we're probably in a subzone like Yogg's mind that doesn't match our zone list)
+
+    -- ALERT: Print when currentInstanceId changes (force=true to always show)
+    if self.currentInstanceId ~= prevInstanceId then
+        KOL:PrintTag("|cFFFFFF00ZONE TRACKING|r: currentInstanceId changed from |cFFFF8800" .. tostring(prevInstanceId) .. "|r to |cFF00FF00" .. tostring(self.currentInstanceId) .. "|r (instanceType=" .. tostring(instanceType) .. ")", true)
+    end
 
     -- Destroy all active frames that don't match current zone
     -- SKIP custom trackers - they are manually controlled and should persist
+    -- ALSO keep frames that match currentInstanceId (for subzones like Yogg's mind)
+    local keepInstanceId = instanceId or self.currentInstanceId
     for activeId, frame in pairs(self.activeFrames) do
-        if activeId ~= instanceId then
+        if activeId ~= keepInstanceId then
             -- Only auto-destroy dungeon/raid frames, not custom trackers
             local activeData = self.instances[activeId]
             local isCustom = activeData and (activeData.type ~= "dungeon" and activeData.type ~= "raid")
@@ -2541,30 +2936,96 @@ function Tracker:UpdateZoneTracking()
     end
 end
 
--- Store the WoW instance ID when we kill a boss
--- Also detects fresh instances by comparing to stored ID
-function Tracker:StoreInstanceID(instanceId, wowInstanceId)
-    local storedId = self.instanceLockouts[instanceId]
-    local storedIdNum = storedId and tonumber(storedId)
+-- ============================================================================
+-- Lockout ID Tracking (using /raidinfo lockout IDs)
+-- ============================================================================
 
-    -- Check if we have boss kills recorded
-    local hasKills = self.bossKills[instanceId] and next(self.bossKills[instanceId]) ~= nil
+-- Hook ResetInstances() to detect when user manually resets
+function Tracker:HookResetInstances()
+    if self.resetInstancesHooked then return end
 
-    if storedIdNum and storedIdNum ~= wowInstanceId and hasKills then
-        -- DIFFERENT INSTANCE DETECTED!
-        -- This means we're in a fresh instance (reset happened, different lockout, etc.)
-        -- Reset our tracking since this is a new lockout
-        local instanceData = self.instances[instanceId]
-        local instanceName = instanceData and instanceData.name or instanceId
-        KOL:PrintTag("Fresh instance detected (new lockout ID) - resetting " .. instanceName)
-        KOL:DebugPrint("Tracker: Instance ID changed from " .. storedIdNum .. " to " .. wowInstanceId ..
-            " for " .. instanceId .. " - RESETTING", 2)
-        self:ResetInstance(instanceId)
+    local originalResetInstances = ResetInstances
+    ResetInstances = function(...)
+        -- Mark that a reset was triggered
+        Tracker.resetInstancesTriggered = true
+        KOL:PrintTag("|cFFFF0000ResetInstances called|r - will clear tracking on next instance entry", true)
+
+        -- Reset all tracked instances that have kills
+        for instanceId, killData in pairs(Tracker.bossKills) do
+            local hasKills = killData and next(killData) ~= nil
+            if hasKills then
+                local instanceData = Tracker.instances[instanceId]
+                local instanceName = instanceData and instanceData.name or instanceId
+                KOL:PrintTag("Clearing tracking for: " .. instanceName, true)
+                Tracker:ResetInstance(instanceId)
+            end
+        end
+
+        -- Clear stored lockout IDs
+        wipe(Tracker.instanceLockouts)
+
+        -- Call original function
+        return originalResetInstances(...)
     end
 
-    -- Store the current instance ID (session-only, not persisted to DB)
-    self.instanceLockouts[instanceId] = tostring(wowInstanceId)
-    KOL:DebugPrint("Tracker: WoW Instance ID for " .. instanceId .. " = " .. wowInstanceId .. " (session-only)", 3)
+    self.resetInstancesHooked = true
+    KOL:DebugPrint("Tracker: ResetInstances() hooked for reset detection", 2)
+end
+
+-- Get the lockout ID for the current instance from saved instance info
+-- Returns: lockoutId (number), instanceName (string) or nil if not saved
+function Tracker:GetCurrentLockoutID()
+    local zoneName = GetRealZoneText() or GetZoneText()
+    local _, instanceType, difficultyIndex = GetInstanceInfo()
+
+    -- Not in an instance
+    if instanceType == "none" then
+        return nil, nil
+    end
+
+    -- Request fresh raid info
+    RequestRaidInfo()
+
+    -- Search saved instances for a match
+    local numSaved = GetNumSavedInstances()
+    for i = 1, numSaved do
+        local name, id, reset, difficulty, locked, extended, instanceIDMostSig, isRaid, maxPlayers, difficultyName = GetSavedInstanceInfo(i)
+
+        -- Match by zone name and difficulty
+        if name == zoneName and difficulty == difficultyIndex then
+            -- The 'id' from GetSavedInstanceInfo is the unique lockout ID
+            KOL:DebugPrint("Tracker: Found lockout - Name: " .. name .. ", ID: " .. tostring(id) .. ", Difficulty: " .. tostring(difficulty), 2)
+            return id, name
+        end
+    end
+
+    return nil, nil
+end
+
+-- Store the lockout ID when entering an instance or killing a boss
+-- Uses the actual /raidinfo lockout ID, not GUID-based IDs
+function Tracker:StoreInstanceID(instanceId, wowInstanceId)
+    -- Get the actual lockout ID from saved instances
+    local lockoutId, lockoutName = self:GetCurrentLockoutID()
+
+    if lockoutId then
+        local storedId = self.instanceLockouts[instanceId]
+
+        if storedId and storedId ~= lockoutId then
+            -- Different lockout ID - this is a NEW instance!
+            local instanceData = self.instances[instanceId]
+            local instanceName = instanceData and instanceData.name or instanceId
+            KOL:PrintTag("|cFFFF0000New lockout detected|r for " .. instanceName .. " (was: " .. tostring(storedId) .. ", now: " .. tostring(lockoutId) .. ")", true)
+            self:ResetInstance(instanceId)
+        end
+
+        -- Store the lockout ID
+        self.instanceLockouts[instanceId] = lockoutId
+        KOL:DebugPrint("Tracker: Stored lockout ID " .. tostring(lockoutId) .. " for " .. instanceId, 2)
+    else
+        -- No saved lockout yet (first boss not killed, or instance not saved)
+        KOL:DebugPrint("Tracker: No lockout ID found for " .. instanceId .. " (not saved yet)", 3)
+    end
 end
 
 -- Check if instance has reset when player re-enters
@@ -2624,62 +3085,20 @@ end
 -- Instance Reset Event Handlers (The SMART Way!)
 -- ============================================================================
 
--- Called when instance info updates (including manual resets)
+-- Called when instance info updates
+-- NOTE: Manual reset detection is now handled by the ResetInstances() hook.
+-- This function is kept for debugging/logging purposes only.
 function Tracker:OnInstanceInfoUpdate()
     -- UPDATE_INSTANCE_INFO fires for MANY reasons:
-    -- - When you click "Reset All Instances" (OUTSIDE instances - what we want to detect!)
-    -- - When you kill a boss and lockout info updates (INSIDE instance - ignore!)
+    -- - When you call ResetInstances() (now handled by our hook)
+    -- - When you kill a boss and lockout info updates
     -- - When you request instance info
-    --
-    -- KEY INSIGHT: You can ONLY reset instances while OUTSIDE them!
-    -- So if this event fires while we're INSIDE an instance, it's just lockout info updating.
-    -- If it fires while we're OUTSIDE (in the world), that's a potential manual reset!
+    -- - When lockout status changes
 
-    local name, instanceType, difficultyIndex, difficultyName, maxPlayers, dynamicDifficulty, isDynamic = GetInstanceInfo()
+    local name, instanceType, difficultyIndex = GetInstanceInfo()
 
-    KOL:DebugPrint("UPDATE_INSTANCE_INFO fired | instanceType=" .. tostring(instanceType), 3)
-
-    -- If we're currently INSIDE an instance, this is just lockout info updating (boss kill, etc)
-    -- Ignore it - NOT a reset!
-    if instanceType ~= "none" then
-        KOL:DebugPrint("  -> Inside instance, ignoring (just lockout info update)", 3)
-        return
-    end
-
-    -- We're OUTSIDE instances - this could be a manual reset!
-    -- But first, check if we're still in initial load phase (login/reload)
-    if not self.initialLoadComplete then
-        KOL:DebugPrint("  -> Ignoring (still in initial load phase, not a manual reset)", 2)
-        return
-    end
-
-    -- Check if we have any tracked instances with kills
-    KOL:DebugPrint("  -> Outside instances, checking for manual reset", 2)
-
-    local resetCount = 0
-
-    -- Check all registered instances for kills
-    for instanceId, killData in pairs(self.bossKills) do
-        local hasKills = killData and next(killData) ~= nil
-
-        if hasKills then
-            local instanceData = self.instances[instanceId]
-            local instanceName = instanceData and instanceData.name or instanceId
-
-            -- Reset ANY instance with kills (dungeons AND raids)
-            if instanceData then
-                KOL:PrintTag("Manual reset detected - clearing " .. instanceName)
-                self:ResetInstance(instanceId)
-                resetCount = resetCount + 1
-            end
-        end
-    end
-
-    if resetCount > 0 then
-        KOL:PrintTag("Reset " .. resetCount .. " instance(s)")
-    else
-        KOL:DebugPrint("UPDATE_INSTANCE_INFO while outside, but no instances with kills to reset", 1)
-    end
+    -- Only log in debug mode to reduce spam
+    KOL:DebugPrint("UPDATE_INSTANCE_INFO | instanceType=" .. tostring(instanceType) .. " | currentInstanceId=" .. tostring(self.currentInstanceId), 2)
 end
 
 -- Called when you're about to be kicked from instance
@@ -2703,17 +3122,18 @@ function Tracker:RegisterEvents()
     end, "Tracker")
     KOL:DebugPrint("Tracker: COMBAT_LOG_EVENT_UNFILTERED registered", 3)
 
-    -- UNIT_AURA for buff cache invalidation (Performance optimization)
+    -- UNIT_AURA for buff cache updates (Performance optimization)
+    -- We scan immediately on aura change, then ticker just reads cached values
     KOL:RegisterEventCallback("UNIT_AURA", function(unit)
         if unit == "player" then
-            Tracker:InvalidateBuffCache()
+            Tracker:UpdateBuffCache()
             -- Mark all active watch frames as dirty
             for instanceId in pairs(Tracker.activeFrames) do
                 Tracker.watchFrameDirty[instanceId] = true
             end
         end
     end, "Tracker")
-    KOL:DebugPrint("Tracker: UNIT_AURA registered for buff cache invalidation", 3)
+    KOL:DebugPrint("Tracker: UNIT_AURA registered for buff cache updates", 3)
 
     -- Encounter end for scripted boss events (Grand Champions, etc.)
     KOL:RegisterEventCallback("ENCOUNTER_END", function(...)
@@ -2764,17 +3184,19 @@ function Tracker:RegisterEvents()
     if not self.chatFrameHooked and DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
         local originalAddMessage = DEFAULT_CHAT_FRAME.AddMessage
         DEFAULT_CHAT_FRAME.AddMessage = function(frame, text, ...)
-            -- Check if this is a dungeon challenge message
+            -- Check if this is a dungeon challenge message or hardmode yell
             if text and type(text) == "string" then
                 -- Strip color codes before pattern matching
                 local plainText = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
                 Tracker:OnDungeonChallengeChat(plainText)
+                -- Also check for hardmode yells (fallback if CHAT_MSG_MONSTER_YELL doesn't fire)
+                Tracker:CheckHardmodeYells(plainText)
             end
             -- Call original function
             return originalAddMessage(frame, text, ...)
         end
         self.chatFrameHooked = true
-        KOL:DebugPrint("Tracker: DEFAULT_CHAT_FRAME:AddMessage hooked for Dungeon Challenge", 3)
+        KOL:DebugPrint("Tracker: DEFAULT_CHAT_FRAME:AddMessage hooked for Dungeon Challenge and Hardmode Yells", 3)
     end
 
     -- Zone changes
@@ -3716,7 +4138,9 @@ function Tracker:UpdateWatchFrame(instanceId)
         for i, boss in ipairs(data.bosses) do
             -- Check if boss is killed
             local killed = self:IsBossKilled(instanceId, i)
-            local colorHex = killed and killedColorHex or unkilledColorHex
+            -- Use hardmode color if active, otherwise standard killed/unkilled
+            local hmColor = self:GetHardmodeColor(instanceId, i, boss)
+            local colorHex = hmColor or (killed and killedColorHex or unkilledColorHex)
             local checkMark = killed and CHAR_OBJECTIVE_COMPLETE or CHAR_OBJECTIVE_BOX
 
             -- Create or reuse a clickable button wrapper for the boss
@@ -3725,7 +4149,7 @@ function Tracker:UpdateWatchFrame(instanceId)
             bossBtn:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, yOffset)
             bossBtn:RegisterForClicks("AnyUp")
 
-            -- Icon - reuse cached or create new
+            -- Icon (checkbox) - reuse cached or create new - ALWAYS FIRST
             local bossIcon = bossBtn.cachedIcon
             if not bossIcon then
                 bossIcon = KOL.UIFactory:CreateGlyph(bossBtn, checkMark, colorHex, scaledObjectiveFontSize)
@@ -3738,6 +4162,26 @@ function Tracker:UpdateWatchFrame(instanceId)
             bossIcon:ClearAllPoints()
             bossIcon:SetPoint("LEFT", bossBtn, "LEFT", 4, 0)
 
+            -- Hardmode glyph (only shown when hardmode is active) - AFTER CHECKBOX
+            local hmGlyph = bossBtn.cachedHmGlyph
+            local textAnchor = bossIcon  -- Text anchors to checkbox by default
+            if hmColor then
+                -- Create or reuse hardmode glyph
+                if not hmGlyph then
+                    hmGlyph = KOL.UIFactory:CreateGlyph(bossBtn, CHAR_HARDMODE, colorHex, scaledObjectiveFontSize)
+                    bossBtn.cachedHmGlyph = hmGlyph
+                else
+                    hmGlyph:Show()
+                    hmGlyph:SetGlyph(CHAR_HARDMODE, colorHex)
+                    hmGlyph:SetFont(CHAR_LIGATURESFONT, scaledObjectiveFontSize, CHAR_LIGATURESOUTLINE or "OUTLINE")
+                end
+                hmGlyph:ClearAllPoints()
+                hmGlyph:SetPoint("LEFT", bossIcon, "RIGHT", 2, 0)
+                textAnchor = hmGlyph  -- Text anchors to hardmode glyph when active
+            elseif hmGlyph then
+                hmGlyph:Hide()
+            end
+
             -- Text - reuse cached or create new
             local bossText = bossBtn.cachedText
             if not bossText then
@@ -3748,11 +4192,17 @@ function Tracker:UpdateWatchFrame(instanceId)
             end
             bossText:SetFont(objectiveFontPath, scaledObjectiveFontSize, objectiveFontOutline)
             bossText:ClearAllPoints()
-            bossText:SetPoint("LEFT", bossIcon, "RIGHT", 2, 0)
+            bossText:SetPoint("LEFT", textAnchor, "RIGHT", 2, 0)
             bossText:SetPoint("RIGHT", bossBtn, "RIGHT", -4, 0)
             bossText:SetJustifyH("LEFT")
             bossText:SetWordWrap(true)
-            bossText:SetText("|cFF" .. colorHex .. self:GetBossNameWithHardmode(instanceId, i, boss) .. "|r")
+            -- GetBossNameWithHardmode returns pre-colored text if hardmode active
+            local bossDisplayName = self:GetBossNameWithHardmode(instanceId, i, boss)
+            if hmColor then
+                bossText:SetText(bossDisplayName)  -- Already has color codes
+            else
+                bossText:SetText("|cFF" .. colorHex .. bossDisplayName .. "|r")
+            end
 
             -- Calculate height based on text
             local textHeight = bossText:GetStringHeight()
@@ -4337,7 +4787,9 @@ function Tracker:UpdateWatchFrame(instanceId)
                     -- Check if boss is killed (using group-boss ID format)
                     local bossId = "g" .. groupIndex .. "-b" .. bossIndex
                     local killed = self:IsBossKilled(instanceId, bossId)
-                    local colorHex = killed and killedColorHex or unkilledColorHex
+                    -- Use hardmode color if active, otherwise standard killed/unkilled
+                    local hmColor = self:GetHardmodeColor(instanceId, bossId, boss)
+                    local colorHex = hmColor or (killed and killedColorHex or unkilledColorHex)
                     local checkMark = killed and CHAR_OBJECTIVE_COMPLETE or CHAR_OBJECTIVE_BOX
 
                     -- Create or reuse a clickable button wrapper for the boss
@@ -4346,7 +4798,7 @@ function Tracker:UpdateWatchFrame(instanceId)
                     bossBtn:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, yOffset)
                     bossBtn:RegisterForClicks("AnyUp")
 
-                    -- Icon - reuse cached or create new
+                    -- Icon (checkbox) - reuse cached or create new - ALWAYS FIRST
                     local bossIcon = bossBtn.cachedIcon
                     if not bossIcon then
                         bossIcon = KOL.UIFactory:CreateGlyph(bossBtn, checkMark, colorHex, scaledObjectiveFontSize)
@@ -4359,6 +4811,26 @@ function Tracker:UpdateWatchFrame(instanceId)
                     bossIcon:ClearAllPoints()
                     bossIcon:SetPoint("LEFT", bossBtn, "LEFT", 0, 0)
 
+                    -- Hardmode glyph (only shown when hardmode is active) - AFTER CHECKBOX
+                    local hmGlyph = bossBtn.cachedHmGlyph
+                    local textAnchor = bossIcon  -- Text anchors to checkbox by default
+                    if hmColor then
+                        -- Create or reuse hardmode glyph
+                        if not hmGlyph then
+                            hmGlyph = KOL.UIFactory:CreateGlyph(bossBtn, CHAR_HARDMODE, colorHex, scaledObjectiveFontSize)
+                            bossBtn.cachedHmGlyph = hmGlyph
+                        else
+                            hmGlyph:Show()
+                            hmGlyph:SetGlyph(CHAR_HARDMODE, colorHex)
+                            hmGlyph:SetFont(CHAR_LIGATURESFONT, scaledObjectiveFontSize, CHAR_LIGATURESOUTLINE or "OUTLINE")
+                        end
+                        hmGlyph:ClearAllPoints()
+                        hmGlyph:SetPoint("LEFT", bossIcon, "RIGHT", 2, 0)
+                        textAnchor = hmGlyph  -- Text anchors to hardmode glyph when active
+                    elseif hmGlyph then
+                        hmGlyph:Hide()
+                    end
+
                     -- Text - reuse cached or create new
                     local bossText = bossBtn.cachedText
                     if not bossText then
@@ -4369,11 +4841,17 @@ function Tracker:UpdateWatchFrame(instanceId)
                     end
                     bossText:SetFont(objectiveFontPath, scaledObjectiveFontSize, objectiveFontOutline)
                     bossText:ClearAllPoints()
-                    bossText:SetPoint("LEFT", bossIcon, "RIGHT", 2, 0)
+                    bossText:SetPoint("LEFT", textAnchor, "RIGHT", 2, 0)
                     bossText:SetPoint("RIGHT", bossBtn, "RIGHT", -4, 0)
                     bossText:SetJustifyH("LEFT")
                     bossText:SetWordWrap(true)
-                    bossText:SetText("|cFF" .. colorHex .. self:GetBossNameWithHardmode(instanceId, bossId, boss) .. "|r")
+                    -- GetBossNameWithHardmode returns pre-colored text if hardmode active
+                    local bossDisplayName = self:GetBossNameWithHardmode(instanceId, bossId, boss)
+                    if hmColor then
+                        bossText:SetText(bossDisplayName)  -- Already has color codes
+                    else
+                        bossText:SetText("|cFF" .. colorHex .. bossDisplayName .. "|r")
+                    end
 
                     -- Calculate height based on text
                     local textHeight = bossText:GetStringHeight()
@@ -4511,13 +4989,34 @@ function Tracker:UpdateWatchFrame(instanceId)
     content:SetHeight(math.max(contentHeight + 8, 1))
 
     -- Dynamically resize frame to fit content (no max, auto-size only)
-    local titleBarHeight = 28  -- Title bar + top border
+    -- Get titleBarHeight from per-instance setting, falling back to global config
+    local titleBarHeight = GetInstanceSetting(instanceId, "titleBarHeight") or KOL.db.profile.tracker.titleBarHeight or 28
     local bottomBorderPadding = 8  -- Bottom padding to prevent descender cutoff and scrollbar clipping
     local minFrameHeight = 60  -- Minimum frame height to prevent issues
     local actualFrameHeight = math.max(minFrameHeight, contentHeight + titleBarHeight + bottomBorderPadding)
 
     -- Only resize if not minimized
     if not frame.minimized then
+        local config = KOL.db.profile.tracker
+
+        -- If growUpward is enabled, we need to anchor from the bottom
+        -- so the frame grows/shrinks upward from a fixed bottom position
+        if config.growUpward then
+            local point = frame:GetPoint()
+            -- Only re-anchor if not already using a bottom anchor
+            if point and not point:match("BOTTOM") then
+                -- Get current absolute bottom-left position before any changes
+                local bottomY = frame:GetBottom()
+                local leftX = frame:GetLeft()
+
+                if bottomY and leftX then
+                    -- Re-anchor at bottom-left using absolute screen coordinates
+                    frame:ClearAllPoints()
+                    frame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", leftX, bottomY)
+                end
+            end
+        end
+
         frame:SetHeight(actualFrameHeight)
         frame.maxHeight = actualFrameHeight  -- Store current height for minimize/restore
     end
@@ -4572,7 +5071,12 @@ end
 
 -- Show watch frame for an instance
 function Tracker:ShowWatchFrame(instanceId)
-    KOL:DebugPrint("Tracker: ShowWatchFrame called for: " .. instanceId, 2)
+    -- ALERT: Print when ShowWatchFrame is called
+    local killCount = 0
+    if self.bossKills[instanceId] then
+        for _ in pairs(self.bossKills[instanceId]) do killCount = killCount + 1 end
+    end
+    KOL:PrintTag("|cFF00FF00SHOW WATCH FRAME|r: " .. instanceId .. " (kills in DB: " .. killCount .. ")")
 
     local frame = self.activeFrames[instanceId]
 
@@ -4603,6 +5107,23 @@ function Tracker:ShowWatchFrame(instanceId)
         self.dungeonChallengeState[instanceId].startTime = GetTime()
         self.dungeonChallengeState[instanceId].timeElapsedOffset = savedTime
         KOL:DebugPrint("Tracker: Started dungeon timer for " .. instanceId .. " (offset: " .. savedTime .. "s)", 2)
+
+        -- Start speed buff detection (scans until found, then stops)
+        self:StartSpeedBuffDetection(instanceId)
+
+        -- Apply pending best time if one was captured before watch frame was created
+        if self.pendingBestTime then
+            KOL:DebugPrint("Applying pending best time to " .. instanceId .. ": " .. self:FormatTime(self.pendingBestTime), 2)
+            if not KOL.db.profile.tracker.dungeonChallenge.bestTimes then
+                KOL.db.profile.tracker.dungeonChallenge.bestTimes = {}
+            end
+            local currentBest = KOL.db.profile.tracker.dungeonChallenge.bestTimes[instanceId] or 0
+            if currentBest == 0 or self.pendingBestTime < currentBest then
+                KOL.db.profile.tracker.dungeonChallenge.bestTimes[instanceId] = self.pendingBestTime
+                self.dungeonChallengeState[instanceId].bestTime = self.pendingBestTime
+            end
+            self.pendingBestTime = nil  -- Clear pending
+        end
     end
 
     -- Initialize timer log for all zones (if dungeon challenge is enabled)
@@ -4739,13 +5260,25 @@ function Tracker:SaveFramePosition(instanceId)
     local frame = self.activeFrames[instanceId]
     if not frame then return end
 
-    local point, _, relativePoint, x, y = frame:GetPoint()
+    local config = KOL.db.profile.tracker
 
-    if not KOL.db.profile.tracker.framePositions then
-        KOL.db.profile.tracker.framePositions = {}
+    if not config.framePositions then
+        config.framePositions = {}
     end
 
-    KOL.db.profile.tracker.framePositions[instanceId] = {
+    -- When growUpward is enabled, always save using BOTTOMLEFT anchor
+    -- This ensures the frame grows/shrinks correctly when restored
+    local point, relativePoint, x, y
+    if config.growUpward then
+        point = "BOTTOMLEFT"
+        relativePoint = "BOTTOMLEFT"
+        x = frame:GetLeft()
+        y = frame:GetBottom()
+    else
+        point, _, relativePoint, x, y = frame:GetPoint()
+    end
+
+    config.framePositions[instanceId] = {
         point = point,
         relativePoint = relativePoint,
         x = x,
@@ -4836,12 +5369,27 @@ function Tracker:ShowDefaultLocationPicker()
     titleText:SetPoint("CENTER", titleBar, "CENTER", 0, 0)
     titleText:SetText("|cFFFFFFFFDrag to Set Default Position|r")
 
-    -- Instructions
+    -- Instructions (include anchor info based on growUpward setting)
     local instructions = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     instructions:SetPoint("TOP", titleBar, "BOTTOM", 0, -12)
     instructions:SetWidth(180)
     instructions:SetJustifyH("CENTER")
-    instructions:SetText("|cFFCCCCCCNew watch frames will\nappear at this location.\n\nDrag me, then click Save.|r")
+    local anchorInfo = config.growUpward
+        and "|cFF66FF66Anchor: Bottom-Left|r\n(Grows upward)"
+        or "|cFFFFFF66Anchor: Top-Left|r\n(Grows downward)"
+    instructions:SetText("|cFFCCCCCCNew watch frames will\nappear at this location.\n\n" .. anchorInfo .. "|r")
+
+    -- Anchor indicator (visual marker showing anchor point)
+    local anchorMarker = frame:CreateTexture(nil, "OVERLAY")
+    anchorMarker:SetSize(12, 12)
+    anchorMarker:SetTexture("Interface\\Buttons\\WHITE8X8")
+    if config.growUpward then
+        anchorMarker:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 2, 2)
+        anchorMarker:SetColorTexture(0.4, 1, 0.4, 0.8)  -- Green for bottom anchor
+    else
+        anchorMarker:SetPoint("TOPLEFT", frame, "TOPLEFT", 2, -2)
+        anchorMarker:SetColorTexture(1, 1, 0.4, 0.8)  -- Yellow for top anchor
+    end
 
     -- Save button (using UIFactory styled button)
     local saveBtn
@@ -5165,6 +5713,38 @@ function Tracker:DebugCommand(...)
         KOL:Print("Current instanceId: " .. tostring(self.currentInstanceId))
         KOL:Print("AutoShow enabled: " .. tostring(KOL.db.profile.tracker.autoShow))
 
+        -- Show current lockout ID from saved instances
+        local currentLockoutId = self:GetCurrentLockoutID()
+        KOL:Print("Current lockout ID (from /raidinfo): " .. (currentLockoutId and tostring(currentLockoutId) or "None (not saved)"))
+
+        -- Show all saved instances for this zone
+        KOL:Print("Saved lockouts for this zone:")
+        RequestRaidInfo()
+        local numSaved = GetNumSavedInstances()
+        local foundSaved = false
+        for i = 1, numSaved do
+            local savedName, savedId, reset, difficulty, locked, extended, instanceIDMostSig, isRaid, maxPlayers, savedDiffName = GetSavedInstanceInfo(i)
+            if savedName == zone then
+                local resetTime = reset > 0 and SecondsToTime(reset) or "Expired"
+                KOL:Print("  ID: " .. tostring(savedId) .. " | Diff: " .. tostring(difficulty) .. " (" .. tostring(savedDiffName) .. ") | Reset: " .. resetTime)
+                foundSaved = true
+            end
+        end
+        if not foundSaved then
+            KOL:Print("  None")
+        end
+
+        -- Show stored lockout IDs (session tracking)
+        KOL:Print("Stored lockout IDs (session tracking):")
+        local hasLockouts = false
+        for trackerInstanceId, lockoutId in pairs(self.instanceLockouts) do
+            KOL:Print("  " .. trackerInstanceId .. ": " .. tostring(lockoutId))
+            hasLockouts = true
+        end
+        if not hasLockouts then
+            KOL:Print("  None stored yet")
+        end
+
         -- Check all matching instances
         KOL:Print("Matching instances:")
         local foundAny = false
@@ -5350,6 +5930,21 @@ function Tracker:InitializeDungeonChallengeData()
     if KOL.db.profile.tracker.dungeonChallenge.showSpeed == nil then
         KOL.db.profile.tracker.dungeonChallenge.showSpeed = true
     end
+    if not KOL.db.profile.tracker.dungeonChallenge.speedStacks then
+        KOL.db.profile.tracker.dungeonChallenge.speedStacks = {}
+    end
+    if not KOL.db.profile.tracker.dungeonChallenge.bestTimes then
+        KOL.db.profile.tracker.dungeonChallenge.bestTimes = {}
+    end
+    if not KOL.db.profile.tracker.dungeonChallenge.timerLogs then
+        KOL.db.profile.tracker.dungeonChallenge.timerLogs = {}
+    end
+    if not KOL.db.profile.tracker.dungeonChallenge.timerLogsLast then
+        KOL.db.profile.tracker.dungeonChallenge.timerLogsLast = {}
+    end
+    if not KOL.db.profile.tracker.dungeonChallenge.currentTimes then
+        KOL.db.profile.tracker.dungeonChallenge.currentTimes = {}
+    end
 end
 
 -- Check if player is eligible for dungeon challenge
@@ -5370,12 +5965,110 @@ function Tracker:IsDungeonChallengeEligible(instanceId)
     return true
 end
 
--- Invalidate buff cache (called by UNIT_AURA handler)
+-- Update challenge buff cache (called by UNIT_AURA handler)
+-- Only scans for Dungeon Challenge buff - speed buff is scanned once on zone entry
+function Tracker:UpdateBuffCache()
+    -- Only scan if we have active watch frames (performance: skip if not tracking anything)
+    if not next(self.activeFrames) then
+        return
+    end
+
+    -- Scan challenge buff only (speed buff is static per zone, scanned on entry)
+    local challengeCache = self.buffCache.challengeBuff
+
+    challengeCache.active = false
+    for i = 1, 40 do
+        local name, _, _, _, _, duration, expirationTime = UnitBuff("player", i)
+        if not name then break end
+        if name:find("Dungeon Challenge") then
+            challengeCache.active = true
+            challengeCache.duration = duration
+            challengeCache.expiration = expirationTime
+            challengeCache.valid = true
+            return
+        end
+    end
+
+    -- No challenge buff found
+    challengeCache.duration = 0
+    challengeCache.expiration = 0
+    challengeCache.valid = true
+end
+
+-- Start speed buff detection for an instance
+-- Scans until buff is found, then compares to saved best and stops
+function Tracker:StartSpeedBuffDetection(instanceId)
+    if not instanceId then return end
+
+    -- Get saved stacks for this instance
+    local savedStacks = 0
+    if KOL.db.profile.tracker.dungeonChallenge and KOL.db.profile.tracker.dungeonChallenge.speedStacks then
+        savedStacks = KOL.db.profile.tracker.dungeonChallenge.speedStacks[instanceId] or 0
+    end
+
+    -- If already at max (50), no need to scan - we're done with this zone forever
+    if savedStacks >= 50 then
+        KOL:DebugPrint("Speed buff: " .. instanceId .. " already at max (50 stacks), skipping scan", 2)
+        self.buffCache.speedBuff.active = true
+        self.buffCache.speedBuff.stacks = 50
+        self.buffCache.speedBuff.valid = true
+        self.buffCache.speedBuff.scanning = false
+        return
+    end
+
+    -- Start scanning
+    self.buffCache.speedBuff.scanning = true
+    self.buffCache.speedBuff.scanInstanceId = instanceId
+    self.buffCache.speedBuff.scanSavedStacks = savedStacks
+    KOL:DebugPrint("Speed buff: Starting detection for " .. instanceId .. " (saved: " .. savedStacks .. " stacks)", 2)
+end
+
+-- Tick function for speed buff detection (called by dungeon challenge ticker)
+-- Returns true when detection is complete (found or gave up)
+function Tracker:TickSpeedBuffDetection()
+    local cache = self.buffCache.speedBuff
+    if not cache.scanning then
+        return true  -- Not scanning, nothing to do
+    end
+
+    -- Scan for speed buff
+    for i = 1, 40 do
+        local name, _, _, count = UnitBuff("player", i)
+        if not name then break end
+        if count and count > 0 and count <= 50 then
+            if name:find("Speed") or name:find("Dungeon") or name:find("Challenge") then
+                -- Found it!
+                cache.active = true
+                cache.stacks = count
+                cache.valid = true
+                cache.scanning = false
+
+                local instanceId = cache.scanInstanceId
+                local savedStacks = cache.scanSavedStacks or 0
+
+                -- Update saved stacks if this is higher
+                if count > savedStacks then
+                    if not KOL.db.profile.tracker.dungeonChallenge.speedStacks then
+                        KOL.db.profile.tracker.dungeonChallenge.speedStacks = {}
+                    end
+                    KOL.db.profile.tracker.dungeonChallenge.speedStacks[instanceId] = count
+                    KOL:DebugPrint(string.format("Speed buff: %s NEW BEST! %d stacks (was %d)", instanceId, count, savedStacks), 1)
+                else
+                    KOL:DebugPrint(string.format("Speed buff: %s detected %d stacks (saved: %d)", instanceId, count, savedStacks), 2)
+                end
+
+                return true  -- Detection complete
+            end
+        end
+    end
+
+    -- Not found yet, keep scanning
+    return false
+end
+
+-- Legacy function for backwards compatibility
 function Tracker:InvalidateBuffCache()
-    self.buffCache.challengeBuff.valid = false
-    self.buffCache.speedBuff.valid = false
-    self.buffCache.lastInvalidation = GetTime()
-    KOL:DebugPrint("Buff cache invalidated", 3)
+    self:UpdateBuffCache()
 end
 
 -- Scan for Dungeon Challenge buff (with caching)
@@ -5410,44 +6103,11 @@ function Tracker:ScanDungeonChallengeBuff()
     return false, 0, 0
 end
 
--- Scan for Speed buff (stacks 0-50) (with caching)
+-- Get cached Speed buff stacks (scanned once on zone entry via ScanSpeedBuffOnce)
+-- Speed buff stacks are static for the entire dungeon run - no need to rescan
 function Tracker:ScanSpeedBuff()
-    -- Return cached result if still valid
     local cache = self.buffCache.speedBuff
-    if cache.valid then
-        return cache.active, cache.stacks
-    end
-
-    -- Scan buffs
-    for i = 1, 40 do
-        local name, rank, icon, count, debuffType, duration, expirationTime, unitCaster, isStealable, shouldConsolidate, spellId = UnitBuff("player", i)
-        if not name then break end
-
-        -- Debug: Print all buffs with stacks to help identify the speed buff
-        if count and count > 0 and count <= 50 then
-            KOL:DebugPrint(string.format("Buff with stacks found: '%s' (ID: %s) - %d stacks",
-                name or "unknown", tostring(spellId or "nil"), count), 3)
-        end
-
-        -- Speed buff detection - ONLY accept buffs with speed-related names
-        -- No fallback logic - if we can't find it by name, we don't show it at all
-        if count and count > 0 and count <= 50 then
-            if name and (name:find("Speed") or name:find("Dungeon") or name:find("Challenge")) then
-                KOL:DebugPrint(string.format("Speed buff detected by name: '%s' - %d stacks", name, count), 2)
-                -- Cache and return
-                cache.valid = true
-                cache.active = true
-                cache.stacks = count
-                return true, count
-            end
-        end
-    end
-
-    -- Cache negative result
-    cache.valid = true
-    cache.active = false
-    cache.stacks = 0
-    return false, 0
+    return cache.active or false, cache.stacks or 0
 end
 
 -- Get player movement speed (percentage above base 100%)
@@ -5548,13 +6208,15 @@ function Tracker:UpdateDungeonChallengeState(instanceId)
         state.currentTime = state.cachedTime or 0
     end
 
-    -- Scan for speed buff stacks
+    -- Tick speed buff detection (scans until found, then stops)
+    self:TickSpeedBuffDetection()
+
+    -- Get speed buff stacks from cache (populated by detection or saved data)
     local hasSpeedBuff, stacks = self:ScanSpeedBuff()
     if hasSpeedBuff and stacks > 0 then
         state.speedStacks = stacks
-        state.cachedSpeedStacks = stacks  -- Cache it
+        state.cachedSpeedStacks = stacks
     else
-        -- No speed buff detected - don't show cached value to avoid false positives
         state.speedStacks = 0
     end
 
@@ -5721,12 +6383,58 @@ end
 
 -- Handle chat messages for dungeon challenge completion
 function Tracker:OnDungeonChallengeChat(message)
-    -- Performance: Early exit if no dungeon challenge is active
-    -- This avoids pattern matching on every chat message when not in a challenge
+    -- Check for best time message FIRST (before early exit) since it can arrive before watch frame is created
+    -- Pattern: "Your previous best time was MM:SS."
+    local bestMinutes, bestSeconds = message:match("Your previous best time was (%d+):(%d+)%.")
+    if bestMinutes and bestSeconds then
+        local totalSeconds = (tonumber(bestMinutes) * 60) + tonumber(bestSeconds)
+        KOL:DebugPrint("Server reported previous best time: " .. bestMinutes .. ":" .. bestSeconds .. " (" .. totalSeconds .. "s)", 2)
+
+        -- Initialize database structure if needed
+        if not KOL.db.profile.tracker.dungeonChallenge then
+            KOL.db.profile.tracker.dungeonChallenge = {}
+        end
+        if not KOL.db.profile.tracker.dungeonChallenge.bestTimes then
+            KOL.db.profile.tracker.dungeonChallenge.bestTimes = {}
+        end
+
+        -- Find current instance (or use pending instance from zone change)
+        local targetInstanceId = self.currentInstanceId
+        if not targetInstanceId then
+            -- Try to find from active frames
+            for instanceId, frame in pairs(self.activeFrames) do
+                if frame:IsShown() then
+                    targetInstanceId = instanceId
+                    break
+                end
+            end
+        end
+
+        if targetInstanceId then
+            -- Only update if we don't have a best time stored, or if server's is better
+            local currentBest = KOL.db.profile.tracker.dungeonChallenge.bestTimes[targetInstanceId] or 0
+            if currentBest == 0 or totalSeconds < currentBest then
+                KOL.db.profile.tracker.dungeonChallenge.bestTimes[targetInstanceId] = totalSeconds
+                KOL:DebugPrint("Saved best time for " .. targetInstanceId .. ": " .. bestMinutes .. ":" .. bestSeconds, 2)
+
+                -- Update state if it exists
+                if self.dungeonChallengeState[targetInstanceId] then
+                    self.dungeonChallengeState[targetInstanceId].bestTime = totalSeconds
+                    self:UpdateWatchFrame(targetInstanceId)
+                end
+            end
+        else
+            -- No instance found yet - store temporarily for when watch frame is created
+            self.pendingBestTime = totalSeconds
+            KOL:DebugPrint("Stored pending best time: " .. bestMinutes .. ":" .. bestSeconds .. " (waiting for instance)", 2)
+        end
+        return
+    end
+
+    -- Performance: Early exit for other messages if no dungeon challenge is active
     if not next(self.dungeonChallengeState) then return end
 
     -- Pattern: "You completed this dungeon challenge in MM:SS!"
-    -- Pattern: "Your previous best time was MM:SS."
     -- Pattern: "You've made progress with dungeon challenge, current timer is MM:SS! There are X remaining encounters."
 
     -- Progress update message
@@ -5799,39 +6507,6 @@ function Tracker:OnDungeonChallengeChat(message)
                     KOL:Print("Dungeon Challenge completed in " .. completionMinutes .. ":" .. completionSeconds .. " (Best: " .. COLOR("GREEN", bestTimeStr) .. ")")
                 end
 
-                break
-            end
-        end
-        return
-    end
-
-    local bestMinutes, bestSeconds = message:match("Your previous best time was (%d+):(%d+)%.")
-    if bestMinutes and bestSeconds then
-        local totalSeconds = (tonumber(bestMinutes) * 60) + tonumber(bestSeconds)
-        KOL:DebugPrint("Server reported previous best time: " .. totalSeconds .. " seconds", 2)
-
-        -- Find current instance and update best time from server
-        for instanceId, frame in pairs(self.activeFrames) do
-            if frame:IsShown() then
-                -- Initialize database structure if needed
-                if not KOL.db.profile.tracker.dungeonChallenge.bestTimes then
-                    KOL.db.profile.tracker.dungeonChallenge.bestTimes = {}
-                end
-
-                -- Only update if we don't have a best time stored, or if server's is better
-                local currentBest = KOL.db.profile.tracker.dungeonChallenge.bestTimes[instanceId] or 0
-                if currentBest == 0 or totalSeconds < currentBest then
-                    KOL.db.profile.tracker.dungeonChallenge.bestTimes[instanceId] = totalSeconds
-                    KOL:DebugPrint("Updated best time from server: " .. bestMinutes .. ":" .. bestSeconds, 2)
-
-                    -- Update state
-                    if self.dungeonChallengeState[instanceId] then
-                        self.dungeonChallengeState[instanceId].bestTime = totalSeconds
-                    end
-
-                    -- Update watch frame
-                    self:UpdateWatchFrame(instanceId)
-                end
                 break
             end
         end
@@ -5908,6 +6583,68 @@ KOL:RegisterEventCallback("PLAYER_ENTERING_WORLD", function()
         KOL.Tracker:ResetAll()
         KOL:PrintTag("All tracker boss kills reset")
     end, "Reset all tracker boss kills", "module")
+
+    KOL:RegisterSlashCommand("testhm", function(args)
+        local instanceId = KOL.Tracker.currentInstanceId
+        if not instanceId then
+            KOL:Print("No instance loaded. Enter an instance first or use: /kol testhm <instanceId> <bossIndex>")
+            return
+        end
+
+        local data = KOL.Tracker.instances[instanceId]
+        if not data then
+            KOL:Print("Instance data not found for: " .. instanceId)
+            return
+        end
+
+        -- Parse args: optional bossIndex (e.g., "1" for flat, "g1-b1" for grouped)
+        local bossIndex = args and args:match("^%s*(%S+)")
+
+        if not bossIndex then
+            -- List all bosses with hardmode capability
+            KOL:Print("|cFF66FFCCHardmode Test - Instance: " .. instanceId .. "|r")
+            KOL:Print("Usage: /kol testhm <bossIndex>")
+            KOL:Print("Available bosses with hardmode:")
+
+            if data.bosses then
+                for i, boss in ipairs(data.bosses) do
+                    if boss.hardmode then
+                        local isHM = KOL.Tracker.hardmodeActive[instanceId] and KOL.Tracker.hardmodeActive[instanceId][i]
+                        KOL:Print("  " .. i .. " = " .. boss.name .. (isHM and " |cFF00FF00(HM ACTIVE)|r" or ""))
+                    end
+                end
+            end
+
+            if data.groups then
+                for gi, group in ipairs(data.groups) do
+                    for bi, boss in ipairs(group.bosses) do
+                        if boss.hardmode then
+                            local bossId = "g" .. gi .. "-b" .. bi
+                            local isHM = KOL.Tracker.hardmodeActive[instanceId] and KOL.Tracker.hardmodeActive[instanceId][bossId]
+                            KOL:Print("  " .. bossId .. " = " .. boss.name .. (isHM and " |cFF00FF00(HM ACTIVE)|r" or ""))
+                        end
+                    end
+                end
+            end
+            return
+        end
+
+        -- Toggle hardmode for specified boss
+        local isCurrentlyHM = KOL.Tracker.hardmodeActive[instanceId] and KOL.Tracker.hardmodeActive[instanceId][bossIndex]
+
+        if isCurrentlyHM then
+            KOL.Tracker:ClearBossHardmode(instanceId, bossIndex)
+            KOL:Print("|cFFFF6600Cleared hardmode|r for boss: " .. bossIndex)
+        else
+            KOL.Tracker:MarkBossHardmode(instanceId, bossIndex)
+            KOL:Print("|cFF00FF00Marked hardmode|r for boss: " .. bossIndex)
+        end
+
+        -- Refresh watch frame if visible
+        if KOL.Tracker.activeFrames and KOL.Tracker.activeFrames[instanceId] then
+            KOL.Tracker:UpdateWatchFrame(instanceId)
+        end
+    end, "Test hardmode (HM) display - toggle hardmode on bosses", "module")
 end, "Tracker")
 
 -- Register /ktm as a standalone WoW slash command (not via /kol)

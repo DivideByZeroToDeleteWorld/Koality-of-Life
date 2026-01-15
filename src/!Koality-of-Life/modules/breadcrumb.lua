@@ -71,7 +71,7 @@ function Breadcrumb:SetPath(...)
             pathStr = pathStr .. " > " .. (data and data.name or segment)
         end
     end
-    KOL:DebugPrint("Breadcrumb: " .. pathStr)
+    KOL:DebugPrint("Breadcrumb: " .. pathStr, 3)
 
     self:UpdateBreadcrumbs()
 end

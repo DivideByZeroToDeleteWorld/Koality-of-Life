@@ -91,6 +91,7 @@ local defaults = {
             baseFont = "Source Code Pro Bold",
             baseFontSize = 12,
             fontScale = 1.0,
+            titleBarHeight = 28,
             dungeonFilterExpansion = "",
             dungeonFilterDifficulty = "",
             selectedDungeonInstance = "",
@@ -98,6 +99,21 @@ local defaults = {
             raidFilterDifficulty = "",
             selectedRaidInstance = "",
             autoShow = true,
+            -- Boss kill tracking (persisted across sessions)
+            bossKills = {},
+            multiNPCKills = {},
+            multiPhaseKills = {},
+            hardmodeActive = {},
+            entryProgress = {},
+            collapsedGroups = {},
+            -- Dungeon challenge data
+            dungeonChallenge = {
+                bestTimes = {},
+                speedStacks = {},
+                currentTimes = {},
+                timerLogs = {},      -- Best times per encounter [instanceId][encounterName] = seconds
+                timerLogsLast = {},  -- Last run times per encounter [instanceId][encounterName] = seconds
+            },
         },
 
         themes = {

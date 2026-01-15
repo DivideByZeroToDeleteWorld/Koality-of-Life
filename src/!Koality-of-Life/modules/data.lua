@@ -85,6 +85,28 @@ function KOL:ZoneCommand()
     if z.raidSize then
         self:Print("|cFFFFFF00Raid Size:|r " .. z.raidSize .. " players")
     end
+
+    -- Tracker information
+    if KOL.Tracker then
+        local instanceId = KOL.Tracker.currentInstanceId
+        self:Print("|cFFFFFF00Tracker Instance ID:|r " .. (instanceId and "|cFF00FF00" .. instanceId .. "|r" or "|cFFFF0000nil|r"))
+
+        -- Show matching instances for this zone
+        local zoneName = GetRealZoneText()
+        local matches = {}
+        for id, data in pairs(KOL.Tracker.instances or {}) do
+            for _, zone in ipairs(data.zones or {}) do
+                if zone == zoneName then
+                    table.insert(matches, id)
+                end
+            end
+        end
+        if #matches > 0 then
+            self:Print("|cFFFFFF00Matching Instances:|r |cFF00FF00" .. table.concat(matches, ", ") .. "|r")
+        else
+            self:Print("|cFFFFFF00Matching Instances:|r |cFFFF0000NONE|r")
+        end
+    end
 end
 
 function KOL:IsInInstance()
