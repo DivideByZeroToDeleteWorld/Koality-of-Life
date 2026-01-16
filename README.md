@@ -104,25 +104,6 @@ We are currently in **testing phase** for several features:
 
 Feedback and bug reports are welcome!
 
-## Version History
-
-### v1.0.1.7 (Current)
-- Major UI and tracker improvements
-- Fixed syntax errors in config panels
-- Expanded UI Factory with new widget types
-- Enhanced tracker editor functionality
-- Improved debug console
-- New color definitions and theme improvements
-
-### v1.0.0.7
-- Added unified tracker entry schema with multi-type detection
-
-### v1.0.0.6
-- Added wing/area grouping to classic dungeons
-
-### v1.0.0.5
-- Fixed yell-based boss detection for ICC and ToC
-
 ---
 
 Lovingly developed by **Z**ero with the assistance of [Claude Code](https://claude.com/claude-code)
