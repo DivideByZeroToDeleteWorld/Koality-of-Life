@@ -21,7 +21,7 @@ KOL.Tracker:RegisterInstance("hr_n", {
     bosses = {
         {name = "Watchkeeper Gargolmar", id = 17306},
         {name = "Omor the Unscarred", id = 17308},
-        {name = "Vazruden & Nazan", id = 17307},
+        {name = "Vazruden & Nazan", type = "multikill", ids = {17537, 17536}},  -- Vazruden the Herald, Nazan
     }
 })
 
@@ -35,7 +35,7 @@ KOL.Tracker:RegisterInstance("hr_h", {
     bosses = {
         {name = "Watchkeeper Gargolmar", id = 17306},
         {name = "Omor the Unscarred", id = 17308},
-        {name = "Vazruden & Nazan", id = 17307},
+        {name = "Vazruden & Nazan", type = "multikill", ids = {17537, 17536}},  -- Vazruden the Herald, Nazan
     }
 })
 

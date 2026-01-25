@@ -53,7 +53,13 @@ local defaults = {
         watchDeathsLevel = 0,
         showPrints = false,
         showSplash = true,
+        autoDungeonReset = false,
         limitDamage = false,
+        hideGlobalXPBar = false,
+        hideGlobalREPBar = false,
+        disableAllRainbow = false,
+        ldbXPBarRainbow = false,
+        ldbREPBarRainbow = false,
 
         racialPrimary = nil,
         racialSecondary = nil,

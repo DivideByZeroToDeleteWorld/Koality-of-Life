@@ -243,6 +243,11 @@ function BuildManager:ProcessQueue(elapsed)
         self:ExecuteClickToggle()
     elseif action.type == "change_perk_option" then
         self:ExecuteChangePerkOption(action.data)
+    elseif action.type == "apply_talents" then
+        -- Apply talents after perks have been processed
+        if action.data and action.data.talentString then
+            self:ImportTalents(action.data.talentString)
+        end
     elseif action.type == "complete" then
         self:Print("Build import complete!")
         self:StopQueue()
@@ -1222,15 +1227,118 @@ function BuildManager:ImportTalents(talentString)
     return classesImported > 0
 end
 
--- Apply talent data to current talent tree
+-- Apply talent data to current talent tree (progressive - applies as many as possible)
 function BuildManager:ApplyTalentData(talentData)
     if not AddPreviewTalentPoints or not LearnPreviewTalents then
         self:Print("Error: Synastria talent APIs not found")
         return false
     end
 
-    -- Clear all preview talents first
+    -- Get available talent points
+    local availablePoints = UnitCharacterPoints("player") or 0
+
+    -- Get current talent points already spent (we're adding to existing, not replacing)
+    local currentPointsInTree = {}
     local numTabs = GetNumTalentTabs()
+    for tab = 1, numTabs do
+        currentPointsInTree[tab] = 0
+        local numTalents = GetNumTalents(tab)
+        for talent = 1, numTalents do
+            local _, _, _, _, currentRank = GetTalentInfo(tab, talent)
+            currentPointsInTree[tab] = currentPointsInTree[tab] + (currentRank or 0)
+        end
+    end
+
+    -- First pass: count TOTAL desired points per tree from the build string
+    -- This determines primary tree based on what the build specifies, not what's left to add
+    local totalBuildPointsPerTree = {}
+    local totalBuildPoints = 0
+
+    for tabData in talentData:gmatch("(%d+:[%d]+)") do
+        local tab, ranks = tabData:match("(%d+):(%d+)")
+        tab = tonumber(tab)
+
+        if tab and ranks then
+            for talentIndex = 1, #ranks do
+                local desiredRank = tonumber(ranks:sub(talentIndex, talentIndex)) or 0
+                if desiredRank > 0 then
+                    totalBuildPointsPerTree[tab] = (totalBuildPointsPerTree[tab] or 0) + desiredRank
+                    totalBuildPoints = totalBuildPoints + desiredRank
+                end
+            end
+        end
+    end
+
+    -- Find the tree with the most points in the BUILD (not just what's needed)
+    local primaryTree = nil
+    local maxBuildPoints = 0
+    for tab, points in pairs(totalBuildPointsPerTree) do
+        if points > maxBuildPoints then
+            maxBuildPoints = points
+            primaryTree = tab
+        end
+    end
+
+    -- Prioritize primary tree if it has >50% of total BUILD points
+    local prioritizePrimaryTree = totalBuildPoints > 0 and (maxBuildPoints / totalBuildPoints) > 0.5
+
+    -- Second pass: parse talents into a structured list with tier info (only points still needed)
+    local desiredTalents = {}  -- {tab, talent, desiredRank, tier}
+
+    for tabData in talentData:gmatch("(%d+:[%d]+)") do
+        local tab, ranks = tabData:match("(%d+):(%d+)")
+        tab = tonumber(tab)
+
+        if tab and ranks then
+            local numTalents = GetNumTalents(tab)
+            for talentIndex = 1, #ranks do
+                local desiredRank = tonumber(ranks:sub(talentIndex, talentIndex)) or 0
+                if desiredRank > 0 and talentIndex <= numTalents then
+                    -- Get tier info for this talent
+                    local _, _, tier, _, currentRank, maxRank = GetTalentInfo(tab, talentIndex)
+                    local pointsNeeded = desiredRank - (currentRank or 0)
+
+                    if pointsNeeded > 0 then
+                        -- Add each point as a separate entry so we can apply one at a time
+                        for i = 1, pointsNeeded do
+                            table.insert(desiredTalents, {
+                                tab = tab,
+                                talent = talentIndex,
+                                tier = tier or 1,
+                                rankAfter = (currentRank or 0) + i,
+                            })
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Sort talents
+    -- If one tree dominates, prioritize it fully before moving to others
+    -- Otherwise, sort by tier for even distribution
+    table.sort(desiredTalents, function(a, b)
+        if prioritizePrimaryTree then
+            -- Primary tree always comes first
+            local aIsPrimary = a.tab == primaryTree
+            local bIsPrimary = b.tab == primaryTree
+            if aIsPrimary ~= bIsPrimary then
+                return aIsPrimary
+            end
+        end
+
+        -- Within same priority level, sort by tier (lower tiers first - prerequisites)
+        if a.tier ~= b.tier then
+            return a.tier < b.tier
+        end
+        -- Same tier: sort by tab, then talent index
+        if a.tab ~= b.tab then
+            return a.tab < b.tab
+        end
+        return a.talent < b.talent
+    end)
+
+    -- Clear all preview talents first
     for tab = 1, numTabs do
         local numTalents = GetNumTalents(tab)
         for talent = 1, numTalents do
@@ -1238,25 +1346,52 @@ function BuildManager:ApplyTalentData(talentData)
         end
     end
 
-    -- Parse and apply new talents
-    for tabData in talentData:gmatch("(%d+:[%d]+)") do
-        local tab, ranks = tabData:match("(%d+):(%d+)")
-        tab = tonumber(tab)
+    -- Track points spent in preview per tree
+    local previewPointsInTree = {}
+    for tab = 1, numTabs do
+        previewPointsInTree[tab] = currentPointsInTree[tab]
+    end
 
-        if tab and ranks then
-            for talent = 1, #ranks do
-                local points = tonumber(ranks:sub(talent, talent)) or 0
-                if points > 0 then
-                    AddPreviewTalentPoints(tab, talent, points)
-                end
+    -- Apply talents progressively
+    local pointsUsed = 0
+    local talentsApplied = 0
+    local talentsSkipped = 0
+    local appliedPerTalent = {}  -- Track how many points applied to each talent
+
+    for _, entry in ipairs(desiredTalents) do
+        if pointsUsed >= availablePoints then
+            talentsSkipped = talentsSkipped + 1
+        else
+            -- Check tier requirement: need (tier-1)*5 points in tree to unlock tier
+            local requiredPointsInTree = (entry.tier - 1) * 5
+            if previewPointsInTree[entry.tab] >= requiredPointsInTree then
+                -- Can apply this talent point
+                local key = entry.tab .. ":" .. entry.talent
+                appliedPerTalent[key] = (appliedPerTalent[key] or 0) + 1
+                AddPreviewTalentPoints(entry.tab, entry.talent, 1)
+                previewPointsInTree[entry.tab] = previewPointsInTree[entry.tab] + 1
+                pointsUsed = pointsUsed + 1
+                talentsApplied = talentsApplied + 1
+            else
+                talentsSkipped = talentsSkipped + 1
             end
         end
     end
 
-    -- Commit the changes
-    LearnPreviewTalents()
+    -- Commit the changes if we applied anything
+    if pointsUsed > 0 then
+        LearnPreviewTalents()
+        self:Print(string.format("Applied %d talent points (%d skipped - not enough points or tier locked)",
+            pointsUsed, talentsSkipped))
+    else
+        if talentsSkipped > 0 then
+            self:Print("Could not apply any talents - not enough points or prerequisites not met")
+        else
+            self:Print("No talent changes needed")
+        end
+    end
 
-    return true
+    return pointsUsed > 0
 end
 
 --------------------------------------------------------------------------------
@@ -1283,6 +1418,7 @@ function BuildManager:ExportFullBuild()
 end
 
 -- Import full build (perks + talents)
+-- Perks are processed first via queue, then talents are applied after perks complete
 function BuildManager:ImportFullBuild(buildString)
     if not buildString or buildString == "" then
         self:Print("Error: Empty build string")
@@ -1307,29 +1443,87 @@ function BuildManager:ImportFullBuild(buildString)
         end
     end
 
-    -- Import perks
+    local talentString = #talentLines > 0 and table.concat(talentLines, "\n") or nil
+    local hasTalents = talentString and talentString ~= ""
+
+    -- If we have perks, queue them (but don't let ImportPerks add "complete")
     local perkChanges = 0
     if perkString then
-        perkChanges = self:ImportPerks(perkString)
+        perkChanges = self:ImportPerksForFullBuild(perkString)
     end
 
-    -- Import talents
-    local talentSuccess = false
-    if #talentLines > 0 then
-        talentSuccess = self:ImportTalents(table.concat(talentLines, "\n"))
-    end
-
-    if perkChanges > 0 or talentSuccess then
-        if perkChanges > 0 then
-            self:Print(string.format("Queued %d perk changes", perkChanges))
+    -- If we have perk changes queued, queue talents to run after perks finish
+    if perkChanges > 0 then
+        if hasTalents then
+            -- Queue talents to apply after perks (with delay to let perks settle)
+            self:QueueAction("apply_talents", {talentString = talentString}, 0.5)
         end
-        if talentSuccess then
-            self:Print("Talents imported successfully")
-        end
+        -- Queue completion message
+        self:QueueAction("complete", nil, 0)
+        self:StartQueue("Importing build...")
+        self:Print(string.format("Queued %d perk changes%s", perkChanges,
+            hasTalents and " + talents" or ""))
         return true
+    else
+        -- No perk changes - apply talents immediately if we have them
+        if hasTalents then
+            local talentSuccess = self:ImportTalents(talentString)
+            return talentSuccess
+        end
     end
 
+    self:Print("No changes to import")
     return false
+end
+
+-- Import perks without queueing "complete" (for use in full build import)
+function BuildManager:ImportPerksForFullBuild(perkString)
+    if not perkString or perkString == "" then return 0 end
+
+    -- Parse target perk IDs into lookup table
+    local targetPerks = {}
+    for idStr in string.gmatch(perkString, "(%d+)") do
+        local id = tonumber(idStr)
+        if id then
+            targetPerks[id] = true
+        end
+    end
+
+    -- Get current perk states
+    local currentPerks = self:GetAllPerks()
+    if #currentPerks == 0 then
+        self:Print("Error: No perks found. Make sure PerkMgrFrame is open.")
+        return 0
+    end
+
+    -- Build lists of changes needed
+    local toDeactivate = {}
+    local toActivate = {}
+
+    for _, perk in ipairs(currentPerks) do
+        local shouldBeActive = targetPerks[perk.id] or false
+
+        if perk.active and not shouldBeActive then
+            table.insert(toDeactivate, perk)
+        elseif not perk.active and shouldBeActive then
+            table.insert(toActivate, perk)
+        end
+    end
+
+    -- Queue deactivations first
+    for _, perk in ipairs(toDeactivate) do
+        self:QueueAction("click_perk", perk.position, Data.QUEUE_DELAY_CLICK)
+        self:QueueAction("click_toggle", nil, Data.QUEUE_DELAY_TOGGLE)
+    end
+
+    -- Then queue activations
+    for _, perk in ipairs(toActivate) do
+        self:QueueAction("click_perk", perk.position, Data.QUEUE_DELAY_CLICK)
+        self:QueueAction("click_toggle", nil, Data.QUEUE_DELAY_TOGGLE)
+    end
+
+    -- NOTE: Don't queue "complete" here - caller will handle it
+    return #toDeactivate + #toActivate
 end
 
 --------------------------------------------------------------------------------
@@ -1795,7 +1989,7 @@ function BuildManager:CreateMainFrame()
             end
         end,
     })
-    editBtn:SetPoint("LEFT", createBtn, "RIGHT", 20, 0)
+    editBtn:SetPoint("LEFT", createBtn, "RIGHT", 8, 0)
 
     local deleteBtn = KOL.UIFactory:CreateButton(actionRow, "DELETE", {
         type = "text",
@@ -1807,7 +2001,7 @@ function BuildManager:CreateMainFrame()
             end
         end,
     })
-    deleteBtn:SetPoint("LEFT", editBtn, "RIGHT", 20, 0)
+    deleteBtn:SetPoint("LEFT", editBtn, "RIGHT", 8, 0)
 
     local restoreBtn = KOL.UIFactory:CreateButton(actionRow, "RESTORE", {
         type = "text",
@@ -1815,7 +2009,7 @@ function BuildManager:CreateMainFrame()
             BuildManager:ShowRecoverFrame()
         end,
     })
-    restoreBtn:SetPoint("LEFT", deleteBtn, "RIGHT", 15, 0)
+    restoreBtn:SetPoint("LEFT", deleteBtn, "RIGHT", 8, 0)
 end
 
 function BuildManager:RefreshBuildList()

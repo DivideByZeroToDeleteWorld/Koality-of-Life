@@ -80,6 +80,7 @@ function KOL:ZoneCommand()
     local z = self:GetZoneDetails()
     self:PrintTag("Zone Information:")
     self:Print("|cFFFFFF00Name:|r " .. z.name)
+    self:Print("|cFFFFFF00SubZone:|r " .. (z.subzone ~= "" and z.subzone or "(none)"))
     self:Print("|cFFFFFF00Type:|r " .. (z.isDungeon and "Dungeon" or z.isRaid and "Raid" or "Open World"))
     self:Print("|cFFFFFF00Difficulty:|r " .. (z.isHeroic and "|cFFFF0000" or "|cFF00FF00") .. z.prettyDifficulty .. "|r")
     if z.raidSize then

@@ -116,6 +116,7 @@ function KOL:OnEnable()
     self:RegisterChatCommand("kt", "TestSlashCommand")
     self:RegisterChatCommand("kdc", function() self:ToggleDebugConsole() end)
     self:RegisterChatCommand("kcv", function() self:ToggleCharViewer() end)
+    self:RegisterChatCommand("kdr", function() self:ToggleAutoDungeonReset() end)
     self:RegisterChatCommand("kld", function() self:ToggleLimitDamage() end)
     self:RegisterChatCommand("krs", function() self:ToggleRacial() end)
     self:RegisterChatCommand("kc", function(args)
@@ -156,6 +157,10 @@ function KOL:OnEnable()
     SLASH_KOLRELOAD1 = "/rl"
     SLASH_KOLRELOAD2 = "/reloadui"
     SlashCmdList["KOLRELOAD"] = function() ReloadUI() end
+
+    -- /kct shortcut for code test frame
+    SLASH_KOLCODETEST1 = "/kct"
+    SlashCmdList["KOLCODETEST"] = function() KOL:ShowCodeTestFrame() end
 
     self:RegisterChatCommand("kwd", function(args)
         local level = tonumber(args)
@@ -344,11 +349,143 @@ function KOL:OnEnable()
         end
     end)
 
+    self:InitDungeonReset()
+
     self:DebugPrint("!Koality-of-Life v" .. KOL.version .. " loaded", 1)
 end
 
 function KOL:OnDisable()
 end
+
+-- ============================================================================
+-- Code Test Frame (/kol ct) - Quick Lua code execution
+-- ============================================================================
+
+local codeTestFrame = nil
+
+function KOL:ShowCodeTestFrame()
+    if codeTestFrame then
+        codeTestFrame:Show()
+        return
+    end
+
+    local UIFactory = KOL.UIFactory
+
+    -- Create main frame using UIFactory
+    local f = UIFactory:CreateStyledFrame(UIParent, "KOL_CodeTestFrame", 450, 200, {
+        movable = true,
+        closable = true,
+        strata = "DIALOG",
+    })
+    f:SetPoint("CENTER")
+
+    -- Title bar using UIFactory
+    local titleBar = UIFactory:CreateTitleBar(f, 20, "|cFF00FF00KOL|r Code Test", {
+        showClose = true,
+        fontSize = 10,
+    })
+
+    -- Edit box container (scrollframe)
+    local scrollFrame = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", 12, -28)
+    scrollFrame:SetPoint("BOTTOMRIGHT", -32, 45)
+
+    local editBox = CreateFrame("EditBox", nil, scrollFrame)
+    editBox:SetMultiLine(true)
+    editBox:SetAutoFocus(false)
+    editBox:SetFontObject(ChatFontNormal)
+    editBox:SetWidth(scrollFrame:GetWidth())
+    editBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    scrollFrame:SetScrollChild(editBox)
+
+    -- Enable syntax highlighting using FAIAP
+    if KOL.indent and KOL.indent.enable then
+        KOL.indent.enable(editBox, KOL.indent.defaultColorTable, 2)
+    end
+
+    -- Background container with border for edit area
+    local editContainer = CreateFrame("Frame", nil, f)
+    editContainer:SetPoint("TOPLEFT", scrollFrame, -4, 4)
+    editContainer:SetPoint("BOTTOMRIGHT", scrollFrame, 16, -4)
+    editContainer:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        tile = false,
+        tileSize = 1,
+        edgeSize = 1,
+        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    })
+    editContainer:SetBackdropColor(0, 0, 0, 0.5)
+    editContainer:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+
+    -- Helper function to clean code for execution
+    local function CleanCodeForExecution(code)
+        if not code or code == "" then return code end
+
+        -- Strip WoW color codes that FAIAP adds (for clean execution)
+        if KOL.indent and KOL.indent.stripWowColors then
+            code = KOL.indent.stripWowColors(code)
+        end
+
+        -- Strip /script or /run prefix from ALL lines (not just the first)
+        -- This handles multi-line pastes where each line starts with /script
+        code = code:gsub("[\r\n]%s*/[Ss][Cc][Rr][Ii][Pp][Tt]%s+", "\n")
+        code = code:gsub("[\r\n]%s*/[Rr][Uu][Nn]%s+", "\n")
+        -- Also strip from the very first line
+        code = code:gsub("^%s*/[Ss][Cc][Rr][Ii][Pp][Tt]%s+", "")
+        code = code:gsub("^%s*/[Rr][Uu][Nn]%s+", "")
+
+        return code
+    end
+
+    -- Run button
+    local runBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    runBtn:SetSize(80, 22)
+    runBtn:SetPoint("BOTTOMLEFT", 12, 12)
+    runBtn:SetText("Run")
+    runBtn:SetScript("OnClick", function()
+        local code = editBox:GetText()
+        code = CleanCodeForExecution(code)
+        if code and code ~= "" then
+            local func, err = loadstring(code)
+            if func then
+                local success, runErr = pcall(func)
+                if success then
+                    KOL:PrintTag("|cFF00FF00Code executed successfully|r")
+                else
+                    KOL:PrintTag("|cFFFF0000Runtime error:|r " .. tostring(runErr))
+                end
+            else
+                KOL:PrintTag("|cFFFF0000Syntax error:|r " .. tostring(err))
+            end
+        end
+    end)
+
+    -- Clear button
+    local clearBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    clearBtn:SetSize(80, 22)
+    clearBtn:SetPoint("LEFT", runBtn, "RIGHT", 8, 0)
+    clearBtn:SetText("Clear")
+    clearBtn:SetScript("OnClick", function()
+        editBox:SetText("")
+        editBox:SetFocus()
+    end)
+
+    -- Close button
+    local closeBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    closeBtn:SetSize(80, 22)
+    closeBtn:SetPoint("BOTTOMRIGHT", -12, 12)
+    closeBtn:SetText("Close")
+    closeBtn:SetScript("OnClick", function() f:Hide() end)
+
+    codeTestFrame = f
+    f:Show()
+end
+
+-- Register slash command for code test
+KOL:RegisterSlashCommand("ct", function()
+    KOL:ShowCodeTestFrame()
+end, "Open Code Test frame for quick Lua execution", "utility")
 
 -- ============================================================================
 -- Slash Command Handler
@@ -380,6 +517,8 @@ function KOL:SlashCommand(input)
         self:PrintHelp()
     elseif cmd == "config" or cmd == "options" then
         self:OpenConfig()
+    elseif cmd == "dungeonreset" or cmd == "dr" then
+        self:ToggleAutoDungeonReset()
     elseif cmd == "ld" or cmd == "limitdamage" then
         self:ToggleLimitDamage()
     elseif cmd == "debug" then
@@ -1096,6 +1235,102 @@ function KOL:SetDungeonDifficulty(difficulty, diffName)
     SetDungeonDifficulty(difficulty)
     self:PrintTag("Dungeon difficulty set to: " .. YELLOW(diffName))
     self:DebugPrint("SetDungeonDifficulty(" .. difficulty .. ") called")
+end
+
+-- ============================================================================
+-- Tweaks: Auto Dungeon Reset
+-- ============================================================================
+
+KOL.DungeonReset = {
+    lastInInstance = nil,
+    lastInstanceType = nil,
+    waitingForResult = false,
+    resetTimer = 0,
+}
+
+function KOL:ToggleAutoDungeonReset()
+    self.db.profile.autoDungeonReset = not self.db.profile.autoDungeonReset
+    local isEnabled = self.db.profile.autoDungeonReset
+
+    print(self.Colors:FormatSettingChange("Auto Dungeon Reset", isEnabled))
+
+    if self.LDB and self.LDB.UpdateLDBText then
+        self.LDB:UpdateLDBText()
+    end
+
+    LibStub("AceConfigRegistry-3.0"):NotifyChange("KoalityOfLife")
+end
+
+function KOL:InitDungeonReset()
+    local dr = self.DungeonReset
+
+    -- Zone transition detection
+    local function handleTransition()
+        if not self.db.profile.autoDungeonReset then return end
+
+        local inInstance, instanceType = IsInInstance()
+        if not inInstance and dr.lastInInstance and (dr.lastInstanceType == "party" or dr.lastInstanceType == "raid") then
+            self:PrintTag("Resetting instances...")
+            dr.waitingForResult = true
+            dr.resetTimer = 0
+            ResetInstances()
+        end
+
+        dr.lastInInstance = inInstance
+        if inInstance then
+            local name, iType = GetInstanceInfo()
+            dr.lastInstanceType = iType or instanceType
+        else
+            dr.lastInstanceType = nil
+        end
+    end
+
+    -- Register zone transition events
+    self:RegisterEventCallback("PLAYER_ENTERING_WORLD", function()
+        if dr.lastInInstance == nil then
+            local inInstance, instanceType = IsInInstance()
+            dr.lastInInstance = inInstance
+            if inInstance then
+                local name, iType = GetInstanceInfo()
+                dr.lastInstanceType = iType or instanceType
+            end
+        end
+    end, "DungeonReset")
+
+    self:RegisterEventCallback("ZONE_CHANGED_NEW_AREA", handleTransition, "DungeonReset")
+    self:RegisterEventCallback("ZONE_CHANGED", handleTransition, "DungeonReset")
+    self:RegisterEventCallback("ZONE_CHANGED_INDOORS", handleTransition, "DungeonReset")
+
+    -- Monitor system messages for reset result
+    self:RegisterEventCallback("CHAT_MSG_SYSTEM", function(message)
+        if not dr.waitingForResult then return end
+
+        if message and message:find("has been reset") then
+            dr.waitingForResult = false
+            self:PrintTag("|cFF00FF00Instances reset successfully.|r")
+            if IsInGroup(LE_PARTY_CATEGORY_HOME) then
+                SendChatMessage("Dungeons have been reset.", "PARTY")
+            end
+        elseif message and message:find("Cannot reset") then
+            dr.waitingForResult = false
+            self:PrintTag("|cFFFF0000Cannot reset:|r Players still inside the instance.")
+            if IsInGroup(LE_PARTY_CATEGORY_HOME) then
+                SendChatMessage("Cannot reset. Players still inside.", "PARTY")
+            end
+        end
+    end, "DungeonReset")
+
+    -- Timeout timer for reset result
+    local timerFrame = CreateFrame("Frame")
+    timerFrame:SetScript("OnUpdate", function(self, elapsed)
+        if dr.waitingForResult then
+            dr.resetTimer = dr.resetTimer + elapsed
+            if dr.resetTimer > 2 then
+                dr.waitingForResult = false
+                dr.resetTimer = 0
+            end
+        end
+    end)
 end
 
 -- ============================================================================

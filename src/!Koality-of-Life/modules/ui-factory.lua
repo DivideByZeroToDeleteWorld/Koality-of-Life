@@ -30,6 +30,341 @@ end
 UIFactory.GetGeneralFont = GetGeneralFont
 
 -- ============================================================================
+-- Character Dropdown Helper
+-- ============================================================================
+
+-- All available bar characters in order for progress bars
+-- Pass a string like "11111111" to enable/disable each character
+-- Position: 1=Equals, 2=DoubleLine, 3=Square, 4=Circle, 5=Diamond, 6=Block, 7=Rectangle, 8=Pipe
+-- NOTE: Display names use text only (no special chars) since AceConfig dropdowns use standard WoW fonts
+local BAR_CHARACTERS = {
+    { char = "=", name = "Equals (=)" },
+    { char = "═", name = "Double Line" },
+    { char = "■", name = "Square" },
+    { char = "●", name = "Circle" },
+    { char = "◆", name = "Diamond" },
+    { char = "█", name = "Block (Full)" },
+    { char = "▮", name = "Rectangle" },
+    { char = "|", name = "Pipe (|)" },
+}
+
+--- Creates a values table for AceConfig character dropdown based on a mask string
+-- @param mask string - String of 1s and 0s (e.g., "11111110" enables all except Pipe)
+-- @return table - Values table for AceConfig select widget
+function UIFactory:CreateCharacterDropdown(mask)
+    local values = {}
+    mask = mask or "11111111"  -- Default: all enabled
+
+    for i, entry in ipairs(BAR_CHARACTERS) do
+        local enabled = mask:sub(i, i) == "1"
+        if enabled then
+            values[entry.char] = entry.name
+        end
+    end
+
+    return values
+end
+
+-- ============================================================================
+-- Custom AceGUI Widget: KOL_BarCharDropdown
+-- ============================================================================
+-- A dropdown that shows bar characters with proper ligature font rendering
+-- Usage in AceConfig: dialogControl = "KOL_BarCharDropdown"
+-- ============================================================================
+
+do
+    local AceGUI = LibStub("AceGUI-3.0")
+    local Type = "KOL_BarCharDropdown"
+    local Version = 2
+
+    -- Shared popup for all bar char dropdowns
+    local barCharPopup = nil
+    local barCharPopupOwner = nil
+
+    local function HideBarCharPopup()
+        if barCharPopup then
+            barCharPopup:Hide()
+            barCharPopupOwner = nil
+        end
+    end
+
+    local function Constructor()
+        local frame = CreateFrame("Frame", nil, UIParent)
+        frame:SetHeight(44)
+
+        local widget = {
+            frame = frame,
+            type = Type,
+        }
+
+        -- Label
+        local label = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        label:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+        label:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+        label:SetJustifyH("LEFT")
+        label:SetHeight(18)
+        widget.label = label
+
+        -- Create custom dropdown button
+        local button = CreateFrame("Button", nil, frame)
+        button:SetSize(160, 24)
+        button:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -18)
+        button:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            tile = false, edgeSize = 1,
+            insets = { left = 0, right = 0, top = 0, bottom = 0 }
+        })
+        button:SetBackdropColor(0.1, 0.1, 0.1, 1)
+        button:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+        widget.button = button
+
+        -- Character preview (using ligatures font)
+        local charPreview = button:CreateFontString(nil, "OVERLAY")
+        charPreview:SetFont(CHAR_LIGATURESFONT or "Fonts\\FRIZQT__.TTF", 14, CHAR_LIGATURESOUTLINE or "OUTLINE")
+        charPreview:SetPoint("LEFT", button, "LEFT", 8, 0)
+        charPreview:SetTextColor(0, 0.9, 0.9, 1)
+        charPreview:SetText("")
+        widget.charPreview = charPreview
+
+        -- Selected name text
+        local selectedText = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        selectedText:SetPoint("LEFT", charPreview, "RIGHT", 8, 0)
+        selectedText:SetPoint("RIGHT", button, "RIGHT", -20, 0)
+        selectedText:SetJustifyH("LEFT")
+        selectedText:SetText("Select...")
+        widget.selectedText = selectedText
+
+        -- Arrow
+        local arrow = button:CreateFontString(nil, "OVERLAY")
+        arrow:SetFont(CHAR_LIGATURESFONT or "Fonts\\FRIZQT__.TTF", 12, CHAR_LIGATURESOUTLINE or "OUTLINE")
+        arrow:SetPoint("RIGHT", button, "RIGHT", -6, 0)
+        arrow:SetText(CHAR_ARROW_DOWNFILLED or "▼")
+        arrow:SetTextColor(0.6, 0.6, 0.6, 1)
+        widget.arrow = arrow
+
+        -- Hover effects
+        button:SetScript("OnEnter", function(self)
+            self:SetBackdropBorderColor(0, 0.7, 0.7, 1)
+        end)
+        button:SetScript("OnLeave", function(self)
+            self:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+        end)
+
+        -- Click to show popup
+        button:SetScript("OnClick", function(self)
+            if barCharPopup and barCharPopup:IsShown() and barCharPopupOwner == widget then
+                HideBarCharPopup()
+                return
+            end
+
+            HideBarCharPopup()
+
+            -- Create popup if needed
+            if not barCharPopup then
+                barCharPopup = CreateFrame("Frame", "KOL_BarCharPopup", UIParent)
+                barCharPopup:SetFrameStrata("TOOLTIP")
+                barCharPopup:SetBackdrop({
+                    bgFile = "Interface\\Buttons\\WHITE8X8",
+                    edgeFile = "Interface\\Buttons\\WHITE8X8",
+                    tile = false, edgeSize = 1,
+                    insets = { left = 0, right = 0, top = 0, bottom = 0 }
+                })
+                barCharPopup:SetBackdropColor(0.08, 0.08, 0.1, 0.98)
+                barCharPopup:SetBackdropBorderColor(0.3, 0.3, 0.35, 1)
+                barCharPopup.buttons = {}
+            end
+
+            barCharPopupOwner = widget
+
+            -- Clear old buttons
+            for _, btn in ipairs(barCharPopup.buttons) do
+                btn:Hide()
+            end
+
+            -- Build item list from widget.list
+            local items = {}
+            if widget.list then
+                for char, name in pairs(widget.list) do
+                    table.insert(items, {char = char, name = name})
+                end
+            end
+
+            -- Sort alphabetically by name
+            table.sort(items, function(a, b) return a.name < b.name end)
+
+            local itemHeight = 22
+            local charColWidth = 28
+            local popupWidth = widget.button:GetWidth()
+            local yOffset = -4
+
+            for i, item in ipairs(items) do
+                local itemBtn = barCharPopup.buttons[i]
+                if not itemBtn then
+                    itemBtn = CreateFrame("Button", nil, barCharPopup)
+                    itemBtn:SetHeight(itemHeight)
+                    barCharPopup.buttons[i] = itemBtn
+
+                    -- Character column (ligatures font)
+                    local charText = itemBtn:CreateFontString(nil, "OVERLAY")
+                    charText:SetFont(CHAR_LIGATURESFONT or "Fonts\\FRIZQT__.TTF", 14, CHAR_LIGATURESOUTLINE or "OUTLINE")
+                    charText:SetPoint("LEFT", itemBtn, "LEFT", 8, 0)
+                    charText:SetWidth(charColWidth - 8)
+                    charText:SetJustifyH("CENTER")
+                    itemBtn.charText = charText
+
+                    -- Name column
+                    local nameText = itemBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                    nameText:SetPoint("LEFT", itemBtn, "LEFT", charColWidth + 4, 0)
+                    nameText:SetPoint("RIGHT", itemBtn, "RIGHT", -8, 0)
+                    nameText:SetJustifyH("LEFT")
+                    itemBtn.nameText = nameText
+
+                    -- Checkmark
+                    local check = itemBtn:CreateFontString(nil, "OVERLAY")
+                    check:SetFont(CHAR_LIGATURESFONT or "Fonts\\FRIZQT__.TTF", 12, CHAR_LIGATURESOUTLINE or "OUTLINE")
+                    check:SetPoint("RIGHT", itemBtn, "RIGHT", -4, 0)
+                    check:SetText(CHAR_OBJECTIVE_COMPLETE or "✓")
+                    check:SetTextColor(0, 0.9, 0.9, 1)
+                    check:Hide()
+                    itemBtn.check = check
+
+                    -- Hover
+                    itemBtn:SetScript("OnEnter", function(self)
+                        self:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8X8"})
+                        self:SetBackdropColor(0.15, 0.2, 0.25, 1)
+                    end)
+                    itemBtn:SetScript("OnLeave", function(self)
+                        self:SetBackdrop(nil)
+                    end)
+                end
+
+                itemBtn:SetPoint("TOPLEFT", barCharPopup, "TOPLEFT", 2, yOffset)
+                itemBtn:SetPoint("TOPRIGHT", barCharPopup, "TOPRIGHT", -2, yOffset)
+                itemBtn.charText:SetText(item.char)
+                itemBtn.charText:SetTextColor(0, 0.9, 0.9, 1)
+                itemBtn.nameText:SetText(item.name)
+
+                -- Show checkmark if selected
+                if widget.value == item.char then
+                    itemBtn.check:Show()
+                    itemBtn.nameText:SetTextColor(0, 0.9, 0.9, 1)
+                else
+                    itemBtn.check:Hide()
+                    itemBtn.nameText:SetTextColor(0.9, 0.9, 0.9, 1)
+                end
+
+                -- Click handler
+                itemBtn.char = item.char
+                itemBtn.name = item.name
+                itemBtn:SetScript("OnClick", function(self)
+                    widget:SetValue(self.char)
+                    if widget.callbacks and widget.callbacks.OnValueChanged then
+                        widget.callbacks.OnValueChanged(widget, "OnValueChanged", self.char)
+                    end
+                    HideBarCharPopup()
+                end)
+
+                itemBtn:Show()
+                yOffset = yOffset - itemHeight
+            end
+
+            -- Size and position popup
+            local popupHeight = (#items * itemHeight) + 8
+            barCharPopup:SetSize(popupWidth, popupHeight)
+            barCharPopup:ClearAllPoints()
+            barCharPopup:SetPoint("TOPLEFT", widget.button, "BOTTOMLEFT", 0, -2)
+            barCharPopup:Show()
+
+            -- Close on click outside
+            barCharPopup:SetScript("OnUpdate", function(self)
+                if not MouseIsOver(self) and not MouseIsOver(widget.button) then
+                    if IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton") then
+                        HideBarCharPopup()
+                    end
+                end
+            end)
+        end)
+
+        -- Widget methods
+        function widget:OnAcquire()
+            self:SetDisabled(false)
+            self:SetLabel("")
+            self.callbacks = {}
+        end
+
+        function widget:OnRelease()
+            self.list = nil
+            self.value = nil
+            self.callbacks = nil
+            HideBarCharPopup()
+        end
+
+        function widget:SetLabel(text)
+            if text and text ~= "" then
+                self.label:SetText(text)
+                self.label:Show()
+                self.button:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 0, -18)
+                self.frame:SetHeight(44)
+            else
+                self.label:SetText("")
+                self.label:Hide()
+                self.button:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 0, 0)
+                self.frame:SetHeight(26)
+            end
+        end
+
+        function widget:SetList(list)
+            self.list = list
+        end
+
+        function widget:SetValue(value)
+            self.value = value
+            if self.list and self.list[value] then
+                self.charPreview:SetText(value)
+                self.selectedText:SetText(self.list[value])
+            else
+                self.charPreview:SetText("")
+                self.selectedText:SetText("Select...")
+            end
+        end
+
+        function widget:GetValue()
+            return self.value
+        end
+
+        function widget:SetDisabled(disabled)
+            self.disabled = disabled
+            if disabled then
+                self.button:Disable()
+                self.button:SetBackdropColor(0.15, 0.15, 0.15, 0.5)
+                self.charPreview:SetTextColor(0.4, 0.4, 0.4, 1)
+                self.selectedText:SetTextColor(0.4, 0.4, 0.4, 1)
+            else
+                self.button:Enable()
+                self.button:SetBackdropColor(0.1, 0.1, 0.1, 1)
+                self.charPreview:SetTextColor(0, 0.9, 0.9, 1)
+                self.selectedText:SetTextColor(0.9, 0.9, 0.9, 1)
+            end
+        end
+
+        function widget:SetWidth(width)
+            self.frame:SetWidth(width)
+            self.button:SetWidth(width)
+        end
+
+        function widget:SetCallback(event, callback)
+            self.callbacks = self.callbacks or {}
+            self.callbacks[event] = callback
+        end
+
+        return AceGUI:RegisterAsWidget(widget)
+    end
+
+    AceGUI:RegisterWidgetType(Type, Constructor, Version)
+end
+
+-- ============================================================================
 -- Glyph / Icon Character Helpers
 -- ============================================================================
 -- These functions ensure CHAR_LIGATURESFONT is always used for special chars
@@ -541,10 +876,10 @@ function UIFactory:CreateTitleBar(parent, height, text, options)
     local bgColor = options.bgColor or {r = 0.08, g = 0.08, b = 0.08, a = 1}
     titleBar:SetBackdropColor(bgColor.r, bgColor.g, bgColor.b, bgColor.a)
 
-    -- Title text
+    -- Title text (created on titleBar so it draws above the backdrop)
     local fontPath, fontOutline = GetGeneralFont()
     local fontSize = options.fontSize or 12  -- Smaller default font
-    local title = parent:CreateFontString(nil, "OVERLAY")
+    local title = titleBar:CreateFontString(nil, "OVERLAY")
     title:SetFont(fontPath, fontSize, fontOutline)
     title:SetPoint("LEFT", titleBar, "LEFT", 8, 0)
     title:SetText(text)
@@ -700,6 +1035,74 @@ function UIFactory:CreateSectionHeader(parent, text, color, width)
 end
 
 -- ============================================================================
+-- CreateGradientSectionHeader: Section header with gradient fade on background
+-- ============================================================================
+-- Same as CreateSectionHeader but the background fades to transparent on the right
+-- Usage: local header = UIFactory:CreateGradientSectionHeader(parent, "SECTION NAME", {r=0.4, g=0.8, b=1}, 300)
+
+function UIFactory:CreateGradientSectionHeader(parent, text, color, width)
+    color = color or {r = 0.6, g = 0.6, b = 0.6}
+
+    local header = CreateFrame("Frame", nil, parent)
+    header:SetHeight(22)
+
+    -- Width handling: use provided width or stretch to parent
+    if width then
+        header:SetWidth(width)
+    else
+        header:SetWidth(200)  -- Fallback default
+    end
+
+    -- Background with gradient fade (solid left to transparent right)
+    local bg = header:CreateTexture(nil, "BACKGROUND")
+    bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+    bg:SetAllPoints()
+    bg:SetGradientAlpha("HORIZONTAL",
+        color.r * 0.2, color.g * 0.2, color.b * 0.2, 0.8,  -- Left side (solid dark)
+        color.r * 0.2, color.g * 0.2, color.b * 0.2, 0)    -- Right side (transparent)
+    header.bg = bg
+
+    -- Left accent bar (3px wide, solid color)
+    local accent = header:CreateTexture(nil, "ARTWORK")
+    accent:SetTexture("Interface\\Buttons\\WHITE8X8")
+    accent:SetWidth(3)
+    accent:SetPoint("TOPLEFT", 0, 0)
+    accent:SetPoint("BOTTOMLEFT", 0, 0)
+    accent:SetVertexColor(color.r, color.g, color.b, 1)
+    header.accent = accent
+
+    -- Text in accent color, vertically centered
+    local fontPath, fontOutline = GetGeneralFont()
+    local label = header:CreateFontString(nil, "OVERLAY")
+    label:SetFont(fontPath, 11, fontOutline)
+    label:SetPoint("LEFT", 10, 0)
+    label:SetTextColor(color.r, color.g, color.b, 1)
+    label:SetText(text)
+    header.text = label
+
+    -- Store color for potential updates
+    header.color = color
+
+    -- Method to update the color dynamically
+    function header:SetAccentColor(newColor)
+        self.color = newColor
+        -- Update background gradient
+        self.bg:SetGradientAlpha("HORIZONTAL",
+            newColor.r * 0.2, newColor.g * 0.2, newColor.b * 0.2, 0.8,
+            newColor.r * 0.2, newColor.g * 0.2, newColor.b * 0.2, 0)
+        self.accent:SetVertexColor(newColor.r, newColor.g, newColor.b, 1)
+        self.text:SetTextColor(newColor.r, newColor.g, newColor.b, 1)
+    end
+
+    -- Method to update the text
+    function header:SetText(newText)
+        self.text:SetText(newText)
+    end
+
+    return header
+end
+
+-- ============================================================================
 -- AceGUI Custom Widget: KOL_SectionHeader
 -- ============================================================================
 -- This allows using CreateSectionHeader in AceConfig via dialogControl
@@ -720,33 +1123,36 @@ local function RegisterAceGUISectionHeader()
     local Type = "KOL_SectionHeader"
     local Version = 2  -- Incremented version
 
+    local TOP_PADDING = 12  -- Automatic spacing above each section header
+
     local function Constructor()
         local frame = CreateFrame("Frame", nil, UIParent)
-        frame:SetHeight(22)
+        frame:SetHeight(22 + TOP_PADDING)
         frame:Hide()
 
-        -- Background - will be colored based on accent
+        -- Background - offset down by TOP_PADDING to create visual gap above
         local bg = frame:CreateTexture(nil, "BACKGROUND")
         bg:SetTexture("Interface\\Buttons\\WHITE8X8")
-        bg:SetAllPoints()
+        bg:SetPoint("TOPLEFT", 0, -TOP_PADDING)
+        bg:SetPoint("BOTTOMRIGHT", 0, 0)
         bg:SetVertexColor(0.12, 0.12, 0.12, 0.8)  -- Default dark
         frame.bg = bg
 
-        -- Left accent bar (3px wide)
+        -- Left accent bar (3px wide) - offset down
         local accent = frame:CreateTexture(nil, "ARTWORK")
         accent:SetTexture("Interface\\Buttons\\WHITE8X8")
         accent:SetWidth(3)
-        accent:SetPoint("TOPLEFT", 0, 0)
+        accent:SetPoint("TOPLEFT", 0, -TOP_PADDING)
         accent:SetPoint("BOTTOMLEFT", 0, 0)
         accent:SetVertexColor(0.6, 0.6, 0.6, 1)  -- Default gray
         frame.accent = accent
 
-        -- Text - vertically centered
+        -- Text - vertically centered within the visible header area
         local fontPath, fontOutline = GetGeneralFont()
         local label = frame:CreateFontString(nil, "OVERLAY")
         label:SetFont(fontPath, 11, fontOutline)
         label:SetPoint("LEFT", 10, 0)
-        label:SetPoint("TOP", 0, 0)
+        label:SetPoint("TOP", 0, -TOP_PADDING)
         label:SetPoint("BOTTOM", 0, 0)
         label:SetJustifyV("MIDDLE")
         label:SetTextColor(0.6, 0.6, 0.6, 1)  -- Default gray
@@ -1937,6 +2343,18 @@ function UIFactory:CreateScrollableContent(parent, options)
         scrollbarColors.hideButtons = options.hideButtons
 
         KOL:SkinUIPanelScrollFrame(scrollFrame, scrollbarColors)
+
+        -- Reposition scrollbar: adjust position and height when buttons hidden
+        local scrollBarName = scrollFrame:GetName() and (scrollFrame:GetName() .. "ScrollBar") or nil
+        local scrollBar = scrollBarName and _G[scrollBarName]
+        if scrollBar then
+            scrollBar:ClearAllPoints()
+            -- Horizontal offset: +1 positions scrollbar to the right
+            -- Vertical offset: 1 when buttons hidden (reduces height by 2px total), 16 when buttons shown
+            local verticalOffset = options.hideButtons and 1 or 16
+            scrollBar:SetPoint("TOPLEFT", scrollFrame, "TOPRIGHT", 1, -verticalOffset)
+            scrollBar:SetPoint("BOTTOMLEFT", scrollFrame, "BOTTOMRIGHT", 1, verticalOffset)
+        end
     end
 
     return scrollChild, scrollFrame
@@ -2117,6 +2535,224 @@ function UIFactory:CreateStatsPanel(parent, stats, options)
     end
     
     return statsFrame
+end
+
+-- ============================================================================
+-- Data Table
+-- ============================================================================
+
+--[[
+    Creates a scrollable data table with configurable columns and rows.
+
+    Parameters:
+        parent - Parent frame
+        options - Table with settings:
+            - columns: Array of column definitions:
+                {name = "Header", width = 100, align = "LEFT|CENTER|RIGHT"}
+            - rowHeight: Height of each row (default: 18)
+            - headerHeight: Height of header row (default: 22)
+            - fontSize: Font size (default: 10)
+            - headerFontSize: Header font size (default: 10)
+            - headerBgColor: Header background {r, g, b, a}
+            - rowBgColor: Even row background {r, g, b, a} (odd rows transparent)
+            - scrollbarWidth: Width of scrollbar (default: 14)
+            - showScrollbar: Whether to show scrollbar (default: true)
+            - hideScrollButtons: Hide up/down scroll buttons (default: false)
+            - inset: Content inset {top, bottom, left, right}
+
+    Returns: table frame with methods:
+        - :SetData(data) - Set table data (array of rows, each row is array of cell values)
+        - :Refresh() - Redraw the table
+        - :GetScrollFrame() - Get the scroll frame
+        - :GetScrollChild() - Get the scroll child frame
+]]
+function UIFactory:CreateTable(parent, options)
+    options = options or {}
+
+    local columns = options.columns or {}
+    local rowHeight = options.rowHeight or 18
+    local headerHeight = options.headerHeight or 22
+    local fontSize = options.fontSize or 10
+    local headerFontSize = options.headerFontSize or 10
+    local headerBgColor = options.headerBgColor or {r = 0.1, g = 0.1, b = 0.15, a = 0.9}
+    local rowBgColor = options.rowBgColor or {r = 0.08, g = 0.08, b = 0.12, a = 0.5}
+    local scrollbarWidth = options.scrollbarWidth or 14
+    local showScrollbar = options.showScrollbar ~= false
+    local hideScrollButtons = options.hideScrollButtons or false
+    local inset = options.inset or {top = 0, bottom = 0, left = 0, right = 0}
+
+    local fontPath, fontOutline = GetGeneralFont()
+
+    -- Main table container
+    local tableFrame = CreateFrame("Frame", nil, parent)
+    tableFrame.columns = columns
+    tableFrame.rows = {}
+    tableFrame.data = {}
+
+    -- Header container
+    local headerContainer = CreateFrame("Frame", nil, tableFrame)
+    headerContainer:SetPoint("TOPLEFT", tableFrame, "TOPLEFT", inset.left, -inset.top)
+    headerContainer:SetPoint("TOPRIGHT", tableFrame, "TOPRIGHT", -inset.right, -inset.top)
+    headerContainer:SetHeight(headerHeight)
+    headerContainer:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        tile = false,
+    })
+    headerContainer:SetBackdropColor(headerBgColor.r, headerBgColor.g, headerBgColor.b, headerBgColor.a or 0.9)
+    tableFrame.headerContainer = headerContainer
+
+    -- Create column headers
+    local xOffset = 8
+    tableFrame.headerTexts = {}
+    for i, col in ipairs(columns) do
+        local headerText = headerContainer:CreateFontString(nil, "OVERLAY")
+        headerText:SetFont(fontPath, headerFontSize, fontOutline)
+        headerText:SetPoint("LEFT", headerContainer, "LEFT", xOffset, 0)
+        headerText:SetText("|cFFFFFF88" .. col.name .. "|r")
+
+        if col.align == "CENTER" then
+            headerText:SetJustifyH("CENTER")
+        elseif col.align == "RIGHT" then
+            headerText:SetJustifyH("RIGHT")
+        else
+            headerText:SetJustifyH("LEFT")
+        end
+
+        tableFrame.headerTexts[i] = headerText
+        xOffset = xOffset + (col.width or 100)
+    end
+
+    -- Scroll container (below headers)
+    local scrollContainer = CreateFrame("Frame", nil, tableFrame)
+    scrollContainer:SetPoint("TOPLEFT", headerContainer, "BOTTOMLEFT", 0, 0)
+    scrollContainer:SetPoint("BOTTOMRIGHT", tableFrame, "BOTTOMRIGHT", -inset.right, inset.bottom)
+    scrollContainer:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        tile = false, edgeSize = 1,
+        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    })
+    scrollContainer:SetBackdropColor(0.02, 0.02, 0.02, 0.8)
+    scrollContainer:SetBackdropBorderColor(0.25, 0.25, 0.25, 0.8)
+    tableFrame.scrollContainer = scrollContainer
+
+    -- Create scrollable content - scrollbar positioned inside container
+    local scrollChild, scrollFrame = self:CreateScrollableContent(scrollContainer, {
+        inset = {top = 2, bottom = 2, left = 2, right = 2},
+        scrollbarWidth = scrollbarWidth,
+        showScrollbar = showScrollbar,
+        hideButtons = hideScrollButtons,
+        scrollbarInside = true,
+    })
+
+    tableFrame.scrollChild = scrollChild
+    tableFrame.scrollFrame = scrollFrame
+    tableFrame.fontPath = fontPath
+    tableFrame.fontOutline = fontOutline
+    tableFrame.fontSize = fontSize  -- Store fontSize for Refresh
+    tableFrame.rowHeight = rowHeight
+    tableFrame.rowBgColor = rowBgColor
+    tableFrame.scrollbarWidth = scrollbarWidth  -- Store for width calculations
+
+    -- Update scroll child width when container resizes
+    scrollContainer:SetScript("OnSizeChanged", function(self, width, height)
+        -- Calculate available width (subtract scrollbar space and insets)
+        -- insets: left=2, right=2, scrollbar takes scrollbarWidth + 2 extra
+        local contentWidth = width - tableFrame.scrollbarWidth - 8
+        if contentWidth > 0 then
+            scrollChild:SetWidth(contentWidth)
+        end
+    end)
+
+    -- SetData method
+    function tableFrame:SetData(data)
+        self.data = data or {}
+        self:Refresh()
+    end
+
+    -- Refresh method - redraws all rows
+    function tableFrame:Refresh()
+        -- Clear existing rows
+        for _, row in ipairs(self.rows) do
+            row:Hide()
+            row:SetParent(nil)
+        end
+        self.rows = {}
+
+        -- Update scroll child width based on scroll container
+        local containerWidth = self.scrollContainer:GetWidth()
+        if containerWidth and containerWidth > 0 then
+            local contentWidth = containerWidth - self.scrollbarWidth - 8
+            self.scrollChild:SetWidth(math.max(contentWidth, 100))
+        end
+
+        local yOffset = -2
+
+        for i, rowData in ipairs(self.data) do
+            -- Create row frame
+            local row = CreateFrame("Frame", nil, self.scrollChild)
+            row:SetHeight(self.rowHeight)
+            row:SetPoint("TOPLEFT", self.scrollChild, "TOPLEFT", 0, yOffset)
+            row:SetPoint("TOPRIGHT", self.scrollChild, "TOPRIGHT", 0, yOffset)
+
+            -- Alternate row backgrounds
+            if i % 2 == 0 then
+                row:SetBackdrop({
+                    bgFile = "Interface\\Buttons\\WHITE8X8",
+                    tile = false,
+                })
+                row:SetBackdropColor(self.rowBgColor.r, self.rowBgColor.g, self.rowBgColor.b, self.rowBgColor.a or 0.5)
+            end
+
+            -- Create cells
+            local xOffset = 8
+            for j, col in ipairs(self.columns) do
+                local cellText = row:CreateFontString(nil, "OVERLAY")
+                cellText:SetFont(self.fontPath, self.fontSize, self.fontOutline)
+                cellText:SetPoint("LEFT", row, "LEFT", xOffset, 0)
+
+                -- Cell value can be plain string or {text = "...", color = "FFFFFF"}
+                local cellValue = rowData[j]
+                if type(cellValue) == "table" then
+                    if cellValue.color then
+                        cellText:SetText("|cFF" .. cellValue.color .. cellValue.text .. "|r")
+                    else
+                        cellText:SetText(cellValue.text or "")
+                    end
+                else
+                    cellText:SetText("|cFFCCCCCC" .. (cellValue or "") .. "|r")
+                end
+
+                if col.align == "CENTER" then
+                    cellText:SetJustifyH("CENTER")
+                elseif col.align == "RIGHT" then
+                    cellText:SetJustifyH("RIGHT")
+                else
+                    cellText:SetJustifyH("LEFT")
+                end
+
+                xOffset = xOffset + (col.width or 100)
+            end
+
+            table.insert(self.rows, row)
+            yOffset = yOffset - self.rowHeight
+        end
+
+        -- Set scroll child height
+        local totalHeight = #self.data * self.rowHeight + 8
+        self.scrollChild:SetHeight(math.max(totalHeight, 1))
+    end
+
+    -- Accessor methods
+    function tableFrame:GetScrollFrame()
+        return self.scrollFrame
+    end
+
+    function tableFrame:GetScrollChild()
+        return self.scrollChild
+    end
+
+    return tableFrame
 end
 
 -- ============================================================================

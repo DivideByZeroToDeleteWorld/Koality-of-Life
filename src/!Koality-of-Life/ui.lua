@@ -98,6 +98,44 @@ local function GetDifficultyDisplayName(code, colored)
 end
 
 -- ============================================================================
+-- LDB Position Swap Helper
+-- ============================================================================
+
+-- All LDB position keys and their defaults
+local LDB_POSITION_KEYS = {
+    ldbSpeedPosition = 1,
+    ldbLimitPosition = 2,
+    ldbRacialPosition = 3,
+    ldbADRPosition = 4,
+    ldbXPPosition = 5,
+    ldbREPPosition = 6,
+}
+
+function KOL:SwapLDBPosition(changedKey, newValue, defaultValue)
+    local profile = self.db.profile
+    local oldValue = profile[changedKey] or defaultValue
+
+    if newValue == oldValue then return end
+
+    -- Find which key currently has the target position and swap
+    for key, keyDefault in pairs(LDB_POSITION_KEYS) do
+        if key ~= changedKey then
+            local keyValue = profile[key] or keyDefault
+            if keyValue == newValue then
+                profile[key] = oldValue
+                break
+            end
+        end
+    end
+
+    profile[changedKey] = newValue
+
+    if self.LDB and self.LDB.UpdateLDBText then
+        self.LDB:UpdateLDBText()
+    end
+end
+
+-- ============================================================================
 -- Initialize UI System
 -- ============================================================================
 
@@ -158,10 +196,53 @@ function KOL:InitializeUI()
                                 width = 1.0,
                                 order = 1.3,
                             },
-                            spacer1 = {
-                                type = "description",
-                                name = "\n",
-                                order = 2,
+                            hideGlobalXPBar = {
+                                type = "toggle",
+                                name = "Hide Global XP Bar",
+                                desc = "Hide the default WoW XP bar and ElvUI experience bar (if present).\n\n|cFFAAAAAAYour LDB XP display will still work.|r\n\n|cFFFF8800Note:|r May require /rl if ElvUI doesn't update immediately.",
+                                get = function() return self.db.profile.hideGlobalXPBar or false end,
+                                set = function(_, value)
+                                    self.db.profile.hideGlobalXPBar = value
+                                    if self.LDB and self.LDB.ApplyGlobalXPBarVisibility then
+                                        self.LDB:ApplyGlobalXPBarVisibility()
+                                    end
+                                end,
+                                width = 1.0,
+                                order = 1.4,
+                            },
+                            hideGlobalREPBar = {
+                                type = "toggle",
+                                name = "Hide Global REP Bar",
+                                desc = "Hide the default WoW reputation bar and ElvUI reputation bar (if present).\n\n|cFFAAAAAAYour LDB REP display will still work.|r\n\n|cFFFF8800Note:|r May require /rl if ElvUI doesn't update immediately.",
+                                get = function() return self.db.profile.hideGlobalREPBar or false end,
+                                set = function(_, value)
+                                    self.db.profile.hideGlobalREPBar = value
+                                    if self.LDB and self.LDB.ApplyGlobalREPBarVisibility then
+                                        self.LDB:ApplyGlobalREPBarVisibility()
+                                    end
+                                end,
+                                width = 1.0,
+                                order = 1.5,
+                            },
+                            disableAllRainbow = {
+                                type = "toggle",
+                                name = "Turn OFF All Rainbow Effects",
+                                desc = "Globally disable all rainbow color effects throughout the addon.\n\n|cFFAAAAAAThis overrides individual rainbow settings (XP Bar Rainbow, REP Bar Rainbow, etc.)|r",
+                                get = function() return self.db.profile.disableAllRainbow or false end,
+                                set = function(_, value)
+                                    self.db.profile.disableAllRainbow = value
+                                    if self.LDB then
+                                        if self.LDB.StartRainbowTimer then
+                                            self.LDB:StartRainbowTimer()
+                                        end
+                                        -- Immediately refresh to show configured colors
+                                        if self.LDB.UpdateLDBText then
+                                            self.LDB:UpdateLDBText()
+                                        end
+                                    end
+                                end,
+                                width = 1.0,
+                                order = 1.6,
                             },
                             -- LDB / MINIMAP Section
                             ldbHeader = {
@@ -216,7 +297,7 @@ function KOL:InitializeUI()
                                 fontSize = "small",
                                 order = 3.31,
                             },
-                            -- Row 1: Show toggles (3 columns)
+                            -- Row 1: Show toggles (3 columns) - Speed, Limit, Racial
                             ldbShowSpeed = {
                                 type = "toggle",
                                 name = "Show Speed",
@@ -228,12 +309,12 @@ function KOL:InitializeUI()
                                         self.LDB:UpdateLDBText()
                                     end
                                 end,
-                                width = 0.55,
+                                width = 0.6,
                                 order = 3.320,
                             },
                             ldbShowLimit = {
                                 type = "toggle",
-                                name = "Show Limit Damage",
+                                name = "Show Limit",
                                 desc = "Display the current Limit Damage state in the LDB text.\n\n|cFFAAAAAAExample:|r |cFF00FF00ON|r or |cFFFF4444OFF|r",
                                 get = function() return self.db.profile.ldbShowLimit or false end,
                                 set = function(_, value)
@@ -242,7 +323,7 @@ function KOL:InitializeUI()
                                         self.LDB:UpdateLDBText()
                                     end
                                 end,
-                                width = 0.65,
+                                width = 0.6,
                                 order = 3.321,
                             },
                             ldbShowRacial = {
@@ -256,7 +337,7 @@ function KOL:InitializeUI()
                                         self.LDB:UpdateLDBText()
                                     end
                                 end,
-                                width = 0.55,
+                                width = 0.6,
                                 order = 3.322,
                             },
                             ldbRow1Break = {
@@ -265,14 +346,63 @@ function KOL:InitializeUI()
                                 width = "full",
                                 order = 3.323,
                             },
+                            -- Row 2: Show toggles (3 columns) - ADR, XP Bar, REP Bar
+                            ldbShowADR = {
+                                type = "toggle",
+                                name = "Show ADR",
+                                desc = "Display the |cFFFFFF00A|ruto |cFFFFFF00D|rungeon |cFFFFFF00R|reset state in the LDB text.\n\nWhen enabled, automatically resets all instances upon exiting a dungeon or raid.\n\n|cFFAAAAAADefault:|r |cFF00FF00YES|r / |cFFFF4444NO|r",
+                                get = function() return self.db.profile.ldbShowADR or false end,
+                                set = function(_, value)
+                                    self.db.profile.ldbShowADR = value
+                                    if self.LDB and self.LDB.UpdateLDBText then
+                                        self.LDB:UpdateLDBText()
+                                    end
+                                end,
+                                width = 0.6,
+                                order = 3.324,
+                            },
+                            ldbShowXP = {
+                                type = "toggle",
+                                name = "Show XP Bar",
+                                desc = "Display an XP progress bar in the LDB text.\n\n|cFFAAAAAAExample:|r |cFF888888[|r|cFF00FF00═════|r|cFF444444═════|r|cFF888888]|r |cFFFFFF0050%|r",
+                                get = function() return self.db.profile.ldbShowXP or false end,
+                                set = function(_, value)
+                                    self.db.profile.ldbShowXP = value
+                                    if self.LDB and self.LDB.UpdateLDBText then
+                                        self.LDB:UpdateLDBText()
+                                    end
+                                end,
+                                width = 0.6,
+                                order = 3.325,
+                            },
+                            ldbShowREP = {
+                                type = "toggle",
+                                name = "Show REP Bar",
+                                desc = "Display a reputation progress bar for your currently watched faction.\n\n|cFFAAAAAAExample:|r |cFF888888[|r|cFF9966FF═════|r|cFF444444═════|r|cFF888888]|r |cFFFFFF0050%|r",
+                                get = function() return self.db.profile.ldbShowREP or false end,
+                                set = function(_, value)
+                                    self.db.profile.ldbShowREP = value
+                                    if self.LDB and self.LDB.UpdateLDBText then
+                                        self.LDB:UpdateLDBText()
+                                    end
+                                end,
+                                width = 0.6,
+                                order = 3.326,
+                            },
+                            ldbRow2Break = {
+                                type = "description",
+                                name = "",
+                                width = "full",
+                                order = 3.327,
+                            },
                             ldbLabelsHeader = {
                                 type = "description",
                                 name = "|cFFAAAAAAShow LDB Text Prefixes:|r",
                                 fontSize = "small",
                                 width = "full",
-                                order = 3.324,
+                                order = 3.328,
                             },
-                            -- Row 2: Label toggles (3 columns)
+                            -- Row 3: Label toggles (3 columns) - Speed, Limit, Racial
                             ldbShowSpeedLabel = {
                                 type = "toggle",
                                 name = "+ SPEED:",
@@ -284,7 +414,7 @@ function KOL:InitializeUI()
                                         self.LDB:UpdateLDBText()
                                     end
                                 end,
-                                width = 0.55,
+                                width = 0.6,
                                 order = 3.330,
                                 disabled = function() return self.db.profile.ldbShowSpeed == false end,
                             },
@@ -299,7 +429,7 @@ function KOL:InitializeUI()
                                         self.LDB:UpdateLDBText()
                                     end
                                 end,
-                                width = 0.65,
+                                width = 0.6,
                                 order = 3.331,
                                 disabled = function() return not self.db.profile.ldbShowLimit end,
                             },
@@ -314,97 +444,256 @@ function KOL:InitializeUI()
                                         self.LDB:UpdateLDBText()
                                     end
                                 end,
-                                width = 0.55,
+                                width = 0.6,
                                 order = 3.332,
                                 disabled = function() return not self.db.profile.ldbShowRacial end,
-                            },
-                            ldbRow2Break = {
-                                type = "description",
-                                name = "",
-                                width = "full",
-                                order = 3.333,
-                            },
-                            -- Row 3: Position dropdowns (3 columns)
-                            ldbSpeedPosition = {
-                                type = "select",
-                                name = "Speed Position",
-                                desc = "Set the display position for Speed in the LDB text.",
-                                values = { [1] = "1st", [2] = "2nd", [3] = "3rd" },
-                                get = function() return self.db.profile.ldbSpeedPosition or 1 end,
-                                set = function(_, value)
-                                    local oldPos = self.db.profile.ldbSpeedPosition or 1
-                                    if value == oldPos then return end
-                                    -- Find what's currently in the target position and swap
-                                    local limitPos = self.db.profile.ldbLimitPosition or 2
-                                    local racialPos = self.db.profile.ldbRacialPosition or 3
-                                    if limitPos == value then
-                                        self.db.profile.ldbLimitPosition = oldPos
-                                    elseif racialPos == value then
-                                        self.db.profile.ldbRacialPosition = oldPos
-                                    end
-                                    self.db.profile.ldbSpeedPosition = value
-                                    if self.LDB and self.LDB.UpdateLDBText then
-                                        self.LDB:UpdateLDBText()
-                                    end
-                                end,
-                                width = 0.55,
-                                order = 3.340,
-                            },
-                            ldbLimitPosition = {
-                                type = "select",
-                                name = "Limit Position",
-                                desc = "Set the display position for Limit Damage in the LDB text.",
-                                values = { [1] = "1st", [2] = "2nd", [3] = "3rd" },
-                                get = function() return self.db.profile.ldbLimitPosition or 2 end,
-                                set = function(_, value)
-                                    local oldPos = self.db.profile.ldbLimitPosition or 2
-                                    if value == oldPos then return end
-                                    -- Find what's currently in the target position and swap
-                                    local speedPos = self.db.profile.ldbSpeedPosition or 1
-                                    local racialPos = self.db.profile.ldbRacialPosition or 3
-                                    if speedPos == value then
-                                        self.db.profile.ldbSpeedPosition = oldPos
-                                    elseif racialPos == value then
-                                        self.db.profile.ldbRacialPosition = oldPos
-                                    end
-                                    self.db.profile.ldbLimitPosition = value
-                                    if self.LDB and self.LDB.UpdateLDBText then
-                                        self.LDB:UpdateLDBText()
-                                    end
-                                end,
-                                width = 0.65,
-                                order = 3.341,
-                            },
-                            ldbRacialPosition = {
-                                type = "select",
-                                name = "Racial Position",
-                                desc = "Set the display position for Racial in the LDB text.",
-                                values = { [1] = "1st", [2] = "2nd", [3] = "3rd" },
-                                get = function() return self.db.profile.ldbRacialPosition or 3 end,
-                                set = function(_, value)
-                                    local oldPos = self.db.profile.ldbRacialPosition or 3
-                                    if value == oldPos then return end
-                                    -- Find what's currently in the target position and swap
-                                    local speedPos = self.db.profile.ldbSpeedPosition or 1
-                                    local limitPos = self.db.profile.ldbLimitPosition or 2
-                                    if speedPos == value then
-                                        self.db.profile.ldbSpeedPosition = oldPos
-                                    elseif limitPos == value then
-                                        self.db.profile.ldbLimitPosition = oldPos
-                                    end
-                                    self.db.profile.ldbRacialPosition = value
-                                    if self.LDB and self.LDB.UpdateLDBText then
-                                        self.LDB:UpdateLDBText()
-                                    end
-                                end,
-                                width = 0.55,
-                                order = 3.342,
                             },
                             ldbRow3Break = {
                                 type = "description",
                                 name = "",
                                 width = "full",
+                                order = 3.333,
+                            },
+                            -- Row 4: Label toggles (3 columns) - ADR, XP, REP
+                            ldbShowADRLabel = {
+                                type = "toggle",
+                                name = "+ ADR:",
+                                desc = "Include 'ADR:' prefix before the Auto Dungeon Reset state.\n\n|cFF00FF00ON:|r ADR: <custom text>\n|cFFFF6666OFF:|r <custom text>",
+                                get = function() return self.db.profile.ldbShowADRLabel or false end,
+                                set = function(_, value)
+                                    self.db.profile.ldbShowADRLabel = value
+                                    if self.LDB and self.LDB.UpdateLDBText then
+                                        self.LDB:UpdateLDBText()
+                                    end
+                                end,
+                                width = 0.6,
+                                order = 3.334,
+                                disabled = function() return not self.db.profile.ldbShowADR end,
+                            },
+                            ldbShowXPLabel = {
+                                type = "toggle",
+                                name = "+ XP:",
+                                desc = "Include 'XP:' prefix before the XP bar.\n\n|cFF00FF00ON:|r XP: [═════] 50%\n|cFFFF6666OFF:|r [═════] 50%",
+                                get = function() return self.db.profile.ldbShowXPLabel or false end,
+                                set = function(_, value)
+                                    self.db.profile.ldbShowXPLabel = value
+                                    if self.LDB and self.LDB.UpdateLDBText then
+                                        self.LDB:UpdateLDBText()
+                                    end
+                                end,
+                                width = 0.6,
+                                order = 3.335,
+                                disabled = function() return not self.db.profile.ldbShowXP end,
+                            },
+                            ldbShowREPLabel = {
+                                type = "toggle",
+                                name = "+ REP:",
+                                desc = "Include 'REP:' prefix before the reputation bar.\n\n|cFF00FF00ON:|r REP: [═════] 50%\n|cFFFF6666OFF:|r [═════] 50%",
+                                get = function() return self.db.profile.ldbShowREPLabel or false end,
+                                set = function(_, value)
+                                    self.db.profile.ldbShowREPLabel = value
+                                    if self.LDB and self.LDB.UpdateLDBText then
+                                        self.LDB:UpdateLDBText()
+                                    end
+                                end,
+                                width = 0.6,
+                                order = 3.336,
+                                disabled = function() return not self.db.profile.ldbShowREP end,
+                            },
+                            ldbRow4Break = {
+                                type = "description",
+                                name = "",
+                                width = "full",
+                                order = 3.337,
+                            },
+                            -- Row 5: Show percent toggles for XP and REP (with spacer in column 1)
+                            ldbPercentSpacer = {
+                                type = "description",
+                                name = "",
+                                width = 0.6,
+                                order = 3.3375,
+                            },
+                            ldbShowXPPercent = {
+                                type = "toggle",
+                                name = "+ XP %",
+                                desc = "Show the percentage text after the XP bar.\n\n|cFF00FF00ON:|r [═════] |cFFFFFF0050%|r\n|cFFFF6666OFF:|r [═════]",
+                                get = function() return self.db.profile.ldbShowXPPercent ~= false end,
+                                set = function(_, value)
+                                    self.db.profile.ldbShowXPPercent = value
+                                    if self.LDB and self.LDB.UpdateLDBText then
+                                        self.LDB:UpdateLDBText()
+                                    end
+                                end,
+                                width = 0.6,
+                                order = 3.338,
+                                disabled = function() return not self.db.profile.ldbShowXP end,
+                            },
+                            ldbShowREPPercent = {
+                                type = "toggle",
+                                name = "+ REP %",
+                                desc = "Show the percentage text after the reputation bar.\n\n|cFF00FF00ON:|r [═════] |cFFFFFF0050%|r\n|cFFFF6666OFF:|r [═════]",
+                                get = function() return self.db.profile.ldbShowREPPercent ~= false end,
+                                set = function(_, value)
+                                    self.db.profile.ldbShowREPPercent = value
+                                    if self.LDB and self.LDB.UpdateLDBText then
+                                        self.LDB:UpdateLDBText()
+                                    end
+                                end,
+                                width = 0.6,
+                                order = 3.339,
+                                disabled = function() return not self.db.profile.ldbShowREP end,
+                            },
+                            ldbRow5Break = {
+                                type = "description",
+                                name = "",
+                                width = "full",
+                                order = 3.3395,
+                            },
+                            -- Row 6: Position dropdowns (3 columns) - Speed, Limit, Racial
+                            ldbSpeedPosition = {
+                                type = "select",
+                                name = "Speed Pos",
+                                desc = "Set the display position for Speed in the LDB text.",
+                                values = { [1] = "1st", [2] = "2nd", [3] = "3rd", [4] = "4th", [5] = "5th", [6] = "6th" },
+                                get = function() return self.db.profile.ldbSpeedPosition or 1 end,
+                                set = function(_, value)
+                                    self:SwapLDBPosition("ldbSpeedPosition", value, 1)
+                                end,
+                                width = 0.6,
+                                order = 3.340,
+                            },
+                            ldbLimitPosition = {
+                                type = "select",
+                                name = "Limit Pos",
+                                desc = "Set the display position for Limit Damage in the LDB text.",
+                                values = { [1] = "1st", [2] = "2nd", [3] = "3rd", [4] = "4th", [5] = "5th", [6] = "6th" },
+                                get = function() return self.db.profile.ldbLimitPosition or 2 end,
+                                set = function(_, value)
+                                    self:SwapLDBPosition("ldbLimitPosition", value, 2)
+                                end,
+                                width = 0.6,
+                                order = 3.341,
+                            },
+                            ldbRacialPosition = {
+                                type = "select",
+                                name = "Racial Pos",
+                                desc = "Set the display position for Racial in the LDB text.",
+                                values = { [1] = "1st", [2] = "2nd", [3] = "3rd", [4] = "4th", [5] = "5th", [6] = "6th" },
+                                get = function() return self.db.profile.ldbRacialPosition or 3 end,
+                                set = function(_, value)
+                                    self:SwapLDBPosition("ldbRacialPosition", value, 3)
+                                end,
+                                width = 0.6,
+                                order = 3.342,
+                            },
+                            ldbRow6Break = {
+                                type = "description",
+                                name = "",
+                                width = "full",
                                 order = 3.343,
+                            },
+                            -- Row 7: Position dropdowns (3 columns) - ADR, XP, REP
+                            ldbADRPosition = {
+                                type = "select",
+                                name = "ADR Pos",
+                                desc = "Set the display position for Auto Dungeon Reset in the LDB text.",
+                                values = { [1] = "1st", [2] = "2nd", [3] = "3rd", [4] = "4th", [5] = "5th", [6] = "6th" },
+                                get = function() return self.db.profile.ldbADRPosition or 4 end,
+                                set = function(_, value)
+                                    self:SwapLDBPosition("ldbADRPosition", value, 4)
+                                end,
+                                width = 0.6,
+                                order = 3.344,
+                            },
+                            ldbXPPosition = {
+                                type = "select",
+                                name = "XP Pos",
+                                desc = "Set the display position for XP Bar in the LDB text.",
+                                values = { [1] = "1st", [2] = "2nd", [3] = "3rd", [4] = "4th", [5] = "5th", [6] = "6th" },
+                                get = function() return self.db.profile.ldbXPPosition or 5 end,
+                                set = function(_, value)
+                                    self:SwapLDBPosition("ldbXPPosition", value, 5)
+                                end,
+                                width = 0.6,
+                                order = 3.345,
+                                disabled = function() return not self.db.profile.ldbShowXP end,
+                            },
+                            ldbREPPosition = {
+                                type = "select",
+                                name = "REP Pos",
+                                desc = "Set the display position for REP Bar in the LDB text.",
+                                values = { [1] = "1st", [2] = "2nd", [3] = "3rd", [4] = "4th", [5] = "5th", [6] = "6th" },
+                                get = function() return self.db.profile.ldbREPPosition or 6 end,
+                                set = function(_, value)
+                                    self:SwapLDBPosition("ldbREPPosition", value, 6)
+                                end,
+                                width = 0.6,
+                                order = 3.346,
+                                disabled = function() return not self.db.profile.ldbShowREP end,
+                            },
+                            ldbRow7Break = {
+                                type = "description",
+                                name = "",
+                                width = "full",
+                                order = 3.347,
+                            },
+                            -- Bar character selection for XP and REP
+                            ldbBarCharHeader = {
+                                type = "description",
+                                name = "|cFFAAAAAABar Character Style:|r",
+                                fontSize = "small",
+                                width = "full",
+                                order = 3.348,
+                            },
+                            ldbXPCharacter = {
+                                type = "select",
+                                name = "XP Bar Char",
+                                desc = "Choose the character used for the XP progress bar.",
+                                dialogControl = "KOL_BarCharDropdown",
+                                values = function()
+                                    return self.UIFactory:CreateCharacterDropdown("11111110")
+                                end,
+                                get = function() return self.db.profile.ldbXPCharacter or "═" end,
+                                set = function(_, value)
+                                    self.db.profile.ldbXPCharacter = value
+                                    if self.LDB and self.LDB.UpdateLDBText then
+                                        self.LDB:UpdateLDBText()
+                                    end
+                                end,
+                                width = 0.9,
+                                order = 3.349,
+                                disabled = function() return not self.db.profile.ldbShowXP end,
+                            },
+                            ldbBarCharSpacer = {
+                                type = "description",
+                                name = "",
+                                width = 0.15,
+                                order = 3.3495,
+                            },
+                            ldbREPCharacter = {
+                                type = "select",
+                                name = "REP Bar Char",
+                                desc = "Choose the character used for the reputation progress bar.",
+                                dialogControl = "KOL_BarCharDropdown",
+                                values = function()
+                                    return self.UIFactory:CreateCharacterDropdown("11111110")
+                                end,
+                                get = function() return self.db.profile.ldbREPCharacter or "═" end,
+                                set = function(_, value)
+                                    self.db.profile.ldbREPCharacter = value
+                                    if self.LDB and self.LDB.UpdateLDBText then
+                                        self.LDB:UpdateLDBText()
+                                    end
+                                end,
+                                width = 0.9,
+                                order = 3.350,
+                                disabled = function() return not self.db.profile.ldbShowREP end,
+                            },
+                            ldbRow8Break = {
+                                type = "description",
+                                name = "",
+                                width = "full",
+                                order = 3.351,
                             },
                             minimapButtonSize = {
                                 type = "range",
@@ -425,10 +714,275 @@ function KOL:InitializeUI()
                                 width = 1.5,
                                 order = 3.5,
                             },
-                            spacer1b = {
+                            ldbADRTextSpacer = {
                                 type = "description",
-                                name = "\n",
-                                order = 3.55,
+                                name = " ",
+                                width = "full",
+                                order = 3.505,
+                            },
+                            ldbADRTextHeader = {
+                                type = "description",
+                                name = "|cFFAAAAAACustom ADR Display Text:|r",
+                                fontSize = "small",
+                                width = "full",
+                                order = 3.51,
+                            },
+                            ldbADREnabledText = {
+                                type = "input",
+                                name = "ADR Enabled Text",
+                                desc = "Custom text shown in the LDB display when Auto Dungeon Reset is enabled.\n\n|cFFFFFF00Default:|r YES",
+                                get = function() return self.db.profile.ldbADREnabledText or "YES" end,
+                                set = function(_, value)
+                                    if value == "" then value = "YES" end
+                                    self.db.profile.ldbADREnabledText = value
+                                    if self.LDB and self.LDB.UpdateLDBText then
+                                        self.LDB:UpdateLDBText()
+                                    end
+                                end,
+                                width = 0.85,
+                                order = 3.52,
+                            },
+                            ldbADRDisabledText = {
+                                type = "input",
+                                name = "ADR Disabled Text",
+                                desc = "Custom text shown in the LDB display when Auto Dungeon Reset is disabled.\n\n|cFFFFFF00Default:|r NO",
+                                get = function() return self.db.profile.ldbADRDisabledText or "NO" end,
+                                set = function(_, value)
+                                    if value == "" then value = "NO" end
+                                    self.db.profile.ldbADRDisabledText = value
+                                    if self.LDB and self.LDB.UpdateLDBText then
+                                        self.LDB:UpdateLDBText()
+                                    end
+                                end,
+                                width = 0.85,
+                                order = 3.53,
+                            },
+                            ldbColorsHeader = {
+                                type = "description",
+                                name = "|cFFAAAAAALDB Text Colors:|r",
+                                fontSize = "small",
+                                width = "full",
+                                order = 3.535,
+                            },
+                            ldbColorLimitOn = {
+                                type = "color",
+                                name = "Limit ON",
+                                desc = "Color for the Limit Damage text when enabled.",
+                                hasAlpha = false,
+                                get = function()
+                                    local c = self.db.profile.ldbColorLimitOn or {r = 0, g = 1, b = 0}
+                                    return c.r, c.g, c.b
+                                end,
+                                set = function(_, r, g, b)
+                                    self.db.profile.ldbColorLimitOn = {r = r, g = g, b = b}
+                                    if self.LDB and self.LDB.UpdateLDBText then self.LDB:UpdateLDBText() end
+                                end,
+                                width = 0.45,
+                                order = 3.536,
+                            },
+                            ldbColorLimitOff = {
+                                type = "color",
+                                name = "Limit OFF",
+                                desc = "Color for the Limit Damage text when disabled.",
+                                hasAlpha = false,
+                                get = function()
+                                    local c = self.db.profile.ldbColorLimitOff or {r = 1, g = 0.267, b = 0.267}
+                                    return c.r, c.g, c.b
+                                end,
+                                set = function(_, r, g, b)
+                                    self.db.profile.ldbColorLimitOff = {r = r, g = g, b = b}
+                                    if self.LDB and self.LDB.UpdateLDBText then self.LDB:UpdateLDBText() end
+                                end,
+                                width = 0.45,
+                                order = 3.537,
+                            },
+                            ldbColorRacial = {
+                                type = "color",
+                                name = "Racial",
+                                desc = "Color for the Racial name text.",
+                                hasAlpha = false,
+                                get = function()
+                                    local c = self.db.profile.ldbColorRacial or {r = 0.867, g = 0.667, b = 1}
+                                    return c.r, c.g, c.b
+                                end,
+                                set = function(_, r, g, b)
+                                    self.db.profile.ldbColorRacial = {r = r, g = g, b = b}
+                                    if self.LDB and self.LDB.UpdateLDBText then self.LDB:UpdateLDBText() end
+                                end,
+                                width = 0.45,
+                                order = 3.538,
+                            },
+                            ldbColorADROn = {
+                                type = "color",
+                                name = "ADR Enabled",
+                                desc = "Color for the ADR text when Auto Dungeon Reset is enabled.",
+                                hasAlpha = false,
+                                get = function()
+                                    local c = self.db.profile.ldbColorADROn or {r = 0, g = 1, b = 0}
+                                    return c.r, c.g, c.b
+                                end,
+                                set = function(_, r, g, b)
+                                    self.db.profile.ldbColorADROn = {r = r, g = g, b = b}
+                                    if self.LDB and self.LDB.UpdateLDBText then self.LDB:UpdateLDBText() end
+                                end,
+                                width = 0.45,
+                                order = 3.539,
+                            },
+                            ldbColorADROff = {
+                                type = "color",
+                                name = "ADR Disabled",
+                                desc = "Color for the ADR text when Auto Dungeon Reset is disabled.",
+                                hasAlpha = false,
+                                get = function()
+                                    local c = self.db.profile.ldbColorADROff or {r = 1, g = 0.267, b = 0.267}
+                                    return c.r, c.g, c.b
+                                end,
+                                set = function(_, r, g, b)
+                                    self.db.profile.ldbColorADROff = {r = r, g = g, b = b}
+                                    if self.LDB and self.LDB.UpdateLDBText then self.LDB:UpdateLDBText() end
+                                end,
+                                width = 0.45,
+                                order = 3.540,
+                            },
+                            ldbBarColorsBreak = {
+                                type = "description",
+                                name = "",
+                                width = "full",
+                                order = 3.541,
+                            },
+                            ldbBarColorsHeader = {
+                                type = "description",
+                                name = "|cFFAAAAAAXP/REP Bar Colors:|r",
+                                fontSize = "small",
+                                width = "full",
+                                order = 3.542,
+                            },
+                            ldbColorXPActive = {
+                                type = "color",
+                                name = "XP Active",
+                                desc = "Color for the filled portion of the XP bar.",
+                                hasAlpha = false,
+                                get = function()
+                                    local c = self.db.profile.ldbColorXPActive or {r = 0.4, g = 0.8, b = 1}
+                                    return c.r, c.g, c.b
+                                end,
+                                set = function(_, r, g, b)
+                                    self.db.profile.ldbColorXPActive = {r = r, g = g, b = b}
+                                    if self.LDB and self.LDB.UpdateLDBText then self.LDB:UpdateLDBText() end
+                                end,
+                                width = 0.45,
+                                order = 3.543,
+                            },
+                            ldbColorXPBase = {
+                                type = "color",
+                                name = "XP Base",
+                                desc = "Color for the empty/unfilled portion of the XP bar.",
+                                hasAlpha = false,
+                                get = function()
+                                    local c = self.db.profile.ldbColorXPBase or {r = 0.25, g = 0.25, b = 0.25}
+                                    return c.r, c.g, c.b
+                                end,
+                                set = function(_, r, g, b)
+                                    self.db.profile.ldbColorXPBase = {r = r, g = g, b = b}
+                                    if self.LDB and self.LDB.UpdateLDBText then self.LDB:UpdateLDBText() end
+                                end,
+                                width = 0.45,
+                                order = 3.544,
+                            },
+                            ldbColorREPActive = {
+                                type = "color",
+                                name = "REP Active",
+                                desc = "Color for the filled portion of the reputation bar.",
+                                hasAlpha = false,
+                                get = function()
+                                    local c = self.db.profile.ldbColorREPActive or {r = 0.6, g = 0.4, b = 1}
+                                    return c.r, c.g, c.b
+                                end,
+                                set = function(_, r, g, b)
+                                    self.db.profile.ldbColorREPActive = {r = r, g = g, b = b}
+                                    if self.LDB and self.LDB.UpdateLDBText then self.LDB:UpdateLDBText() end
+                                end,
+                                width = 0.45,
+                                order = 3.545,
+                            },
+                            ldbColorREPBase = {
+                                type = "color",
+                                name = "REP Base",
+                                desc = "Color for the empty/unfilled portion of the reputation bar.",
+                                hasAlpha = false,
+                                get = function()
+                                    local c = self.db.profile.ldbColorREPBase or {r = 0.25, g = 0.25, b = 0.25}
+                                    return c.r, c.g, c.b
+                                end,
+                                set = function(_, r, g, b)
+                                    self.db.profile.ldbColorREPBase = {r = r, g = g, b = b}
+                                    if self.LDB and self.LDB.UpdateLDBText then self.LDB:UpdateLDBText() end
+                                end,
+                                width = 0.45,
+                                order = 3.546,
+                            },
+                            ldbColorBracket = {
+                                type = "color",
+                                name = "Bracket",
+                                desc = "Color for the [ ] brackets surrounding the XP/REP bars.",
+                                hasAlpha = false,
+                                get = function()
+                                    local c = self.db.profile.ldbColorBracket or {r = 0.5, g = 0.5, b = 0.5}
+                                    return c.r, c.g, c.b
+                                end,
+                                set = function(_, r, g, b)
+                                    self.db.profile.ldbColorBracket = {r = r, g = g, b = b}
+                                    if self.LDB and self.LDB.UpdateLDBText then self.LDB:UpdateLDBText() end
+                                end,
+                                width = 0.45,
+                                order = 3.547,
+                            },
+                            ldbOtherColorsHeader = {
+                                type = "description",
+                                name = "|cFFAAAAAAOther Colors:|r",
+                                fontSize = "small",
+                                width = "full",
+                                order = 3.548,
+                            },
+                            ldbColorSeparator = {
+                                type = "color",
+                                name = "Separator",
+                                desc = "Color for the | separator between LDB text items.",
+                                hasAlpha = false,
+                                get = function()
+                                    local c = self.db.profile.ldbColorSeparator or {r = 0.4, g = 0.4, b = 0.4}
+                                    return c.r, c.g, c.b
+                                end,
+                                set = function(_, r, g, b)
+                                    self.db.profile.ldbColorSeparator = {r = r, g = g, b = b}
+                                    if self.LDB and self.LDB.UpdateLDBText then self.LDB:UpdateLDBText() end
+                                end,
+                                width = 0.45,
+                                order = 3.549,
+                            },
+                            ldbXPBarRainbow = {
+                                type = "toggle",
+                                name = "XP Bar Rainbow",
+                                desc = "Cycle through rainbow colors for the XP bar fill.",
+                                get = function() return self.db.profile.ldbXPBarRainbow end,
+                                set = function(_, v)
+                                    self.db.profile.ldbXPBarRainbow = v
+                                    if self.LDB and self.LDB.StartRainbowTimer then self.LDB:StartRainbowTimer() end
+                                end,
+                                width = 0.9,
+                                order = 3.551,
+                            },
+                            ldbREPBarRainbow = {
+                                type = "toggle",
+                                name = "REP Bar Rainbow",
+                                desc = "Cycle through rainbow colors for the REP bar fill.",
+                                get = function() return self.db.profile.ldbREPBarRainbow end,
+                                set = function(_, v)
+                                    self.db.profile.ldbREPBarRainbow = v
+                                    if self.LDB and self.LDB.StartRainbowTimer then self.LDB:StartRainbowTimer() end
+                                end,
+                                width = 0.9,
+                                order = 3.552,
                             },
                             popupHeader = {
                                 type = "description",
@@ -473,11 +1027,6 @@ function KOL:InitializeUI()
                                 width = 1.0,
                                 order = 3.7,
                             },
-                            spacer2 = {
-                                type = "description",
-                                name = "\n",
-                                order = 4,
-                            },
                             -- Fonts Section
                             fontHeader = {
                                 type = "description",
@@ -519,11 +1068,6 @@ function KOL:InitializeUI()
                             self:PrintTag("General font outline set to: " .. PASTEL_YELLOW(value))
                             LibStub("AceConfigRegistry-3.0"):NotifyChange("KoalityOfLife")
                         end,
-                    },
-                    spacer3 = {
-                        type = "description",
-                        name = "\n",
-                        order = 6,
                     },
                     -- Performance Section
                     statsHeader = {
@@ -976,6 +1520,21 @@ function KOL:InitializeUI()
                                         fontSize = "small",
                                         width = "full",
                                         order = 0.1,
+                                    },
+                                    autoDungeonReset = {
+                                        type = "toggle",
+                                        name = "Auto Dungeon Reset",
+                                        desc = "Automatically reset all instances when you exit a dungeon or raid.\n\n|cFFFFFF00Note:|r Useful for speed-farming. Announces reset status to party chat if grouped.",
+                                        get = function() return self.db.profile.autoDungeonReset end,
+                                        set = function(_, value)
+                                            self.db.profile.autoDungeonReset = value
+                                            print(self.Colors:FormatSettingChange("Auto Dungeon Reset", value))
+                                            if self.LDB and self.LDB.UpdateLDBText then
+                                                self.LDB:UpdateLDBText()
+                                            end
+                                        end,
+                                        width = "full",
+                                        order = 0.5,
                                     },
                                     limitDamage = {
                                         type = "toggle",

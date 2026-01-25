@@ -24,6 +24,7 @@ CHAR_LIGHTNING = "⚡"
 CHAR_HARDMODE = "◆"  -- Filled diamond for hardmode indicator (star ★ doesn't render in Source Code Pro)
 CHAR_IDLE = "■"
 CHAR_BASE = "○"
+CHAR_HEXAGON = "⬢"
 
 -- Text Separators
 CHAR_SEPARATOR = "|"

@@ -1794,11 +1794,11 @@ function Tracker:OnCombatLogEvent(...)
                                 if boss.hardmode and boss.hardmode.killOrder and deadCount == totalCount - 1 then
                                     local lastKillTarget = boss.hardmode.killOrder.lastKill
                                     local isTargetAlive = not self.multiNPCKills[instanceId][bossIndex][lastKillTarget]
-                                    KOL:Print("DEBUG: Kill order check - target=" .. tostring(lastKillTarget) .. ", alive=" .. tostring(isTargetAlive))
+                                    KOL:DebugPrint("Tracker: Kill order check - target=" .. tostring(lastKillTarget) .. ", alive=" .. tostring(isTargetAlive), 3)
                                     -- Check if the hardmode target NPC is still alive (not in our kill tracking)
                                     if lastKillTarget and isTargetAlive then
                                         -- The hardmode target is the last one alive - hardmode confirmed!
-                                        KOL:Print("DEBUG: HARDMODE DETECTED! Marking " .. boss.name .. " as hardmode...")
+                                        KOL:DebugPrint("Tracker: HARDMODE DETECTED! Marking " .. boss.name .. " as hardmode...", 2)
                                         self:DetectHardmode(instanceId, bossIndex, "killOrder", lastKillTarget)
                                     end
                                 end
@@ -1921,7 +1921,7 @@ function Tracker:OnCombatLogEvent(...)
                                     self.multiNPCKills[instanceId][groupedBossId][npcId] = true
                                     KOL.db.profile.tracker.multiNPCKills = self.multiNPCKills
 
-                                    KOL:Print("DEBUG: Marked NPC " .. npcId .. " as dead for " .. boss.name .. " (bossId=" .. groupedBossId .. ")")
+                                    KOL:DebugPrint("Tracker: Marked NPC " .. npcId .. " as dead for " .. boss.name .. " (bossId=" .. groupedBossId .. ")", 3)
 
                                     -- Check if ALL NPCs for this boss are now dead
                                     local allDead = true
@@ -1935,11 +1935,11 @@ function Tracker:OnCombatLogEvent(...)
                                         end
                                     end
 
-                                    KOL:Print("DEBUG: " .. boss.name .. " progress: " .. deadCount .. "/" .. totalCount .. " killed")
+                                    KOL:DebugPrint("Tracker: " .. boss.name .. " progress: " .. deadCount .. "/" .. totalCount .. " killed", 3)
 
                                     if allDead then
                                         -- All NPCs dead - mark boss as killed!
-                                        KOL:Print("DEBUG: ALL NPCs dead! Marking " .. boss.name .. " as complete")
+                                        KOL:DebugPrint("Tracker: ALL NPCs dead! Marking " .. boss.name .. " as complete", 3)
                                         self:MarkBossKilled(instanceId, groupedBossId)
                                         local watchLevel = KOL.db.profile.watchDeathsLevel or 0
                                         if watchLevel >= 1 then
@@ -1947,19 +1947,22 @@ function Tracker:OnCombatLogEvent(...)
                                         end
                                     else
                                         -- Partial progress
-                                        KOL:PrintTag(destName .. " defeated (" .. boss.name .. " encounter - " .. deadCount .. "/" .. totalCount .. ")")
+                                        local watchLevel = KOL.db.profile.watchDeathsLevel or 0
+                                        if watchLevel >= 1 then
+                                            KOL:PrintTag(destName .. " defeated (" .. boss.name .. " encounter - " .. deadCount .. "/" .. totalCount .. ")")
+                                        end
 
                                         -- Check for kill-order based hardmode on 2nd-to-last kill
                                         -- (e.g., Assembly of Iron - if Steelbreaker is still alive after 2 kills, it's hardmode)
-                                        KOL:Print("DEBUG: Kill order check: hasHardmode=" .. tostring(boss.hardmode ~= nil) .. ", hasKillOrder=" .. tostring(boss.hardmode and boss.hardmode.killOrder ~= nil) .. ", deadCount=" .. deadCount .. ", totalCount=" .. totalCount)
+                                        KOL:DebugPrint("Tracker: Kill order check: hasHardmode=" .. tostring(boss.hardmode ~= nil) .. ", hasKillOrder=" .. tostring(boss.hardmode and boss.hardmode.killOrder ~= nil) .. ", deadCount=" .. deadCount .. ", totalCount=" .. totalCount, 3)
                                         if boss.hardmode and boss.hardmode.killOrder and deadCount == totalCount - 1 then
                                             local lastKillTarget = boss.hardmode.killOrder.lastKill
                                             local isTargetAlive = not self.multiNPCKills[instanceId][groupedBossId][lastKillTarget]
-                                            KOL:Print("DEBUG: Kill order check - target=" .. tostring(lastKillTarget) .. ", alive=" .. tostring(isTargetAlive))
+                                            KOL:DebugPrint("Tracker: Kill order check - target=" .. tostring(lastKillTarget) .. ", alive=" .. tostring(isTargetAlive), 3)
                                             -- Check if the hardmode target NPC is still alive (not in our kill tracking)
                                             if lastKillTarget and isTargetAlive then
                                                 -- The hardmode target is the last one alive - hardmode confirmed!
-                                                KOL:Print("DEBUG: HARDMODE DETECTED! Marking " .. boss.name .. " as hardmode...")
+                                                KOL:DebugPrint("Tracker: HARDMODE DETECTED! Marking " .. boss.name .. " as hardmode...", 2)
                                                 self:DetectHardmode(instanceId, groupedBossId, "killOrder", lastKillTarget)
                                             end
                                         end
@@ -2759,41 +2762,86 @@ function Tracker:UpdateZoneTracking()
     -- Find matching instance
     local instanceId, instanceData
     local fallbackId, fallbackData  -- Fallback if difficulty doesn't match
+    local zoneOnlyId, zoneOnlyData  -- Fallback for zone-only matches (no subzone)
+    local zoneOnlyFallbackId, zoneOnlyFallbackData  -- Zone-only with wrong difficulty
 
-    -- First, try to find by zone name AND difficulty
-    for id, data in pairs(self.instances) do
-        for _, zone in ipairs(data.zones) do
-            if zone == zoneName or zone == subZoneName then
-                KOL:DebugPrint("Tracker: Zone matched instance: " .. id .. " (difficulty " .. tostring(data.difficulty) .. ")", 3)
+    -- Two-pass approach: prioritize subzone matches over generic zone matches
+    -- This helps with multi-wing dungeons like Dire Maul where each wing has unique subzones
 
-                -- Match difficulty if we're in an instance
-                if instanceType ~= "none" and data.difficulty then
-                    -- For raids, WotLK uses:
-                    -- 1 = 10-player normal, 2 = 25-player normal
-                    -- 3 = 10-player heroic, 4 = 25-player heroic
-                    -- difficultyIndex from GetInstanceInfo returns these values
-                    if data.difficulty == difficultyIndex then
-                        instanceId = id
-                        instanceData = data
-                        KOL:DebugPrint("Tracker: Difficulty matched! Using " .. id, 2)
-                        break
-                    else
-                        -- Store as fallback in case no exact match is found
-                        if not fallbackId then
-                            fallbackId = id
-                            fallbackData = data
-                            KOL:DebugPrint("Tracker: Difficulty mismatch, storing as fallback: " .. id, 3)
+    -- First pass: look for SUBZONE matches (more specific)
+    if subZoneName and subZoneName ~= "" then
+        for id, data in pairs(self.instances) do
+            for _, zone in ipairs(data.zones) do
+                if zone == subZoneName then
+                    KOL:DebugPrint("Tracker: SubZone matched instance: " .. id .. " (difficulty " .. tostring(data.difficulty) .. ")", 3)
+
+                    if instanceType ~= "none" and data.difficulty then
+                        if data.difficulty == difficultyIndex then
+                            instanceId = id
+                            instanceData = data
+                            KOL:DebugPrint("Tracker: SubZone + Difficulty matched! Using " .. id, 2)
+                            break
+                        else
+                            if not fallbackId then
+                                fallbackId = id
+                                fallbackData = data
+                                KOL:DebugPrint("Tracker: SubZone matched, difficulty mismatch, storing as fallback: " .. id, 3)
+                            end
                         end
+                    elseif instanceType == "none" then
+                        instanceId = nil
+                        instanceData = nil
+                        KOL:DebugPrint("Tracker: Not in an instance (instanceType=none), skipping auto-show", 3)
                     end
-                elseif instanceType == "none" then
-                    -- Not in an instance (outside), don't auto-show
-                    instanceId = nil
-                    instanceData = nil
-                    KOL:DebugPrint("Tracker: Not in an instance (instanceType=none), skipping auto-show", 3)
+                end
+            end
+            if instanceId then break end
+        end
+    end
+
+    -- Second pass: if no subzone match, look for ZONE matches (less specific)
+    if not instanceId and not fallbackId then
+        for id, data in pairs(self.instances) do
+            for _, zone in ipairs(data.zones) do
+                if zone == zoneName then
+                    KOL:DebugPrint("Tracker: Zone matched instance: " .. id .. " (difficulty " .. tostring(data.difficulty) .. ")", 3)
+
+                    if instanceType ~= "none" and data.difficulty then
+                        -- For raids, WotLK uses:
+                        -- 1 = 10-player normal, 2 = 25-player normal
+                        -- 3 = 10-player heroic, 4 = 25-player heroic
+                        -- difficultyIndex from GetInstanceInfo returns these values
+                        if data.difficulty == difficultyIndex then
+                            if not zoneOnlyId then
+                                zoneOnlyId = id
+                                zoneOnlyData = data
+                                KOL:DebugPrint("Tracker: Zone + Difficulty matched, storing: " .. id, 3)
+                            end
+                        else
+                            if not zoneOnlyFallbackId then
+                                zoneOnlyFallbackId = id
+                                zoneOnlyFallbackData = data
+                                KOL:DebugPrint("Tracker: Zone matched, difficulty mismatch, storing as zone fallback: " .. id, 3)
+                            end
+                        end
+                    elseif instanceType == "none" then
+                        instanceId = nil
+                        instanceData = nil
+                        KOL:DebugPrint("Tracker: Not in an instance (instanceType=none), skipping auto-show", 3)
+                    end
                 end
             end
         end
-        if instanceId then break end
+
+        -- Use zone-only matches as fallback
+        if zoneOnlyId then
+            instanceId = zoneOnlyId
+            instanceData = zoneOnlyData
+            KOL:DebugPrint("Tracker: Using zone-only match: " .. instanceId, 2)
+        elseif zoneOnlyFallbackId and instanceType ~= "none" then
+            fallbackId = zoneOnlyFallbackId
+            fallbackData = zoneOnlyFallbackData
+        end
     end
 
     -- If no exact difficulty match, use fallback
@@ -3939,9 +3987,15 @@ function Tracker:UpdateWatchFrame(instanceId)
     local contentHeight = 0
 
     -- Render Dungeon Challenge UI (if applicable)
+    -- If this instance has a linkedChallengeInstance, use that for challenge tracking
     local dcConfig = KOL.db.profile.tracker.dungeonChallenge
     if dcConfig and dcConfig.enabled then
-        local dcState = self:UpdateDungeonChallengeState(instanceId)
+        local challengeInstanceId = instanceId
+        if data.linkedChallengeInstance then
+            challengeInstanceId = data.linkedChallengeInstance
+            KOL:DebugPrint("Tracker: Using linked challenge instance " .. challengeInstanceId .. " for " .. instanceId, 3)
+        end
+        local dcState = self:UpdateDungeonChallengeState(challengeInstanceId)
         if dcState and dcState.eligible then
             -- Nuclear green and red colors
             local nuclearGreen = "00FF00"
@@ -5094,40 +5148,47 @@ function Tracker:ShowWatchFrame(instanceId)
     end
 
     -- Initialize dungeon challenge timer when entering zone
-    if not self.dungeonChallengeState[instanceId] then
-        self.dungeonChallengeState[instanceId] = {}
+    -- Use linkedChallengeInstance if present (for multi-wing dungeons like DM/SM)
+    local instanceData = self.instances[instanceId]
+    local challengeInstanceId = instanceId
+    if instanceData and instanceData.linkedChallengeInstance then
+        challengeInstanceId = instanceData.linkedChallengeInstance
+        KOL:DebugPrint("Tracker: Using linked challenge instance " .. challengeInstanceId .. " for challenge tracking", 2)
     end
-    if not self.dungeonChallengeState[instanceId].startTime then
+
+    if not self.dungeonChallengeState[challengeInstanceId] then
+        self.dungeonChallengeState[challengeInstanceId] = {}
+    end
+    if not self.dungeonChallengeState[challengeInstanceId].startTime then
         -- Load saved time from database (for /rl persistence)
         local savedTime = 0
         if KOL.db.profile.tracker.dungeonChallenge and KOL.db.profile.tracker.dungeonChallenge.currentTimes then
-            savedTime = KOL.db.profile.tracker.dungeonChallenge.currentTimes[instanceId] or 0
+            savedTime = KOL.db.profile.tracker.dungeonChallenge.currentTimes[challengeInstanceId] or 0
         end
 
-        self.dungeonChallengeState[instanceId].startTime = GetTime()
-        self.dungeonChallengeState[instanceId].timeElapsedOffset = savedTime
-        KOL:DebugPrint("Tracker: Started dungeon timer for " .. instanceId .. " (offset: " .. savedTime .. "s)", 2)
+        self.dungeonChallengeState[challengeInstanceId].startTime = GetTime()
+        self.dungeonChallengeState[challengeInstanceId].timeElapsedOffset = savedTime
+        KOL:DebugPrint("Tracker: Started dungeon timer for " .. challengeInstanceId .. " (offset: " .. savedTime .. "s)", 2)
 
         -- Start speed buff detection (scans until found, then stops)
-        self:StartSpeedBuffDetection(instanceId)
+        self:StartSpeedBuffDetection(challengeInstanceId)
 
         -- Apply pending best time if one was captured before watch frame was created
         if self.pendingBestTime then
-            KOL:DebugPrint("Applying pending best time to " .. instanceId .. ": " .. self:FormatTime(self.pendingBestTime), 2)
+            KOL:DebugPrint("Applying pending best time to " .. challengeInstanceId .. ": " .. self:FormatTime(self.pendingBestTime), 2)
             if not KOL.db.profile.tracker.dungeonChallenge.bestTimes then
                 KOL.db.profile.tracker.dungeonChallenge.bestTimes = {}
             end
-            local currentBest = KOL.db.profile.tracker.dungeonChallenge.bestTimes[instanceId] or 0
+            local currentBest = KOL.db.profile.tracker.dungeonChallenge.bestTimes[challengeInstanceId] or 0
             if currentBest == 0 or self.pendingBestTime < currentBest then
-                KOL.db.profile.tracker.dungeonChallenge.bestTimes[instanceId] = self.pendingBestTime
-                self.dungeonChallengeState[instanceId].bestTime = self.pendingBestTime
+                KOL.db.profile.tracker.dungeonChallenge.bestTimes[challengeInstanceId] = self.pendingBestTime
+                self.dungeonChallengeState[challengeInstanceId].bestTime = self.pendingBestTime
             end
             self.pendingBestTime = nil  -- Clear pending
         end
     end
 
     -- Initialize timer log for all zones (if dungeon challenge is enabled)
-    local instanceData = self.instances[instanceId]
     if instanceData then
         self:AddTimerLogEntry(instanceId)
     end
@@ -5385,10 +5446,10 @@ function Tracker:ShowDefaultLocationPicker()
     anchorMarker:SetTexture("Interface\\Buttons\\WHITE8X8")
     if config.growUpward then
         anchorMarker:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 2, 2)
-        anchorMarker:SetColorTexture(0.4, 1, 0.4, 0.8)  -- Green for bottom anchor
+        anchorMarker:SetVertexColor(0.4, 1, 0.4, 0.8)  -- Green for bottom anchor
     else
         anchorMarker:SetPoint("TOPLEFT", frame, "TOPLEFT", 2, -2)
-        anchorMarker:SetColorTexture(1, 1, 0.4, 0.8)  -- Yellow for top anchor
+        anchorMarker:SetVertexColor(1, 1, 0.4, 0.8)  -- Yellow for top anchor
     end
 
     -- Save button (using UIFactory styled button)
@@ -6053,6 +6114,17 @@ function Tracker:TickSpeedBuffDetection()
                     end
                     KOL.db.profile.tracker.dungeonChallenge.speedStacks[instanceId] = count
                     KOL:DebugPrint(string.format("Speed buff: %s NEW BEST! %d stacks (was %d)", instanceId, count, savedStacks), 1)
+
+                    -- Update the state so the UI reflects the new stacks immediately
+                    if self.dungeonChallengeState[instanceId] then
+                        self.dungeonChallengeState[instanceId].speedStacks = count
+                        self.dungeonChallengeState[instanceId].cachedSpeedStacks = count
+                    end
+
+                    -- Refresh the watch frame to show updated stacks
+                    if self.activeFrames[instanceId] then
+                        self:UpdateWatchFrame(instanceId)
+                    end
                 else
                     KOL:DebugPrint(string.format("Speed buff: %s detected %d stacks (saved: %d)", instanceId, count, savedStacks), 2)
                 end

@@ -59,7 +59,7 @@ KOL.Tracker:RegisterInstance("wc_n", {
 })
 
 -- Deadmines
-KOL.Tracker:RegisterInstance("dm_n", {
+KOL.Tracker:RegisterInstance("diremaul_n", {
     name = "The Deadmines",
     type = "dungeon",
     expansion = "classic",
@@ -177,15 +177,33 @@ KOL.Tracker:RegisterInstance("rfk_n", {
     }
 })
 
--- Scarlet Monastery (all wings)
+-- Scarlet Monastery (Full dungeon - for dungeon challenge tracking)
+-- The dungeon challenge requires walking in manually and covers all wings
+KOL.Tracker:RegisterInstance("sm_n", {
+    name = "Scarlet Monastery",
+    type = "dungeon",
+    expansion = "classic",
+    difficulty = 1,
+    color = "CRIMSON",
+    zones = {"Scarlet Monastery"},
+    challengeMaxLevel = 39,
+    -- No bosses - boss tracking is done per-wing
+    bosses = {},
+})
+
+-- Scarlet Monastery Wings (for boss tracking only - no dungeon challenge)
 KOL.Tracker:RegisterInstance("sm_gy_n", {
     name = "Scarlet Monastery: Graveyard",
     type = "dungeon",
     expansion = "classic",
     difficulty = 1,
     color = "RED",
-    zones = {"Scarlet Monastery"},
-    challengeMaxLevel = 39,
+    zones = {
+        -- Graveyard subzones
+        "Graveyard",
+        "Forlorn Cloister",
+    },
+    linkedChallengeInstance = "sm_n",  -- Links to full dungeon for challenge tracking
     bosses = {
         {name = "Interrogator Vishas", id = 3983},
         {name = "Bloodmage Thalnos", id = 4543},
@@ -201,8 +219,13 @@ KOL.Tracker:RegisterInstance("sm_lib_n", {
     expansion = "classic",
     difficulty = 1,
     color = "ROSE",
-    zones = {"Scarlet Monastery"},
-    challengeMaxLevel = 39,
+    zones = {
+        -- Library subzones
+        "Library",
+        "Huntsman's Cloister",
+        "Gallery of Treasures",
+    },
+    linkedChallengeInstance = "sm_n",  -- Links to full dungeon for challenge tracking
     bosses = {
         {name = "Houndmaster Loksey", id = 3974},
         {name = "Arcanist Doan", id = 6487},
@@ -215,8 +238,13 @@ KOL.Tracker:RegisterInstance("sm_arm_n", {
     expansion = "classic",
     difficulty = 1,
     color = "ORANGE",
-    zones = {"Scarlet Monastery"},
-    challengeMaxLevel = 39,
+    zones = {
+        -- Armory subzones
+        "Armory",
+        "Crusader's Armory",
+        "Hall of Champions",
+    },
+    linkedChallengeInstance = "sm_n",  -- Links to full dungeon for challenge tracking
     bosses = {
         {name = "Herod", id = 3975},
     }
@@ -228,8 +256,13 @@ KOL.Tracker:RegisterInstance("sm_cath_n", {
     expansion = "classic",
     difficulty = 1,
     color = "CORAL",
-    zones = {"Scarlet Monastery"},
-    challengeMaxLevel = 39,
+    zones = {
+        -- Cathedral subzones
+        "Cathedral",
+        "Chapel Gardens",
+        "Crusader's Chapel",
+    },
+    linkedChallengeInstance = "sm_n",  -- Links to full dungeon for challenge tracking
     bosses = {
         {name = "High Inquisitor Fairbanks", id = 4542},
         {name = "Scarlet Commander Mograine", id = 3976},
@@ -296,7 +329,8 @@ KOL.Tracker:RegisterInstance("zf_n", {
     }
 })
 
--- Maraudon
+-- Maraudon (Full dungeon - for dungeon challenge tracking)
+-- The dungeon challenge covers all wings (Orange, Purple, Inner)
 KOL.Tracker:RegisterInstance("mara_n", {
     name = "Maraudon",
     type = "dungeon",
@@ -305,30 +339,64 @@ KOL.Tracker:RegisterInstance("mara_n", {
     color = "PURPLE",
     zones = {"Maraudon"},
     challengeMaxLevel = 47,
-    groups = {
-        {
-            name = "The Wicked Grotto (Orange)",
-            bosses = {
-                {name = "Noxxion", id = 13282},
-                {name = "Razorlash", id = 12258},
-            }
-        },
-        {
-            name = "Foulspore Cavern (Purple)",
-            bosses = {
-                {name = "Lord Vyletongue", id = 12236},
-                {name = "Celebras the Cursed", id = 12225},
-            }
-        },
-        {
-            name = "Earth Song Falls",
-            bosses = {
-                {name = "Landslide", id = 12203},
-                {name = "Tinkerer Gizlock", id = 13601},
-                {name = "Rotgrip", id = 13596},
-                {name = "Princess Theradras", id = 12201},
-            }
-        },
+    -- No bosses - boss tracking is done per-wing
+    bosses = {},
+})
+
+-- Maraudon: Orange (The Wicked Grotto) - for boss tracking only
+KOL.Tracker:RegisterInstance("mara_orange_n", {
+    name = "Maraudon: Orange",
+    type = "dungeon",
+    expansion = "classic",
+    difficulty = 1,
+    color = "ORANGE",
+    zones = {
+        -- Orange wing subzones
+        "The Wicked Grotto",
+    },
+    linkedChallengeInstance = "mara_n",
+    bosses = {
+        {name = "Noxxion", id = 13282},
+        {name = "Razorlash", id = 12258},
+    }
+})
+
+-- Maraudon: Purple (Foulspore Cavern) - for boss tracking only
+KOL.Tracker:RegisterInstance("mara_purple_n", {
+    name = "Maraudon: Purple",
+    type = "dungeon",
+    expansion = "classic",
+    difficulty = 1,
+    color = "LAVENDER",
+    zones = {
+        -- Purple wing subzones
+        "Foulspore Cavern",
+    },
+    linkedChallengeInstance = "mara_n",
+    bosses = {
+        {name = "Lord Vyletongue", id = 12236},
+        {name = "Celebras the Cursed", id = 12225},
+    }
+})
+
+-- Maraudon: Inner (Earth Song Falls) - for boss tracking only
+KOL.Tracker:RegisterInstance("mara_inner_n", {
+    name = "Maraudon: Inner",
+    type = "dungeon",
+    expansion = "classic",
+    difficulty = 1,
+    color = "TEAL",
+    zones = {
+        -- Inner wing subzones
+        "Earth Song Falls",
+        "Zaetar's Grave",
+    },
+    linkedChallengeInstance = "mara_n",
+    bosses = {
+        {name = "Landslide", id = 12203},
+        {name = "Tinkerer Gizlock", id = 13601},
+        {name = "Rotgrip", id = 13596},
+        {name = "Princess Theradras", id = 12201},
     }
 })
 
@@ -349,7 +417,8 @@ KOL.Tracker:RegisterInstance("st_n", {
     }
 })
 
--- Blackrock Depths
+-- Blackrock Depths (Full dungeon - for dungeon challenge tracking)
+-- The dungeon challenge covers all sections (Detention Block and Upper City)
 KOL.Tracker:RegisterInstance("brd_n", {
     name = "Blackrock Depths",
     type = "dungeon",
@@ -358,6 +427,23 @@ KOL.Tracker:RegisterInstance("brd_n", {
     color = "ORANGE",
     zones = {"Blackrock Depths"},
     challengeMaxLevel = 55,
+    -- No bosses - boss tracking is done per-section
+    bosses = {},
+})
+
+-- BRD: Detention Block (lower section) - for boss tracking only
+KOL.Tracker:RegisterInstance("brd_detention_n", {
+    name = "BRD: Detention Block",
+    type = "dungeon",
+    expansion = "classic",
+    difficulty = 1,
+    color = "MAROON",
+    zones = {
+        -- Detention Block subzones
+        "Detention Block",
+        "Shadowforge Prison",
+    },
+    linkedChallengeInstance = "brd_n",
     groups = {
         {
             name = "Detention Block",
@@ -378,6 +464,29 @@ KOL.Tracker:RegisterInstance("brd_n", {
                 {name = "Ring of Law", id = 9027},
             }
         },
+    }
+})
+
+-- BRD: Upper City - for boss tracking only
+KOL.Tracker:RegisterInstance("brd_upper_n", {
+    name = "BRD: Upper City",
+    type = "dungeon",
+    expansion = "classic",
+    difficulty = 1,
+    color = "GOLD",
+    zones = {
+        -- Upper City subzones
+        "Shadowforge City",
+        "The Manufactory",
+        "Grim Guzzler",
+        "The Imperial Seat",
+        "The Lyceum",
+        "Hall of Crafting",
+        "The Black Vault",
+        "Domicile",
+    },
+    linkedChallengeInstance = "brd_n",
+    groups = {
         {
             name = "Shadowforge City",
             bosses = {
@@ -414,15 +523,36 @@ KOL.Tracker:RegisterInstance("brd_n", {
     }
 })
 
--- Lower Blackrock Spire
+-- Blackrock Spire (Full dungeon - for dungeon challenge tracking)
+-- The dungeon challenge covers both Lower and Upper
+KOL.Tracker:RegisterInstance("brs_n", {
+    name = "Blackrock Spire",
+    type = "dungeon",
+    expansion = "classic",
+    difficulty = 1,
+    color = "MAROON",
+    zones = {"Blackrock Spire"},
+    challengeMaxLevel = 60,
+    -- No bosses - boss tracking is done per-wing
+    bosses = {},
+})
+
+-- Lower Blackrock Spire (for boss tracking only - no dungeon challenge)
 KOL.Tracker:RegisterInstance("lbrs_n", {
     name = "Lower Blackrock Spire",
     type = "dungeon",
     expansion = "classic",
     difficulty = 1,
     color = "RED",
-    zones = {"Blackrock Spire"},
-    challengeMaxLevel = 60,
+    zones = {
+        -- LBRS subzones
+        "Hordemar City",
+        "Troll Stronghold",
+        "Skitterweb Tunnels",
+        "Halycon's Lair",
+        "Wyrmthalak's Chamber",
+    },
+    linkedChallengeInstance = "brs_n",  -- Links to full dungeon for challenge tracking
     groups = {
         {
             name = "Hordemar City",
@@ -461,15 +591,22 @@ KOL.Tracker:RegisterInstance("lbrs_n", {
     }
 })
 
--- Upper Blackrock Spire
+-- Upper Blackrock Spire (for boss tracking only - no dungeon challenge)
 KOL.Tracker:RegisterInstance("ubrs_n", {
     name = "Upper Blackrock Spire",
     type = "dungeon",
     expansion = "classic",
     difficulty = 1,
     color = "ROSE",
-    zones = {"Blackrock Spire"},
-    challengeMaxLevel = 60,
+    zones = {
+        -- UBRS subzones
+        "The Rookery",
+        "Hall of Blackhand",
+        "Rend's Arena",
+        "The Beast's Lair",
+        "Dragonspire Hall",
+    },
+    linkedChallengeInstance = "brs_n",  -- Links to full dungeon for challenge tracking
     groups = {
         {
             name = "The Rookery",
@@ -502,15 +639,36 @@ KOL.Tracker:RegisterInstance("ubrs_n", {
     }
 })
 
--- Dire Maul (all wings)
+-- Dire Maul (Full dungeon - for dungeon challenge tracking)
+-- The dungeon challenge requires walking in manually and covers all wings
+KOL.Tracker:RegisterInstance("diremaul_n", {
+    name = "Dire Maul",
+    type = "dungeon",
+    expansion = "classic",
+    difficulty = 1,
+    color = "GOLD",
+    zones = {"Dire Maul"},
+    challengeMaxLevel = 60,
+    -- No bosses - boss tracking is done per-wing
+    bosses = {},
+})
+
+-- Dire Maul Wings (for boss tracking only - no dungeon challenge)
+-- Each wing has unique subzones that help differentiate them
 KOL.Tracker:RegisterInstance("dm_east_n", {
     name = "Dire Maul: East",
     type = "dungeon",
     expansion = "classic",
     difficulty = 1,
     color = "LAVENDER",
-    zones = {"Dire Maul"},
-    challengeMaxLevel = 60,
+    zones = {
+        -- East wing subzones only (no "Dire Maul" - that's handled by diremaul_n)
+        "Warpwood Quarter",
+        "The Shrine of Eldretharr",
+        "The Conservatory",
+        "The Hidden Reach",
+    },
+    linkedChallengeInstance = "diremaul_n",  -- Links to full dungeon for challenge tracking
     bosses = {
         {name = "Pusillin", id = 14354},
         {name = "Zevrim Thornhoof", id = 11490},
@@ -526,8 +684,14 @@ KOL.Tracker:RegisterInstance("dm_west_n", {
     expansion = "classic",
     difficulty = 1,
     color = "SKY",
-    zones = {"Dire Maul"},
-    challengeMaxLevel = 60,
+    zones = {
+        -- West wing subzones only
+        "Capital Gardens",
+        "The Athenaeum",
+        "Court of the Highborne",
+        "Prison of Immol'thar",
+    },
+    linkedChallengeInstance = "diremaul_n",  -- Links to full dungeon for challenge tracking
     bosses = {
         {name = "Tendris Warpwood", id = 11489},
         {name = "Illyanna Ravenoak", id = 11488},
@@ -537,14 +701,19 @@ KOL.Tracker:RegisterInstance("dm_west_n", {
     }
 })
 
-KOL.Tracker:RegisterInstance("dm_north_n", {
+KOL.Tracker:RegisterInstance("diremaul_north_n", {
     name = "Dire Maul: North",
     type = "dungeon",
     expansion = "classic",
     difficulty = 1,
     color = "AQUA",
-    zones = {"Dire Maul"},
-    challengeMaxLevel = 60,
+    zones = {
+        -- North wing subzones only
+        "Gordok Commons",
+        "The Maul",
+        "Gordok's Seat",
+    },
+    linkedChallengeInstance = "diremaul_n",  -- Links to full dungeon for challenge tracking
     bosses = {
         {name = "Guard Mol'dar", id = 14326},
         {name = "Stomper Kreeg", id = 14322},
@@ -614,15 +783,35 @@ KOL.Tracker:RegisterInstance("scholo_n", {
     }
 })
 
--- Stratholme
+-- Stratholme (Full dungeon - for dungeon challenge tracking)
+-- The dungeon challenge covers both Live and Undead sides
+KOL.Tracker:RegisterInstance("strat_n", {
+    name = "Stratholme",
+    type = "dungeon",
+    expansion = "classic",
+    difficulty = 1,
+    color = "TAN",
+    zones = {"Stratholme"},
+    challengeMaxLevel = 60,
+    -- No bosses - boss tracking is done per-side
+    bosses = {},
+})
+
+-- Stratholme: Live Side (for boss tracking only - no dungeon challenge)
 KOL.Tracker:RegisterInstance("strat_live_n", {
     name = "Stratholme: Live Side",
     type = "dungeon",
     expansion = "classic",
     difficulty = 1,
     color = "YELLOW",
-    zones = {"Stratholme"},
-    challengeMaxLevel = 60,
+    zones = {
+        -- Live side subzones
+        "King's Square",
+        "Scarlet Bastion",
+        "The Crimson Throne",
+        "Festival Lane",  -- Can be accessed from live side
+    },
+    linkedChallengeInstance = "strat_n",  -- Links to full dungeon for challenge tracking
     groups = {
         {
             name = "King's Square",
@@ -643,14 +832,20 @@ KOL.Tracker:RegisterInstance("strat_live_n", {
     }
 })
 
+-- Stratholme: Undead Side (for boss tracking only - no dungeon challenge)
 KOL.Tracker:RegisterInstance("strat_dead_n", {
     name = "Stratholme: Undead Side",
     type = "dungeon",
     expansion = "classic",
     difficulty = 1,
     color = "LIME",
-    zones = {"Stratholme"},
-    challengeMaxLevel = 60,
+    zones = {
+        -- Undead side subzones
+        "Elders' Square",
+        "The Gauntlet",
+        "Slaughter Square",
+    },
+    linkedChallengeInstance = "strat_n",  -- Links to full dungeon for challenge tracking
     groups = {
         {
             name = "Festival Lane",

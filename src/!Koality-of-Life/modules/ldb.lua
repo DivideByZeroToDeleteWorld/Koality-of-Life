@@ -10,6 +10,14 @@ if not LDB or not LDBIcon then
     return
 end
 
+-- ============================================================================
+-- CRITICAL: Override GetMinimapShape to return "SQUARE" for ALL addons
+-- This prevents LibDBIcon from using circular positioning on zone changes
+-- ============================================================================
+function GetMinimapShape()
+    return "SQUARE"
+end
+
 -- Local references
 local KOL = KoalityOfLife
 
@@ -39,6 +47,55 @@ local COLORS = {
     ARROW = {r = 0.6, g = 0.6, b = 0.6},     -- Arrow color
     VERSION = {r = 0.5, g = 0.5, b = 0.5},   -- Version text
 }
+
+-- ============================================================================
+-- Rainbow Color System
+-- ============================================================================
+
+local rainbowHue = 0  -- Current hue (0-1)
+local rainbowTimer = nil
+
+-- Convert HSV to RGB (h, s, v are 0-1)
+local function HSVtoRGB(h, s, v)
+    if s == 0 then return v, v, v end
+    h = h * 6
+    local i = math.floor(h)
+    local f = h - i
+    local p = v * (1 - s)
+    local q = v * (1 - s * f)
+    local t = v * (1 - s * (1 - f))
+    if i == 0 then return v, t, p
+    elseif i == 1 then return q, v, p
+    elseif i == 2 then return p, v, t
+    elseif i == 3 then return p, q, v
+    elseif i == 4 then return t, p, v
+    else return v, p, q end
+end
+
+-- Get current rainbow color as hex string
+local function GetRainbowHex()
+    local r, g, b = HSVtoRGB(rainbowHue, 1, 1)
+    return string.format("%02X%02X%02X", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255))
+end
+
+-- Start/stop rainbow timer based on settings
+function LDBModule:StartRainbowTimer()
+    local profile = KOL.db and KOL.db.profile
+    local needsTimer = profile and not profile.disableAllRainbow and (profile.ldbXPBarRainbow or profile.ldbREPBarRainbow)
+
+    if needsTimer and not rainbowTimer then
+        rainbowTimer = C_Timer.NewTicker(0.05, function()
+            rainbowHue = rainbowHue + 0.0125  -- Smooth color cycling (~4 second full cycle at 20 FPS)
+            if rainbowHue >= 1 then rainbowHue = 0 end
+            if LDBModule.UpdateLDBText then
+                LDBModule:UpdateLDBText()
+            end
+        end)
+    elseif not needsTimer and rainbowTimer then
+        rainbowTimer:Cancel()
+        rainbowTimer = nil
+    end
+end
 
 -- Icons - use directly available constants or literal characters
 local function GetIcon(name)
@@ -84,6 +141,30 @@ end
 
 local clickActionTooltip = nil
 
+-- Standing names for reputation display
+local STANDING_NAMES = {
+    [1] = "Hated",
+    [2] = "Hostile",
+    [3] = "Unfriendly",
+    [4] = "Neutral",
+    [5] = "Friendly",
+    [6] = "Honored",
+    [7] = "Revered",
+    [8] = "Exalted",
+}
+
+-- Standing colors (matching WoW's reputation colors)
+local STANDING_COLORS = {
+    [1] = {0.80, 0.13, 0.13},  -- Hated - Dark Red
+    [2] = {1.00, 0.25, 0.25},  -- Hostile - Red
+    [3] = {0.93, 0.60, 0.20},  -- Unfriendly - Orange
+    [4] = {1.00, 1.00, 0.00},  -- Neutral - Yellow
+    [5] = {0.00, 1.00, 0.00},  -- Friendly - Green
+    [6] = {0.00, 0.80, 0.80},  -- Honored - Teal
+    [7] = {0.00, 0.50, 1.00},  -- Revered - Blue
+    [8] = {0.58, 0.00, 0.83},  -- Exalted - Purple
+}
+
 local function ShowClickActionTooltip(anchor)
     if not clickActionTooltip then
         clickActionTooltip = CreateFrame("Frame", "KOLClickActionTooltip", UIParent)
@@ -95,17 +176,19 @@ local function ShowClickActionTooltip(anchor)
             edgeSize = 1,
             insets = { left = 0, right = 0, top = 0, bottom = 0 }
         })
-        clickActionTooltip:SetBackdropColor(0.05, 0.05, 0.08, 0.95)
-        clickActionTooltip:SetBackdropBorderColor(0.3, 0.3, 0.35, 1)
+        clickActionTooltip:SetBackdropColor(0.06, 0.06, 0.09, 0.97)
+        clickActionTooltip:SetBackdropBorderColor(0.25, 0.25, 0.3, 1)
     end
 
     local fontPath, fontOutline = GetFont()
-    local lineHeight = 14
-    local padding = 8
-    local labelWidth = 90
-    local actionWidth = 120
+    local lineHeight = 15
+    local padding = 10
+    local gapWidth = 16
+    local separatorHeight = 12
+    local headerHeight = 20
+    local sectionSpacing = 4
 
-    -- Clear old text
+    -- Clear old elements
     if clickActionTooltip.lines then
         for _, line in ipairs(clickActionTooltip.lines) do
             line:Hide()
@@ -115,67 +198,604 @@ local function ShowClickActionTooltip(anchor)
         clickActionTooltip.lines = {}
     end
 
-    -- Define click actions with colors
-    local actions = {
-        {key = "LEFT CLICK",        action = "Open Menu",        keyColor = {0.4, 0.9, 0.4}, actionColor = {0.8, 0.8, 0.8}},
-        {key = "RIGHT CLICK",       action = "Deposit Resources", keyColor = {0.6, 0.8, 1.0}, actionColor = {0.8, 0.8, 0.8}},
-        {key = "SHIFT+LEFT CLICK",  action = "Reload UI",        keyColor = {1.0, 0.8, 0.3}, actionColor = {0.8, 0.8, 0.8}},
-        {key = "SHIFT+RIGHT CLICK", action = "Open Config",      keyColor = {0.4, 0.7, 1.0}, actionColor = {0.8, 0.8, 0.8}},
-        {key = "CTRL CLICK",        action = "Limit Damage",     keyColor = {1.0, 0.5, 0.5}, actionColor = {0.8, 0.8, 0.8}},
-        {key = "ALT CLICK",         action = "Swap Racial",      keyColor = {0.9, 0.5, 1.0}, actionColor = {0.8, 0.8, 0.8}},
+    if clickActionTooltip.separators then
+        for _, sep in ipairs(clickActionTooltip.separators) do
+            sep:Hide()
+        end
+    else
+        clickActionTooltip.separators = {}
+    end
+
+    if clickActionTooltip.headerBgs then
+        for _, bg in ipairs(clickActionTooltip.headerBgs) do
+            bg:Hide()
+        end
+    else
+        clickActionTooltip.headerBgs = {}
+    end
+
+    if clickActionTooltip.headerAccents then
+        for _, accent in ipairs(clickActionTooltip.headerAccents) do
+            accent:Hide()
+        end
+    else
+        clickActionTooltip.headerAccents = {}
+    end
+
+    -- Track font strings, separators, and header elements
+    local lineIndex = 0
+    local separatorIndex = 0
+    local headerBgIndex = 0
+    local headerAccentIndex = 0
+
+    -- Helper to get or create a font string
+    local function GetLine()
+        lineIndex = lineIndex + 1
+        local line = clickActionTooltip.lines[lineIndex]
+        if not line then
+            line = clickActionTooltip:CreateFontString(nil, "OVERLAY")
+            clickActionTooltip.lines[lineIndex] = line
+        end
+        line:ClearAllPoints()
+        line:Show()
+        return line
+    end
+
+    -- Helper to get or create a separator texture
+    local function GetSeparator()
+        separatorIndex = separatorIndex + 1
+        local sep = clickActionTooltip.separators[separatorIndex]
+        if not sep then
+            sep = clickActionTooltip:CreateTexture(nil, "ARTWORK")
+            clickActionTooltip.separators[separatorIndex] = sep
+        end
+        sep:ClearAllPoints()
+        sep:Show()
+        return sep
+    end
+
+    -- Helper to get or create a header background texture
+    local function GetHeaderBg()
+        headerBgIndex = headerBgIndex + 1
+        local bg = clickActionTooltip.headerBgs[headerBgIndex]
+        if not bg then
+            bg = clickActionTooltip:CreateTexture(nil, "BORDER")
+            clickActionTooltip.headerBgs[headerBgIndex] = bg
+        end
+        bg:ClearAllPoints()
+        bg:Show()
+        return bg
+    end
+
+    -- Helper to get or create a header accent texture
+    local function GetHeaderAccent()
+        headerAccentIndex = headerAccentIndex + 1
+        local accent = clickActionTooltip.headerAccents[headerAccentIndex]
+        if not accent then
+            accent = clickActionTooltip:CreateTexture(nil, "ARTWORK")
+            clickActionTooltip.headerAccents[headerAccentIndex] = accent
+        end
+        accent:ClearAllPoints()
+        accent:Show()
+        return accent
+    end
+
+    -- Track measurements
+    local maxLeftWidth = 0
+    local maxRightWidth = 0
+    local yOffset = -padding
+    local rows = {}
+    local hasContent = false  -- Track if we have XP or REP content
+
+    -- Shortcut column widths (tracked separately)
+    local shortcutModifierWidth = 0
+    local shortcutPlusWidth = 0
+    local shortcutMouseWidth = 0
+    local shortcutActionWidth = 0
+
+    -- ═══════════════════════════════════════════════════════════════════════
+    -- EXPERIENCE SECTION (shown first if enabled)
+    -- ═══════════════════════════════════════════════════════════════════════
+    local showXP = KOL.db.profile.ldbShowXP
+    if showXP then
+        hasContent = true
+
+        -- Add XP header with styled background
+        local xpHeader = GetLine()
+        xpHeader:SetFont(fontPath, 11, fontOutline)
+        xpHeader:SetText("EXPERIENCE")
+        xpHeader:SetTextColor(0.4, 0.75, 1.0, 1)
+        table.insert(rows, {type = "sectionHeader", line = xpHeader, y = yOffset, color = {0.2, 0.5, 0.8}})
+        yOffset = yOffset - headerHeight
+
+        -- Get XP data
+        local level = UnitLevel("player")
+        local maxLevel = GetMaxPlayerLevel and GetMaxPlayerLevel() or 80
+        local currentXP = UnitXP("player")
+        local maxXP = UnitXPMax("player")
+        local restedXP = GetXPExhaustion() or 0
+        local xpPercent = maxXP > 0 and (currentXP / maxXP * 100) or 0
+
+        -- Level row
+        local levelLabel = GetLine()
+        levelLabel:SetFont(fontPath, 10, fontOutline)
+        levelLabel:SetText("Level")
+        levelLabel:SetTextColor(0.6, 0.6, 0.6, 1)
+
+        local levelValue = GetLine()
+        levelValue:SetFont(fontPath, 10, fontOutline)
+        if level >= maxLevel then
+            levelValue:SetText(tostring(level) .. "  ★ MAX")
+            levelValue:SetTextColor(1.0, 0.84, 0.0, 1)
+        else
+            levelValue:SetText(tostring(level) .. " → " .. (level + 1))
+            levelValue:SetTextColor(1.0, 1.0, 1.0, 1)
+        end
+
+        local lw = levelLabel:GetStringWidth()
+        local vw = levelValue:GetStringWidth()
+        if lw > maxLeftWidth then maxLeftWidth = lw end
+        if vw > maxRightWidth then maxRightWidth = vw end
+        table.insert(rows, {type = "pair", left = levelLabel, right = levelValue, y = yOffset})
+        yOffset = yOffset - lineHeight
+
+        -- XP Progress row (only if not max level)
+        if level < maxLevel then
+            local xpLabel = GetLine()
+            xpLabel:SetFont(fontPath, 10, fontOutline)
+            xpLabel:SetText("Progress")
+            xpLabel:SetTextColor(0.6, 0.6, 0.6, 1)
+
+            local xpValue = GetLine()
+            xpValue:SetFont(fontPath, 10, fontOutline)
+            xpValue:SetText(string.format("%s / %s  (%.1f%%)",
+                AbbreviateNumber and AbbreviateNumber(currentXP) or currentXP,
+                AbbreviateNumber and AbbreviateNumber(maxXP) or maxXP,
+                xpPercent))
+            xpValue:SetTextColor(0.5, 0.85, 1.0, 1)
+
+            lw = xpLabel:GetStringWidth()
+            vw = xpValue:GetStringWidth()
+            if lw > maxLeftWidth then maxLeftWidth = lw end
+            if vw > maxRightWidth then maxRightWidth = vw end
+            table.insert(rows, {type = "pair", left = xpLabel, right = xpValue, y = yOffset})
+            yOffset = yOffset - lineHeight
+
+            -- Remaining XP row
+            local remainLabel = GetLine()
+            remainLabel:SetFont(fontPath, 10, fontOutline)
+            remainLabel:SetText("To Level")
+            remainLabel:SetTextColor(0.6, 0.6, 0.6, 1)
+
+            local remainValue = GetLine()
+            remainValue:SetFont(fontPath, 10, fontOutline)
+            local remaining = maxXP - currentXP
+            remainValue:SetText(AbbreviateNumber and AbbreviateNumber(remaining) or tostring(remaining))
+            remainValue:SetTextColor(0.85, 0.85, 0.85, 1)
+
+            lw = remainLabel:GetStringWidth()
+            vw = remainValue:GetStringWidth()
+            if lw > maxLeftWidth then maxLeftWidth = lw end
+            if vw > maxRightWidth then maxRightWidth = vw end
+            table.insert(rows, {type = "pair", left = remainLabel, right = remainValue, y = yOffset})
+            yOffset = yOffset - lineHeight
+
+            -- Rested XP row (if any)
+            if restedXP > 0 then
+                local restedLabel = GetLine()
+                restedLabel:SetFont(fontPath, 10, fontOutline)
+                restedLabel:SetText("Rested")
+                restedLabel:SetTextColor(0.6, 0.6, 0.6, 1)
+
+                local restedValue = GetLine()
+                restedValue:SetFont(fontPath, 10, fontOutline)
+                local restedPercent = maxXP > 0 and (restedXP / maxXP * 100) or 0
+                restedValue:SetText(string.format("+%s  (%.0f%%)",
+                    AbbreviateNumber and AbbreviateNumber(restedXP) or restedXP,
+                    restedPercent))
+                restedValue:SetTextColor(0.3, 0.5, 1.0, 1)
+
+                lw = restedLabel:GetStringWidth()
+                vw = restedValue:GetStringWidth()
+                if lw > maxLeftWidth then maxLeftWidth = lw end
+                if vw > maxRightWidth then maxRightWidth = vw end
+                table.insert(rows, {type = "pair", left = restedLabel, right = restedValue, y = yOffset})
+                yOffset = yOffset - lineHeight
+            end
+        end
+    end
+
+    -- ═══════════════════════════════════════════════════════════════════════
+    -- REPUTATION SECTION (shown second if enabled)
+    -- ═══════════════════════════════════════════════════════════════════════
+    local showREP = KOL.db.profile.ldbShowREP
+    if showREP then
+        local name, _, standingID, barMin, barMax, barValue = GetWatchedFactionInfo()
+
+        -- Add separator if we had XP content before
+        if hasContent then
+            table.insert(rows, {type = "separator", y = yOffset - sectionSpacing})
+            yOffset = yOffset - separatorHeight
+        end
+        hasContent = true
+
+        -- Add REP header with styled background
+        local repHeader = GetLine()
+        repHeader:SetFont(fontPath, 11, fontOutline)
+        repHeader:SetText("REPUTATION")
+        repHeader:SetTextColor(0.95, 0.75, 0.35, 1)
+        table.insert(rows, {type = "sectionHeader", line = repHeader, y = yOffset, color = {0.7, 0.5, 0.2}})
+        yOffset = yOffset - headerHeight
+
+        if name and standingID then
+            -- Reputation thresholds (absolute values from Hated to Exalted)
+            local REP_THRESHOLDS = {
+                [1] = {min = -42000, max = -6000},   -- Hated
+                [2] = {min = -6000,  max = -3000},   -- Hostile
+                [3] = {min = -3000,  max = 0},       -- Unfriendly
+                [4] = {min = 0,      max = 3000},    -- Neutral
+                [5] = {min = 3000,   max = 9000},    -- Friendly
+                [6] = {min = 9000,   max = 21000},   -- Honored
+                [7] = {min = 21000,  max = 42000},   -- Revered
+                [8] = {min = 42000,  max = 43000},   -- Exalted (max is 42999)
+            }
+
+            local standingColor = STANDING_COLORS[standingID] or {1, 1, 1}
+            local standingName = STANDING_NAMES[standingID] or "Unknown"
+
+            -- Calculate current rep within standing bracket
+            local thresholds = REP_THRESHOLDS[standingID]
+            local currentInBracket = 0
+            local maxInBracket = 1
+            if thresholds then
+                currentInBracket = (barValue or 0) - thresholds.min
+                maxInBracket = thresholds.max - thresholds.min
+            end
+            local bracketPercent = maxInBracket > 0 and (currentInBracket / maxInBracket * 100) or 0
+
+            -- Faction name row
+            local factionLabel = GetLine()
+            factionLabel:SetFont(fontPath, 10, fontOutline)
+            factionLabel:SetText("Faction")
+            factionLabel:SetTextColor(0.6, 0.6, 0.6, 1)
+
+            local factionValue = GetLine()
+            factionValue:SetFont(fontPath, 10, fontOutline)
+            factionValue:SetText(name)
+            factionValue:SetTextColor(1.0, 1.0, 1.0, 1)
+
+            local lw = factionLabel:GetStringWidth()
+            local vw = factionValue:GetStringWidth()
+            if lw > maxLeftWidth then maxLeftWidth = lw end
+            if vw > maxRightWidth then maxRightWidth = vw end
+            table.insert(rows, {type = "pair", left = factionLabel, right = factionValue, y = yOffset})
+            yOffset = yOffset - lineHeight
+
+            -- Standing row
+            local standingLabel = GetLine()
+            standingLabel:SetFont(fontPath, 10, fontOutline)
+            standingLabel:SetText("Standing")
+            standingLabel:SetTextColor(0.6, 0.6, 0.6, 1)
+
+            local standingValue = GetLine()
+            standingValue:SetFont(fontPath, 10, fontOutline)
+            standingValue:SetText(standingName)
+            standingValue:SetTextColor(standingColor[1], standingColor[2], standingColor[3], 1)
+
+            lw = standingLabel:GetStringWidth()
+            vw = standingValue:GetStringWidth()
+            if lw > maxLeftWidth then maxLeftWidth = lw end
+            if vw > maxRightWidth then maxRightWidth = vw end
+            table.insert(rows, {type = "pair", left = standingLabel, right = standingValue, y = yOffset})
+            yOffset = yOffset - lineHeight
+
+            -- Progress row (current standing bracket)
+            local progressLabel = GetLine()
+            progressLabel:SetFont(fontPath, 10, fontOutline)
+            progressLabel:SetText("Progress")
+            progressLabel:SetTextColor(0.6, 0.6, 0.6, 1)
+
+            local progressValue = GetLine()
+            progressValue:SetFont(fontPath, 10, fontOutline)
+            progressValue:SetText(string.format("%s / %s  (%.1f%%)",
+                AbbreviateNumber and AbbreviateNumber(currentInBracket) or currentInBracket,
+                AbbreviateNumber and AbbreviateNumber(maxInBracket) or maxInBracket,
+                bracketPercent))
+            progressValue:SetTextColor(standingColor[1], standingColor[2], standingColor[3], 1)
+
+            lw = progressLabel:GetStringWidth()
+            vw = progressValue:GetStringWidth()
+            if lw > maxLeftWidth then maxLeftWidth = lw end
+            if vw > maxRightWidth then maxRightWidth = vw end
+            table.insert(rows, {type = "pair", left = progressLabel, right = progressValue, y = yOffset})
+            yOffset = yOffset - lineHeight
+
+            -- Progress to Exalted row (if not already Exalted)
+            if standingID < 8 then
+                local exaltedThreshold = REP_THRESHOLDS[8].min  -- 42000
+                local repToExalted = exaltedThreshold - (barValue or 0)
+                local totalFromNeutral = exaltedThreshold - REP_THRESHOLDS[4].min  -- Total from Neutral to Exalted
+                local currentFromNeutral = (barValue or 0) - REP_THRESHOLDS[4].min
+                local exaltedPercent = totalFromNeutral > 0 and (currentFromNeutral / totalFromNeutral * 100) or 0
+                if exaltedPercent < 0 then exaltedPercent = 0 end
+                if exaltedPercent > 100 then exaltedPercent = 100 end
+
+                local toExaltedLabel = GetLine()
+                toExaltedLabel:SetFont(fontPath, 10, fontOutline)
+                toExaltedLabel:SetText("To Exalted")
+                toExaltedLabel:SetTextColor(0.6, 0.6, 0.6, 1)
+
+                local toExaltedValue = GetLine()
+                toExaltedValue:SetFont(fontPath, 10, fontOutline)
+                toExaltedValue:SetText(string.format("%s  (%.1f%%)",
+                    AbbreviateNumber and AbbreviateNumber(repToExalted) or repToExalted,
+                    exaltedPercent))
+                -- Color based on overall progress (blend from current standing color toward exalted purple)
+                local exaltedColor = STANDING_COLORS[8] or {0.58, 0, 0.83}
+                local blendR = standingColor[1] * (1 - exaltedPercent/100) + exaltedColor[1] * (exaltedPercent/100)
+                local blendG = standingColor[2] * (1 - exaltedPercent/100) + exaltedColor[2] * (exaltedPercent/100)
+                local blendB = standingColor[3] * (1 - exaltedPercent/100) + exaltedColor[3] * (exaltedPercent/100)
+                toExaltedValue:SetTextColor(blendR, blendG, blendB, 1)
+
+                lw = toExaltedLabel:GetStringWidth()
+                vw = toExaltedValue:GetStringWidth()
+                if lw > maxLeftWidth then maxLeftWidth = lw end
+                if vw > maxRightWidth then maxRightWidth = vw end
+                table.insert(rows, {type = "pair", left = toExaltedLabel, right = toExaltedValue, y = yOffset})
+                yOffset = yOffset - lineHeight
+            end
+        else
+            -- No faction watched
+            local noFactionLine = GetLine()
+            noFactionLine:SetFont(fontPath, 10, fontOutline)
+            noFactionLine:SetText("No faction tracked")
+            noFactionLine:SetTextColor(0.45, 0.45, 0.45, 1)
+
+            local nw = noFactionLine:GetStringWidth()
+            if nw > maxLeftWidth + gapWidth + maxRightWidth then
+                maxRightWidth = nw - maxLeftWidth - gapWidth
+                if maxRightWidth < 0 then
+                    maxLeftWidth = nw
+                    maxRightWidth = 0
+                end
+            end
+            table.insert(rows, {type = "single", line = noFactionLine, y = yOffset})
+            yOffset = yOffset - lineHeight
+        end
+    end
+
+    -- ═══════════════════════════════════════════════════════════════════════
+    -- INFORMATION SECTION (feature explanations)
+    -- ═══════════════════════════════════════════════════════════════════════
+
+    -- Add separator if we had content before
+    if hasContent then
+        table.insert(rows, {type = "separator", y = yOffset - sectionSpacing})
+        yOffset = yOffset - separatorHeight
+    end
+    hasContent = true
+
+    -- Add information header with styled background
+    local infoHeader = GetLine()
+    infoHeader:SetFont(fontPath, 11, fontOutline)
+    infoHeader:SetText("INFORMATION")
+    infoHeader:SetTextColor(0.7, 0.7, 0.9, 1)
+    table.insert(rows, {type = "sectionHeader", line = infoHeader, y = yOffset, color = {0.4, 0.4, 0.6}})
+    yOffset = yOffset - headerHeight
+
+    -- Define information entries
+    local infoEntries = {
+        {
+            label = "SPEED",
+            desc = "Current movement speed %",
+            labelColor = {0.6, 0.85, 1.0},
+            descColor = {0.55, 0.55, 0.55},
+        },
+        {
+            label = "LIMIT",
+            desc = "Caps damage for level sync",
+            labelColor = {1.0, 0.55, 0.55},
+            descColor = {0.55, 0.55, 0.55},
+        },
+        {
+            label = "ADR",
+            desc = "Auto-resets dungeon on exit",
+            labelColor = {1.0, 0.7, 0.4},
+            descColor = {0.55, 0.55, 0.55},
+        },
+        {
+            label = "RACIAL",
+            desc = "Swaps primary/secondary racial",
+            labelColor = {0.9, 0.55, 1.0},
+            descColor = {0.55, 0.55, 0.55},
+        },
+        {
+            label = "XP BAR",
+            desc = "Level progress visualization",
+            labelColor = {0.4, 0.75, 1.0},
+            descColor = {0.55, 0.55, 0.55},
+        },
+        {
+            label = "REP BAR",
+            desc = "Faction standing progress",
+            labelColor = {0.95, 0.75, 0.35},
+            descColor = {0.55, 0.55, 0.55},
+        },
     }
 
-    local yOffset = -padding
-    local maxKeyWidth = 0
-    local maxActionWidth = 0
+    -- Add information rows
+    for _, info in ipairs(infoEntries) do
+        local labelLine = GetLine()
+        labelLine:SetFont(fontPath, 10, fontOutline)
+        labelLine:SetText(info.label)
+        labelLine:SetTextColor(info.labelColor[1], info.labelColor[2], info.labelColor[3], 1)
 
-    -- Create/update lines
-    for i, actionData in ipairs(actions) do
-        -- Key label (left side)
-        local keyLine = clickActionTooltip.lines[i * 2 - 1]
-        if not keyLine then
-            keyLine = clickActionTooltip:CreateFontString(nil, "OVERLAY")
-            clickActionTooltip.lines[i * 2 - 1] = keyLine
-        end
-        keyLine:SetFont(fontPath, 10, fontOutline)
-        keyLine:SetText(actionData.key)
-        keyLine:SetTextColor(actionData.keyColor[1], actionData.keyColor[2], actionData.keyColor[3], 1)
-        keyLine:SetPoint("TOPLEFT", clickActionTooltip, "TOPLEFT", padding, yOffset)
-        keyLine:Show()
+        local descLine = GetLine()
+        descLine:SetFont(fontPath, 10, fontOutline)
+        descLine:SetText(info.desc)
+        descLine:SetTextColor(info.descColor[1], info.descColor[2], info.descColor[3], 1)
 
-        local keyWidth = keyLine:GetStringWidth()
-        if keyWidth > maxKeyWidth then maxKeyWidth = keyWidth end
+        local labelWidth = labelLine:GetStringWidth()
+        local descWidth = descLine:GetStringWidth()
+        if labelWidth > maxLeftWidth then maxLeftWidth = labelWidth end
+        if descWidth > maxRightWidth then maxRightWidth = descWidth end
 
-        -- Action label (right side)
-        local actionLine = clickActionTooltip.lines[i * 2]
-        if not actionLine then
-            actionLine = clickActionTooltip:CreateFontString(nil, "OVERLAY")
-            clickActionTooltip.lines[i * 2] = actionLine
-        end
-        actionLine:SetFont(fontPath, 10, fontOutline)
-        actionLine:SetText(actionData.action)
-        actionLine:SetTextColor(actionData.actionColor[1], actionData.actionColor[2], actionData.actionColor[3], 1)
-        actionLine:ClearAllPoints()
-        actionLine:Show()
-
-        local actionWidth = actionLine:GetStringWidth()
-        if actionWidth > maxActionWidth then maxActionWidth = actionWidth end
-
+        table.insert(rows, {type = "pair", left = labelLine, right = descLine, y = yOffset})
         yOffset = yOffset - lineHeight
     end
 
-    -- Position action labels after measuring
-    local gapWidth = 12
-    yOffset = -padding
-    for i, _ in ipairs(actions) do
-        local actionLine = clickActionTooltip.lines[i * 2]
-        actionLine:SetPoint("TOPLEFT", clickActionTooltip, "TOPLEFT", padding + maxKeyWidth + gapWidth, yOffset)
+    -- ═══════════════════════════════════════════════════════════════════════
+    -- SHORTCUTS SECTION (click actions) - now with 4-column layout
+    -- ═══════════════════════════════════════════════════════════════════════
+
+    table.insert(rows, {type = "separator", y = yOffset - sectionSpacing})
+    yOffset = yOffset - separatorHeight
+
+    -- Add shortcuts header with styled background
+    local shortcutsHeader = GetLine()
+    shortcutsHeader:SetFont(fontPath, 11, fontOutline)
+    shortcutsHeader:SetText("SHORTCUTS")
+    shortcutsHeader:SetTextColor(0.5, 0.8, 0.5, 1)
+    table.insert(rows, {type = "sectionHeader", line = shortcutsHeader, y = yOffset, color = {0.3, 0.6, 0.3}})
+    yOffset = yOffset - headerHeight
+
+    -- Define click actions with separate modifier/mouse columns
+    local actions = {
+        {modifier = "",      mouse = "LEFTMOUSE",  action = "Open Menu",         modColor = {0.5, 0.95, 0.5},  mouseColor = {0.5, 0.95, 0.5}},
+        {modifier = "",      mouse = "RIGHTMOUSE", action = "Deposit Resources", modColor = {0.6, 0.85, 1.0},  mouseColor = {0.6, 0.85, 1.0}},
+        {modifier = "SHIFT", mouse = "LEFTMOUSE",  action = "Reload UI",         modColor = {1.0, 0.85, 0.4},  mouseColor = {1.0, 0.85, 0.4}},
+        {modifier = "SHIFT", mouse = "RIGHTMOUSE", action = "Open Config",       modColor = {0.5, 0.75, 1.0},  mouseColor = {0.5, 0.75, 1.0}},
+        {modifier = "CTRL",  mouse = "LEFTMOUSE",  action = "Limit Damage",      modColor = {1.0, 0.55, 0.55}, mouseColor = {1.0, 0.55, 0.55}},
+        {modifier = "CTRL",  mouse = "RIGHTMOUSE", action = "Auto Dungeon Reset", modColor = {1.0, 0.7, 0.4},   mouseColor = {1.0, 0.7, 0.4}},
+        {modifier = "ALT",   mouse = "LEFTMOUSE",  action = "Swap Racial",       modColor = {0.9, 0.55, 1.0},  mouseColor = {0.9, 0.55, 1.0}},
+    }
+
+    -- First pass: measure column widths
+    local shortcutRows = {}
+    for _, actionData in ipairs(actions) do
+        local modLine = GetLine()
+        modLine:SetFont(fontPath, 10, fontOutline)
+        modLine:SetText(actionData.modifier)
+        modLine:SetTextColor(actionData.modColor[1], actionData.modColor[2], actionData.modColor[3], 1)
+
+        local plusLine = GetLine()
+        plusLine:SetFont(fontPath, 10, fontOutline)
+        if actionData.modifier ~= "" then
+            plusLine:SetText("+")
+            plusLine:SetTextColor(0.5, 0.5, 0.5, 1)
+        else
+            plusLine:SetText("")
+        end
+
+        local mouseLine = GetLine()
+        mouseLine:SetFont(fontPath, 10, fontOutline)
+        mouseLine:SetText(actionData.mouse)
+        mouseLine:SetTextColor(actionData.mouseColor[1], actionData.mouseColor[2], actionData.mouseColor[3], 1)
+
+        local actionLine = GetLine()
+        actionLine:SetFont(fontPath, 10, fontOutline)
+        actionLine:SetText(actionData.action)
+        actionLine:SetTextColor(0.75, 0.75, 0.75, 1)
+
+        -- Track column widths
+        local modWidth = modLine:GetStringWidth()
+        local plusWidth = plusLine:GetStringWidth()
+        local mouseWidth = mouseLine:GetStringWidth()
+        local actWidth = actionLine:GetStringWidth()
+
+        if modWidth > shortcutModifierWidth then shortcutModifierWidth = modWidth end
+        if plusWidth > shortcutPlusWidth then shortcutPlusWidth = plusWidth end
+        if mouseWidth > shortcutMouseWidth then shortcutMouseWidth = mouseWidth end
+        if actWidth > shortcutActionWidth then shortcutActionWidth = actWidth end
+
+        table.insert(shortcutRows, {
+            mod = modLine, plus = plusLine, mouse = mouseLine, action = actionLine,
+            y = yOffset, hasModifier = (actionData.modifier ~= "")
+        })
         yOffset = yOffset - lineHeight
+    end
+
+    -- Store shortcut rows for positioning later
+    for _, row in ipairs(shortcutRows) do
+        table.insert(rows, {type = "shortcut", data = row})
+    end
+
+    -- ═══════════════════════════════════════════════════════════════════════
+    -- POSITION ALL ELEMENTS
+    -- ═══════════════════════════════════════════════════════════════════════
+
+    -- Calculate total width considering shortcut columns
+    local shortcutTotalWidth = shortcutModifierWidth + 4 + shortcutPlusWidth + 4 + shortcutMouseWidth + gapWidth + shortcutActionWidth
+    local pairTotalWidth = maxLeftWidth + gapWidth + maxRightWidth
+
+    local contentWidth = math.max(shortcutTotalWidth, pairTotalWidth)
+    local totalWidth = padding + contentWidth + padding
+    if totalWidth < 220 then totalWidth = 220 end  -- Minimum width
+
+    for _, row in ipairs(rows) do
+        if row.type == "pair" then
+            row.left:SetPoint("TOPLEFT", clickActionTooltip, "TOPLEFT", padding, row.y)
+            row.right:SetPoint("TOPLEFT", clickActionTooltip, "TOPLEFT", padding + maxLeftWidth + gapWidth, row.y)
+        elseif row.type == "shortcut" then
+            local data = row.data
+            local xPos = padding
+
+            -- Position modifier (or skip space if empty)
+            if data.hasModifier then
+                data.mod:SetPoint("TOPLEFT", clickActionTooltip, "TOPLEFT", xPos, data.y)
+            end
+            xPos = xPos + shortcutModifierWidth + 4
+
+            -- Position plus sign
+            if data.hasModifier then
+                data.plus:SetPoint("TOPLEFT", clickActionTooltip, "TOPLEFT", xPos, data.y)
+            end
+            xPos = xPos + shortcutPlusWidth + 4
+
+            -- Position mouse button
+            data.mouse:SetPoint("TOPLEFT", clickActionTooltip, "TOPLEFT", xPos, data.y)
+            xPos = xPos + shortcutMouseWidth + gapWidth
+
+            -- Position action
+            data.action:SetPoint("TOPLEFT", clickActionTooltip, "TOPLEFT", xPos, data.y)
+        elseif row.type == "sectionHeader" then
+            -- Create styled section header with background that fades at right edge
+            local bg = GetHeaderBg()
+            bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+            bg:SetPoint("TOPLEFT", clickActionTooltip, "TOPLEFT", padding, row.y + 2)
+            bg:SetPoint("TOPRIGHT", clickActionTooltip, "TOPRIGHT", -padding, row.y + 2)
+            bg:SetHeight(headerHeight - 2)
+            -- Gradient on background: solid dark on left, fading to transparent on right
+            bg:SetGradientAlpha("HORIZONTAL",
+                row.color[1] * 0.2, row.color[2] * 0.2, row.color[3] * 0.2, 0.9,  -- Left side (solid dark)
+                row.color[1] * 0.2, row.color[2] * 0.2, row.color[3] * 0.2, 0)    -- Right side (transparent)
+
+            -- Solid accent bar on the left (3px wide, full color)
+            local accent = GetHeaderAccent()
+            accent:SetTexture("Interface\\Buttons\\WHITE8X8")
+            accent:SetVertexColor(row.color[1], row.color[2], row.color[3], 1)
+            accent:SetPoint("TOPLEFT", clickActionTooltip, "TOPLEFT", padding, row.y + 2)
+            accent:SetSize(3, headerHeight - 2)
+
+            -- Vertically center the text in the header
+            local textYOffset = row.y - (headerHeight / 2) + 8  -- Adjust for vertical centering
+            row.line:SetPoint("TOPLEFT", clickActionTooltip, "TOPLEFT", padding + 8, textYOffset)
+        elseif row.type == "header" then
+            row.line:SetPoint("TOPLEFT", clickActionTooltip, "TOPLEFT", padding, row.y)
+        elseif row.type == "single" then
+            row.line:SetPoint("TOPLEFT", clickActionTooltip, "TOPLEFT", padding + 8, row.y)
+        elseif row.type == "separator" then
+            local sep = GetSeparator()
+            sep:SetHeight(1)
+            sep:SetTexture("Interface\\Buttons\\WHITE8X8")
+            sep:SetVertexColor(0.35, 0.35, 0.4, 0.4)
+            sep:SetPoint("TOPLEFT", clickActionTooltip, "TOPLEFT", padding, row.y)
+            sep:SetPoint("TOPRIGHT", clickActionTooltip, "TOPRIGHT", -padding, row.y)
+        end
     end
 
     -- Size the tooltip
-    local totalWidth = padding + maxKeyWidth + gapWidth + maxActionWidth + padding
-    local totalHeight = (#actions * lineHeight) + padding
+    local totalHeight = math.abs(yOffset) + padding
     clickActionTooltip:SetSize(totalWidth, totalHeight)
 
     -- Position based on anchor location
@@ -928,10 +1548,16 @@ local function GetMenuStructure()
         { text = "Command Blocks", onClick = function() KOL:OpenConfig() LibStub("AceConfigDialog-3.0"):SelectGroup("KoalityOfLife", "commandblocks") end },
     }
 
+    -- Data Output items (/kdo commands)
+    local dataOutputItems = {
+        { text = "/kdo DungeonChallenge", onClick = function() if KOL.Info then KOL.Info:ShowDungeonChallenge() end end },
+    }
+
     return {
         modules = moduleItems,
         tests = testItems,
         standalone = standaloneItems,
+        dataOutput = dataOutputItems,
         config = configItems,
     }
 end
@@ -997,6 +1623,23 @@ function LDBModule:ShowMainMenu(anchor)
     local currentHeaderHeight = CreateSectionHeader(tooltip, yOffset, "CURRENT", COLORS.LABEL)
     yOffset = yOffset - currentHeaderHeight
     totalHeight = totalHeight + currentHeaderHeight
+
+    -- Auto Dungeon Reset setting (clickable to toggle)
+    local dungeonResetValue = KOL.db and KOL.db.profile and KOL.db.profile.autoDungeonReset or false
+    local dungeonResetRowHeight = CreateSettingRow(tooltip, yOffset, "AUTO DUNGEON RESET", dungeonResetValue, function(self)
+        KOL:ToggleAutoDungeonReset()
+
+        local newValue = KOL.db.profile.autoDungeonReset
+        if newValue then
+            self.valueText:SetTextColor(0.3, 1, 0.3, 1)
+            self.valueText:SetText("YES")
+        else
+            self.valueText:SetTextColor(1, 0.3, 0.3, 1)
+            self.valueText:SetText("NO")
+        end
+    end)
+    yOffset = yOffset - dungeonResetRowHeight
+    totalHeight = totalHeight + dungeonResetRowHeight
 
     -- Limit Damage setting (clickable to toggle)
     local limitDamageValue = KOL.db and KOL.db.profile and KOL.db.profile.limitDamage or false
@@ -1166,6 +1809,17 @@ function LDBModule:ShowMainMenu(anchor)
     yOffset = yOffset - standaloneHeight
     totalHeight = totalHeight + standaloneHeight
 
+    -- Data Output folder
+    local dataOutputHeight = CreateMenuItem(tooltip, {
+        text = "Data Output",
+        isFolder = true,
+        title = "Data Output",
+        children = menuData.dataOutput,
+        color = COLORS.FOLDER,
+    }, yOffset, expandLeft)
+    yOffset = yOffset - dataOutputHeight
+    totalHeight = totalHeight + dataOutputHeight
+
     -- ========================================================================
     -- Options Header (styled section header with accent bar)
     -- ========================================================================
@@ -1331,13 +1985,19 @@ local function CreateDataObject()
         local showSpeed = profile.ldbShowSpeed ~= false
         local showLimit = profile.ldbShowLimit or false
         local showRacial = profile.ldbShowRacial or false
+        local showADR = profile.ldbShowADR or false
+        local showXP = profile.ldbShowXP or false
+        local showREP = profile.ldbShowREP or false
 
         -- Check if any display option is enabled
-        if showSpeed or showLimit or showRacial then
+        if showSpeed or showLimit or showRacial or showADR or showXP or showREP then
             -- Get positions for ordering
             local speedPos = profile.ldbSpeedPosition or 1
             local limitPos = profile.ldbLimitPosition or 2
             local racialPos = profile.ldbRacialPosition or 3
+            local adrPos = profile.ldbADRPosition or 4
+            local xpPos = profile.ldbXPPosition or 5
+            local repPos = profile.ldbREPPosition or 6
 
             -- Build items with positions for sorting
             local items = {}
@@ -1349,6 +2009,24 @@ local function CreateDataObject()
             end
             if showRacial then
                 table.insert(items, { pos = racialPos, text = profile.ldbShowRacialLabel and "RACIAL: ?" or "?" })
+            end
+            if showADR then
+                local disabledText = profile.ldbADRDisabledText or "NO"
+                table.insert(items, { pos = adrPos, text = profile.ldbShowADRLabel and ("ADR: " .. disabledText) or disabledText })
+            end
+            if showXP then
+                local xpPreview = profile.ldbShowXPLabel and "XP: [=====-----]" or "[=====-----]"
+                if profile.ldbShowXPPercent ~= false then
+                    xpPreview = xpPreview .. " 50%"
+                end
+                table.insert(items, { pos = xpPos, text = xpPreview })
+            end
+            if showREP then
+                local repPreview = profile.ldbShowREPLabel and "REP: [=====-----]" or "[=====-----]"
+                if profile.ldbShowREPPercent ~= false then
+                    repPreview = repPreview .. " 50%"
+                end
+                table.insert(items, { pos = repPos, text = repPreview })
             end
 
             -- Sort by position
@@ -1393,7 +2071,12 @@ local function CreateDataObject()
                 -- Shift+Left Click = Reload UI
                 ReloadUI()
                 return
+            elseif IsControlKeyDown() and button == "RightButton" then
+                -- Ctrl+Right Click = Toggle ADR
+                KOL:ToggleAutoDungeonReset()
+                return
             elseif IsControlKeyDown() then
+                -- Ctrl+Left Click = Toggle Limit Damage
                 KOL:ToggleLimitDamage()
                 return
             elseif IsAltKeyDown() then
@@ -1601,6 +2284,12 @@ function LDBModule:Initialize()
         end, "Force re-apply LDB font hook", "test")
     end
 
+    -- Apply global XP/REP bar visibility settings
+    self:ApplyGlobalBarVisibility()
+
+    -- Start rainbow timer if needed
+    self:StartRainbowTimer()
+
     KOL:DebugPrint("LDB module initialized with cascading menu", 2)
 end
 
@@ -1710,6 +2399,9 @@ local ldbTextCache = {
     lastSpeedValue = nil,      -- Last speed % value
     lastLimitValue = nil,      -- Last limit damage setting
     lastRacialValue = nil,     -- Last racial setting
+    lastADRValue = nil,        -- Last auto dungeon reset setting
+    lastXPValue = nil,         -- Last XP percentage
+    lastREPValue = nil,        -- Last REP percentage
     lastDisplayText = nil,     -- Last built display text
 }
 
@@ -1729,7 +2421,57 @@ local function GetCurrentLDBValues()
     -- Racial value
     local racialValue = KOL.GetCurrentRacial and KOL:GetCurrentRacial() or "Unknown"
 
-    return speedValue, limitValue, racialValue
+    -- ADR value
+    local adrValue = profile.autoDungeonReset or false
+
+    -- XP value (percentage)
+    local xpValue = nil
+    if profile.ldbShowXP then
+        local currentXP = UnitXP("player") or 0
+        local maxXP = UnitXPMax("player") or 1
+        xpValue = math.floor((currentXP / maxXP) * 100)
+    end
+
+    -- REP value (percentage of watched faction)
+    local repValue = nil
+    if profile.ldbShowREP then
+        local name, standing, minRep, maxRep, currentRep = GetWatchedFactionInfo()
+        if name and maxRep > minRep then
+            repValue = math.floor(((currentRep - minRep) / (maxRep - minRep)) * 100)
+        end
+    end
+
+    return speedValue, limitValue, racialValue, adrValue, xpValue, repValue
+end
+
+-- Convert {r, g, b} color table to hex color code (e.g. "00FF00")
+local function ColorToHex(colorTable, fallback)
+    if not colorTable then return fallback end
+    return string.format("%02X%02X%02X",
+        math.floor((colorTable.r or 0) * 255 + 0.5),
+        math.floor((colorTable.g or 0) * 255 + 0.5),
+        math.floor((colorTable.b or 0) * 255 + 0.5))
+end
+
+-- Build a progress bar string (10 characters)
+local function BuildProgressBar(percent, activeColorHex, baseColorHex, bracketColorHex, barChar)
+    local BAR_LENGTH = 10
+    local filledCount = math.floor((percent / 100) * BAR_LENGTH + 0.5)
+    if filledCount > BAR_LENGTH then filledCount = BAR_LENGTH end
+    if filledCount < 0 then filledCount = 0 end
+
+    local emptyCount = BAR_LENGTH - filledCount
+    local char = barChar or "═"
+
+    local bar = ""
+    if filledCount > 0 then
+        bar = bar .. "|cFF" .. activeColorHex .. string.rep(char, filledCount) .. "|r"
+    end
+    if emptyCount > 0 then
+        bar = bar .. "|cFF" .. baseColorHex .. string.rep(char, emptyCount) .. "|r"
+    end
+
+    return "|cFF" .. bracketColorHex .. "[|r" .. bar .. "|cFF" .. bracketColorHex .. "]|r"
 end
 
 -- Build the LDB display text based on current settings
@@ -1744,16 +2486,36 @@ local function BuildLDBDisplayText()
     local showLimitLabel = profile.ldbShowLimitLabel or false
     local showRacial = profile.ldbShowRacial or false
     local showRacialLabel = profile.ldbShowRacialLabel or false
+    local showADR = profile.ldbShowADR or false
+    local showADRLabel = profile.ldbShowADRLabel or false
+    local showXP = profile.ldbShowXP or false
+    local showXPLabel = profile.ldbShowXPLabel or false
+    local showXPPercent = profile.ldbShowXPPercent ~= false
+    local showREP = profile.ldbShowREP or false
+    local showREPLabel = profile.ldbShowREPLabel or false
+    local showREPPercent = profile.ldbShowREPPercent ~= false
 
-    -- Get positions (defaults: speed=1, limit=2, racial=3)
+    -- Get positions (defaults: speed=1, limit=2, racial=3, adr=4, xp=5, rep=6)
     local speedPos = profile.ldbSpeedPosition or 1
     local limitPos = profile.ldbLimitPosition or 2
     local racialPos = profile.ldbRacialPosition or 3
+    local adrPos = profile.ldbADRPosition or 4
+    local xpPos = profile.ldbXPPosition or 5
+    local repPos = profile.ldbREPPosition or 6
 
     -- If nothing is enabled, show default
-    if not showSpeed and not showLimit and not showRacial then
+    if not showSpeed and not showLimit and not showRacial and not showADR and not showXP and not showREP then
         return "KoL"
     end
+
+    -- Get bar colors (use rainbow if enabled, unless globally disabled)
+    local useXPRainbow = profile.ldbXPBarRainbow and not profile.disableAllRainbow
+    local useREPRainbow = profile.ldbREPBarRainbow and not profile.disableAllRainbow
+    local xpActiveHex = useXPRainbow and GetRainbowHex() or ColorToHex(profile.ldbColorXPActive, "66CCFF")
+    local xpBaseHex = ColorToHex(profile.ldbColorXPBase, "404040")
+    local repActiveHex = useREPRainbow and GetRainbowHex() or ColorToHex(profile.ldbColorREPActive, "9966FF")
+    local repBaseHex = ColorToHex(profile.ldbColorREPBase, "404040")
+    local bracketHex = ColorToHex(profile.ldbColorBracket, "808080")
 
     -- Build items with their positions
     local items = {}
@@ -1767,17 +2529,60 @@ local function BuildLDBDisplayText()
 
     if showLimit then
         local limitValue = profile.limitDamage or false
+        local limitOnHex = ColorToHex(profile.ldbColorLimitOn, "00FF00")
+        local limitOffHex = ColorToHex(profile.ldbColorLimitOff, "FF4444")
         local limitText = showLimitLabel and "LIMIT: " or ""
-        limitText = limitText .. (limitValue and "|cFF00FF00ON|r" or "|cFFFF4444OFF|r")
+        limitText = limitText .. (limitValue and ("|cFF" .. limitOnHex .. "ON|r") or ("|cFF" .. limitOffHex .. "OFF|r"))
         table.insert(items, { pos = limitPos, text = limitText })
     end
 
     if showRacial then
         local currentRacial = KOL.GetCurrentRacial and KOL:GetCurrentRacial() or "Unknown"
-        local shortName = KOL.GetRacialShortName and KOL:GetRacialShortName(currentRacial) or currentRacial
+        local racialHex = ColorToHex(profile.ldbColorRacial, "DDAAFF")
         local racialText = showRacialLabel and "RACIAL: " or ""
-        racialText = racialText .. "|cFFDDAAFF" .. string.upper(shortName) .. "|r"
+        racialText = racialText .. "|cFF" .. racialHex .. string.upper(currentRacial) .. "|r"
         table.insert(items, { pos = racialPos, text = racialText })
+    end
+
+    if showADR then
+        local adrValue = profile.autoDungeonReset or false
+        local adrOnHex = ColorToHex(profile.ldbColorADROn, "00FF00")
+        local adrOffHex = ColorToHex(profile.ldbColorADROff, "FF4444")
+        local enabledText = profile.ldbADREnabledText or "YES"
+        local disabledText = profile.ldbADRDisabledText or "NO"
+        local stateText = adrValue and ("|cFF" .. adrOnHex .. enabledText .. "|r") or ("|cFF" .. adrOffHex .. disabledText .. "|r")
+        local adrText = showADRLabel and ("ADR: " .. stateText) or stateText
+        table.insert(items, { pos = adrPos, text = adrText })
+    end
+
+    if showXP then
+        local currentXP = UnitXP("player") or 0
+        local maxXP = UnitXPMax("player") or 1
+        local xpPercent = math.floor((currentXP / maxXP) * 100)
+        local xpChar = profile.ldbXPCharacter or "═"
+        local xpBar = BuildProgressBar(xpPercent, xpActiveHex, xpBaseHex, bracketHex, xpChar)
+        local xpText = showXPLabel and "XP: " or ""
+        xpText = xpText .. xpBar
+        if showXPPercent then
+            xpText = xpText .. " |cFFFFFF00" .. xpPercent .. "%|r"
+        end
+        table.insert(items, { pos = xpPos, text = xpText })
+    end
+
+    if showREP then
+        local name, standing, minRep, maxRep, currentRep = GetWatchedFactionInfo()
+        local repPercent = 0
+        if name and maxRep > minRep then
+            repPercent = math.floor(((currentRep - minRep) / (maxRep - minRep)) * 100)
+        end
+        local repChar = profile.ldbREPCharacter or "═"
+        local repBar = BuildProgressBar(repPercent, repActiveHex, repBaseHex, bracketHex, repChar)
+        local repText = showREPLabel and "REP: " or ""
+        repText = repText .. repBar
+        if showREPPercent then
+            repText = repText .. " |cFFFFFF00" .. repPercent .. "%|r"
+        end
+        table.insert(items, { pos = repPos, text = repText })
     end
 
     -- Sort by position
@@ -1794,12 +2599,16 @@ local function BuildLDBDisplayText()
         return "KoL"
     end
 
-    return table.concat(segments, " |cFF666666|||r ")
+    -- Get separator color from profile
+    local sepColor = profile.ldbColorSeparator or {r = 0.4, g = 0.4, b = 0.4}
+    local sepHex = string.format("|cFF%02X%02X%02X", sepColor.r * 255, sepColor.g * 255, sepColor.b * 255)
+
+    return table.concat(segments, " " .. sepHex .. "|||r ")
 end
 
 -- Get LDB text with caching - only rebuilds if values changed
 local function GetCachedLDBDisplayText()
-    local speedValue, limitValue, racialValue = GetCurrentLDBValues()
+    local speedValue, limitValue, racialValue, adrValue, xpValue, repValue = GetCurrentLDBValues()
 
     -- Check if any value changed
     local changed = false
@@ -1808,6 +2617,12 @@ local function GetCachedLDBDisplayText()
     elseif limitValue ~= ldbTextCache.lastLimitValue then
         changed = true
     elseif racialValue ~= ldbTextCache.lastRacialValue then
+        changed = true
+    elseif adrValue ~= ldbTextCache.lastADRValue then
+        changed = true
+    elseif xpValue ~= ldbTextCache.lastXPValue then
+        changed = true
+    elseif repValue ~= ldbTextCache.lastREPValue then
         changed = true
     end
 
@@ -1823,16 +2638,19 @@ local function GetCachedLDBDisplayText()
     ldbTextCache.lastSpeedValue = speedValue
     ldbTextCache.lastLimitValue = limitValue
     ldbTextCache.lastRacialValue = racialValue
+    ldbTextCache.lastADRValue = adrValue
+    ldbTextCache.lastXPValue = xpValue
+    ldbTextCache.lastREPValue = repValue
     ldbTextCache.lastDisplayText = newText
 
     return newText, true  -- true = rebuilt
 end
 
--- Check if any dynamic display is enabled (speed needs continuous updates)
+-- Check if any dynamic display is enabled (speed/XP/REP need continuous updates)
 local function NeedsContinuousUpdate()
     local profile = KOL.db.profile
-    -- Speed defaults to true, so nil or true means we need continuous updates
-    return profile.ldbShowSpeed ~= false
+    -- Speed defaults to true, XP/REP also need updates when enabled
+    return profile.ldbShowSpeed ~= false or profile.ldbShowXP or profile.ldbShowREP
 end
 
 function LDBModule:UpdateLDBText()
@@ -1841,6 +2659,9 @@ function LDBModule:UpdateLDBText()
     -- Build and set text
     local newText = BuildLDBDisplayText()
     dataObject.text = newText
+
+    -- Sync cache so the ticker doesn't overwrite with stale text
+    ldbTextCache.lastDisplayText = newText
 
     -- DEBUG: Print what we're setting
     if ldbSpeedDebug then
@@ -1906,7 +2727,7 @@ function LDBModule:StartTextRetryTimer()
     if not dataObject then return end
 
     -- Only needed if any display option is enabled
-    if not NeedsContinuousUpdate() and not KOL.db.profile.ldbShowLimit and not KOL.db.profile.ldbShowRacial then
+    if not NeedsContinuousUpdate() and not KOL.db.profile.ldbShowLimit and not KOL.db.profile.ldbShowRacial and not KOL.db.profile.ldbShowADR then
         return
     end
 
@@ -2174,15 +2995,32 @@ function LDBModule:HookMinimapButton()
                 LDBModule.StartPositionVerifier()
             end)
 
-            -- Block ALL of LibDBIcon's SetPoint calls - we handle positioning entirely
+            -- Block ALL of LibDBIcon's SetPoint and ClearAllPoints calls
+            -- We handle positioning entirely ourselves
             local origSetPoint = button.SetPoint
+            local origClearAllPoints = button.ClearAllPoints
+            local allowPositioning = false  -- Flag to allow our own positioning calls
+
+            button.ClearAllPoints = function(self)
+                if allowPositioning then
+                    origClearAllPoints(self)
+                end
+                -- Block LibDBIcon's ClearAllPoints when allowPositioning is false
+            end
+
             button.SetPoint = function(self, ...)
-                -- Only allow our own calls (identified by first arg being "CENTER" to Minimap)
-                local point, relativeTo = ...
-                if point == "CENTER" and relativeTo == Minimap then
+                if allowPositioning then
                     origSetPoint(self, ...)
                 end
-                -- Block everything else (LibDBIcon's repositioning)
+                -- Block LibDBIcon's SetPoint when allowPositioning is false
+            end
+
+            -- Wrap PositionAtAngle to set the allow flag around the original call
+            local origPositionAtAngle = PositionAtAngle
+            PositionAtAngle = function(angle)
+                allowPositioning = true
+                origPositionAtAngle(angle)
+                allowPositioning = false
             end
 
             -- Completely replace drag behavior
@@ -2281,6 +3119,9 @@ function LDBModule:HookMinimapButton()
                 if IsShiftKeyDown() then
                     ReloadUI()
                     return
+                elseif IsControlKeyDown() and btn == "RightButton" then
+                    KOL:ToggleAutoDungeonReset()
+                    return
                 elseif IsControlKeyDown() then
                     KOL:ToggleLimitDamage()
                     return
@@ -2359,6 +3200,132 @@ function LDBModule:ForceCloseMenu()
     wipe(tooltipPool)
 
     KOL:PrintTag("LDB menu force-closed")
+end
+
+-- ============================================================================
+-- Global XP/REP Bar Visibility Control
+-- ============================================================================
+
+-- Cache for original visibility states (so we can restore if user toggles off)
+local globalBarStates = {
+    xpBarWasEnabled = nil,
+    repBarWasEnabled = nil,
+}
+
+-- Apply global XP bar visibility based on user setting
+function LDBModule:ApplyGlobalXPBarVisibility()
+    local profile = KOL.db and KOL.db.profile
+    if not profile then return end
+
+    local shouldHide = profile.hideGlobalXPBar
+
+    -- Handle default WoW XP bar
+    if MainMenuExpBar then
+        if shouldHide then
+            MainMenuExpBar:Hide()
+            MainMenuExpBar:SetScript("OnShow", function(self) self:Hide() end)
+        else
+            MainMenuExpBar:SetScript("OnShow", nil)
+            local level = UnitLevel("player")
+            local maxLevel = GetMaxPlayerLevel and GetMaxPlayerLevel() or 80
+            if level < maxLevel then
+                MainMenuExpBar:Show()
+            end
+        end
+    end
+
+    -- Handle ExhaustionTick (the rested state indicator)
+    if ExhaustionTick then
+        if shouldHide then
+            ExhaustionTick:Hide()
+        else
+            local level = UnitLevel("player")
+            local maxLevel = GetMaxPlayerLevel and GetMaxPlayerLevel() or 80
+            if level < maxLevel then
+                ExhaustionTick:Show()
+            end
+        end
+    end
+
+    -- Handle ElvUI if present - toggle the actual setting
+    if ElvUI and ElvUI[1] then
+        local E = ElvUI[1]
+        if E.db and E.db.databars and E.db.databars.experience then
+            -- Save original state on first run
+            if globalBarStates.xpBarWasEnabled == nil then
+                globalBarStates.xpBarWasEnabled = E.db.databars.experience.enable
+            end
+
+            -- Toggle the setting
+            E.db.databars.experience.enable = not shouldHide
+
+            -- Refresh ElvUI databars
+            local DB = E:GetModule("DataBars", true)
+            if DB then
+                if DB.UpdateAll then
+                    pcall(function() DB:UpdateAll() end)
+                elseif DB.EnableDisable_ExperienceBar then
+                    pcall(function() DB:EnableDisable_ExperienceBar() end)
+                end
+            end
+        end
+    end
+
+    KOL:DebugPrint("Global XP Bar: " .. (shouldHide and "DISABLED" or "ENABLED"), 2)
+end
+
+-- Apply global REP bar visibility based on user setting
+function LDBModule:ApplyGlobalREPBarVisibility()
+    local profile = KOL.db and KOL.db.profile
+    if not profile then return end
+
+    local shouldHide = profile.hideGlobalREPBar
+
+    -- Handle default WoW reputation bar
+    if ReputationWatchBar then
+        if shouldHide then
+            ReputationWatchBar:Hide()
+            ReputationWatchBar:SetScript("OnShow", function(self) self:Hide() end)
+        else
+            ReputationWatchBar:SetScript("OnShow", nil)
+            local name = GetWatchedFactionInfo()
+            if name then
+                ReputationWatchBar:Show()
+            end
+        end
+    end
+
+    -- Handle ElvUI if present - toggle the actual setting
+    if ElvUI and ElvUI[1] then
+        local E = ElvUI[1]
+        if E.db and E.db.databars and E.db.databars.reputation then
+            -- Save original state on first run
+            if globalBarStates.repBarWasEnabled == nil then
+                globalBarStates.repBarWasEnabled = E.db.databars.reputation.enable
+            end
+
+            -- Toggle the setting
+            E.db.databars.reputation.enable = not shouldHide
+
+            -- Refresh ElvUI databars
+            local DB = E:GetModule("DataBars", true)
+            if DB then
+                if DB.UpdateAll then
+                    pcall(function() DB:UpdateAll() end)
+                elseif DB.EnableDisable_ReputationBar then
+                    pcall(function() DB:EnableDisable_ReputationBar() end)
+                end
+            end
+        end
+    end
+
+    KOL:DebugPrint("Global REP Bar: " .. (shouldHide and "DISABLED" or "ENABLED"), 2)
+end
+
+-- Apply both visibility settings (called on init)
+function LDBModule:ApplyGlobalBarVisibility()
+    self:ApplyGlobalXPBarVisibility()
+    self:ApplyGlobalREPBarVisibility()
 end
 
 -- ============================================================================
