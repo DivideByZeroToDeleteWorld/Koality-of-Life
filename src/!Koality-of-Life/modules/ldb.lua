@@ -222,11 +222,20 @@ local function ShowClickActionTooltip(anchor)
         clickActionTooltip.headerAccents = {}
     end
 
+    if clickActionTooltip.headerFades then
+        for _, fade in ipairs(clickActionTooltip.headerFades) do
+            fade:Hide()
+        end
+    else
+        clickActionTooltip.headerFades = {}
+    end
+
     -- Track font strings, separators, and header elements
     local lineIndex = 0
     local separatorIndex = 0
     local headerBgIndex = 0
     local headerAccentIndex = 0
+    local headerFadeIndex = 0
 
     -- Helper to get or create a font string
     local function GetLine()
@@ -280,6 +289,19 @@ local function ShowClickActionTooltip(anchor)
         return accent
     end
 
+    -- Helper to get or create a header fade texture (for right-edge gradient)
+    local function GetHeaderFade()
+        headerFadeIndex = headerFadeIndex + 1
+        local fade = clickActionTooltip.headerFades[headerFadeIndex]
+        if not fade then
+            fade = clickActionTooltip:CreateTexture(nil, "BORDER")
+            clickActionTooltip.headerFades[headerFadeIndex] = fade
+        end
+        fade:ClearAllPoints()
+        fade:Show()
+        return fade
+    end
+
     -- Track measurements
     local maxLeftWidth = 0
     local maxRightWidth = 0
@@ -294,9 +316,12 @@ local function ShowClickActionTooltip(anchor)
     local shortcutActionWidth = 0
 
     -- ═══════════════════════════════════════════════════════════════════════
-    -- EXPERIENCE SECTION (shown first if enabled)
+    -- EXPERIENCE SECTION (shown first if enabled, hidden at max level)
     -- ═══════════════════════════════════════════════════════════════════════
-    local showXP = KOL.db.profile.ldbShowXP
+    local playerLevel = UnitLevel("player")
+    local maxLevel = GetMaxPlayerLevel and GetMaxPlayerLevel() or 80
+    local isMaxLevel = playerLevel >= maxLevel
+    local showXP = KOL.db.profile.ldbShowXP and not isMaxLevel
     if showXP then
         hasContent = true
 
@@ -410,7 +435,7 @@ local function ShowClickActionTooltip(anchor)
     -- ═══════════════════════════════════════════════════════════════════════
     local showREP = KOL.db.profile.ldbShowREP
     if showREP then
-        local name, _, standingID, barMin, barMax, barValue = GetWatchedFactionInfo()
+        local name, standingID, barMin, barMax, barValue = GetWatchedFactionInfo()
 
         -- Add separator if we had XP content before
         if hasContent then
@@ -509,6 +534,40 @@ local function ShowClickActionTooltip(anchor)
             if vw > maxRightWidth then maxRightWidth = vw end
             table.insert(rows, {type = "pair", left = progressLabel, right = progressValue, y = yOffset})
             yOffset = yOffset - lineHeight
+
+            -- Progress Max row (current bracket progress / total remaining to Exalted)
+            if standingID < 8 then
+                local exaltedThreshold = REP_THRESHOLDS[8].min  -- 42000 (start of Exalted)
+                local remainingInBracket = maxInBracket - currentInBracket
+                local totalRemainingToExalted = remainingInBracket
+
+                -- Add rep needed for all standings between current and Exalted
+                for i = standingID + 1, 7 do  -- Up to Revered (7), not including Exalted
+                    local nextThresholds = REP_THRESHOLDS[i]
+                    if nextThresholds then
+                        totalRemainingToExalted = totalRemainingToExalted + (nextThresholds.max - nextThresholds.min)
+                    end
+                end
+
+                local progressMaxLabel = GetLine()
+                progressMaxLabel:SetFont(fontPath, 10, fontOutline)
+                progressMaxLabel:SetText("Progress Max")
+                progressMaxLabel:SetTextColor(0.6, 0.6, 0.6, 1)
+
+                local progressMaxValue = GetLine()
+                progressMaxValue:SetFont(fontPath, 10, fontOutline)
+                progressMaxValue:SetText(string.format("%s / %s",
+                    AbbreviateNumber and AbbreviateNumber(currentInBracket) or currentInBracket,
+                    AbbreviateNumber and AbbreviateNumber(currentInBracket + totalRemainingToExalted) or (currentInBracket + totalRemainingToExalted)))
+                progressMaxValue:SetTextColor(standingColor[1], standingColor[2], standingColor[3], 1)
+
+                lw = progressMaxLabel:GetStringWidth()
+                vw = progressMaxValue:GetStringWidth()
+                if lw > maxLeftWidth then maxLeftWidth = lw end
+                if vw > maxRightWidth then maxRightWidth = vw end
+                table.insert(rows, {type = "pair", left = progressMaxLabel, right = progressMaxValue, y = yOffset})
+                yOffset = yOffset - lineHeight
+            end
 
             -- Progress to Exalted row (if not already Exalted)
             if standingID < 8 then
@@ -715,6 +774,9 @@ local function ShowClickActionTooltip(anchor)
         yOffset = yOffset - lineHeight
     end
 
+    -- Adjust for the extra lineHeight decrement after the last row (keep half line for spacing)
+    yOffset = yOffset + (lineHeight / 2)
+
     -- Store shortcut rows for positioning later
     for _, row in ipairs(shortcutRows) do
         table.insert(rows, {type = "shortcut", data = row})
@@ -759,16 +821,31 @@ local function ShowClickActionTooltip(anchor)
             -- Position action
             data.action:SetPoint("TOPLEFT", clickActionTooltip, "TOPLEFT", xPos, data.y)
         elseif row.type == "sectionHeader" then
-            -- Create styled section header with background that fades at right edge
+            -- Create styled section header with solid background and fade at right edge
+            -- Background brightness (0.4 = moderately bright, not washed out)
+            local bgMult = 0.4
+            local bgAlpha = 0.95
+
+            -- Calculate widths: solid part is 70%, fade part is 30%
+            local contentWidth = totalWidth - (padding * 2)
+            local solidWidth = contentWidth * 0.70
+            local fadeWidth = contentWidth * 0.30
+
+            -- Solid background (covers 70% of width)
             local bg = GetHeaderBg()
             bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+            bg:SetVertexColor(row.color[1] * bgMult, row.color[2] * bgMult, row.color[3] * bgMult, bgAlpha)
             bg:SetPoint("TOPLEFT", clickActionTooltip, "TOPLEFT", padding, row.y + 2)
-            bg:SetPoint("TOPRIGHT", clickActionTooltip, "TOPRIGHT", -padding, row.y + 2)
-            bg:SetHeight(headerHeight - 2)
-            -- Gradient on background: solid dark on left, fading to transparent on right
-            bg:SetGradientAlpha("HORIZONTAL",
-                row.color[1] * 0.2, row.color[2] * 0.2, row.color[3] * 0.2, 0.9,  -- Left side (solid dark)
-                row.color[1] * 0.2, row.color[2] * 0.2, row.color[3] * 0.2, 0)    -- Right side (transparent)
+            bg:SetSize(solidWidth, headerHeight - 2)
+
+            -- Fade texture (covers last 15%, gradient from solid to transparent)
+            local fade = GetHeaderFade()
+            fade:SetTexture("Interface\\Buttons\\WHITE8X8")
+            fade:SetPoint("TOPLEFT", bg, "TOPRIGHT", 0, 0)
+            fade:SetSize(fadeWidth, headerHeight - 2)
+            fade:SetGradientAlpha("HORIZONTAL",
+                row.color[1] * bgMult, row.color[2] * bgMult, row.color[3] * bgMult, bgAlpha,  -- Left side (solid)
+                row.color[1] * bgMult, row.color[2] * bgMult, row.color[3] * bgMult, 0)       -- Right side (transparent)
 
             -- Solid accent bar on the left (3px wide, full color)
             local accent = GetHeaderAccent()
@@ -2401,6 +2478,7 @@ local ldbTextCache = {
     lastRacialValue = nil,     -- Last racial setting
     lastADRValue = nil,        -- Last auto dungeon reset setting
     lastXPValue = nil,         -- Last XP percentage
+    lastRestedValue = nil,     -- Last rested XP percentage
     lastREPValue = nil,        -- Last REP percentage
     lastDisplayText = nil,     -- Last built display text
 }
@@ -2424,12 +2502,19 @@ local function GetCurrentLDBValues()
     -- ADR value
     local adrValue = profile.autoDungeonReset or false
 
-    -- XP value (percentage)
+    -- XP value (percentage) and rested value
     local xpValue = nil
+    local restedValue = nil
     if profile.ldbShowXP then
         local currentXP = UnitXP("player") or 0
         local maxXP = UnitXPMax("player") or 1
         xpValue = math.floor((currentXP / maxXP) * 100)
+
+        -- Also track rested XP
+        local restedXP = GetXPExhaustion() or 0
+        if restedXP > 0 and maxXP > 0 then
+            restedValue = math.floor((restedXP / maxXP) * 100)
+        end
     end
 
     -- REP value (percentage of watched faction)
@@ -2441,7 +2526,7 @@ local function GetCurrentLDBValues()
         end
     end
 
-    return speedValue, limitValue, racialValue, adrValue, xpValue, repValue
+    return speedValue, limitValue, racialValue, adrValue, xpValue, restedValue, repValue
 end
 
 -- Convert {r, g, b} color table to hex color code (e.g. "00FF00")
@@ -2466,6 +2551,48 @@ local function BuildProgressBar(percent, activeColorHex, baseColorHex, bracketCo
     local bar = ""
     if filledCount > 0 then
         bar = bar .. "|cFF" .. activeColorHex .. string.rep(char, filledCount) .. "|r"
+    end
+    if emptyCount > 0 then
+        bar = bar .. "|cFF" .. baseColorHex .. string.rep(char, emptyCount) .. "|r"
+    end
+
+    return "|cFF" .. bracketColorHex .. "[|r" .. bar .. "|cFF" .. bracketColorHex .. "]|r"
+end
+
+-- Build an XP progress bar with rested XP support (10 characters)
+-- Shows: [current XP] [rested XP bonus] [empty]
+local function BuildXPProgressBar(xpPercent, restedPercent, activeColorHex, restedColorHex, baseColorHex, bracketColorHex, barChar)
+    local BAR_LENGTH = 10
+    local char = barChar or "═"
+
+    -- Calculate filled count for current XP
+    local filledCount = math.floor((xpPercent / 100) * BAR_LENGTH + 0.5)
+    if filledCount > BAR_LENGTH then filledCount = BAR_LENGTH end
+    if filledCount < 0 then filledCount = 0 end
+
+    -- Calculate rested count (rested XP extends from current XP position)
+    -- restedPercent is based on how much of the remaining bar the rested covers
+    local restedCount = 0
+    if restedPercent > 0 then
+        -- Rested XP shows where your XP could go with the bonus
+        -- It starts from current XP and extends forward
+        local restedEndPercent = xpPercent + restedPercent
+        if restedEndPercent > 100 then restedEndPercent = 100 end
+        local restedEndCount = math.floor((restedEndPercent / 100) * BAR_LENGTH + 0.5)
+        restedCount = restedEndCount - filledCount
+        if restedCount < 0 then restedCount = 0 end
+    end
+
+    -- Calculate empty count
+    local emptyCount = BAR_LENGTH - filledCount - restedCount
+    if emptyCount < 0 then emptyCount = 0 end
+
+    local bar = ""
+    if filledCount > 0 then
+        bar = bar .. "|cFF" .. activeColorHex .. string.rep(char, filledCount) .. "|r"
+    end
+    if restedCount > 0 then
+        bar = bar .. "|cFF" .. restedColorHex .. string.rep(char, restedCount) .. "|r"
     end
     if emptyCount > 0 then
         bar = bar .. "|cFF" .. baseColorHex .. string.rep(char, emptyCount) .. "|r"
@@ -2513,6 +2640,7 @@ local function BuildLDBDisplayText()
     local useREPRainbow = profile.ldbREPBarRainbow and not profile.disableAllRainbow
     local xpActiveHex = useXPRainbow and GetRainbowHex() or ColorToHex(profile.ldbColorXPActive, "66CCFF")
     local xpBaseHex = ColorToHex(profile.ldbColorXPBase, "404040")
+    local xpRestedHex = ColorToHex(profile.ldbColorXPRested, "6666CC")
     local repActiveHex = useREPRainbow and GetRainbowHex() or ColorToHex(profile.ldbColorREPActive, "9966FF")
     local repBaseHex = ColorToHex(profile.ldbColorREPBase, "404040")
     local bracketHex = ColorToHex(profile.ldbColorBracket, "808080")
@@ -2555,12 +2683,26 @@ local function BuildLDBDisplayText()
         table.insert(items, { pos = adrPos, text = adrText })
     end
 
-    if showXP then
+    -- Hide XP bar at max level
+    local playerLevel = UnitLevel("player")
+    local maxLevel = GetMaxPlayerLevel and GetMaxPlayerLevel() or 80
+    local isMaxLevel = playerLevel >= maxLevel
+
+    if showXP and not isMaxLevel then
         local currentXP = UnitXP("player") or 0
         local maxXP = UnitXPMax("player") or 1
         local xpPercent = math.floor((currentXP / maxXP) * 100)
+
+        -- Get rested XP (bonus XP available)
+        local restedXP = GetXPExhaustion() or 0
+        local restedPercent = 0
+        if restedXP > 0 and maxXP > 0 then
+            -- Rested XP shows as a percentage of the level bar
+            restedPercent = math.floor((restedXP / maxXP) * 100)
+        end
+
         local xpChar = profile.ldbXPCharacter or "═"
-        local xpBar = BuildProgressBar(xpPercent, xpActiveHex, xpBaseHex, bracketHex, xpChar)
+        local xpBar = BuildXPProgressBar(xpPercent, restedPercent, xpActiveHex, xpRestedHex, xpBaseHex, bracketHex, xpChar)
         local xpText = showXPLabel and "XP: " or ""
         xpText = xpText .. xpBar
         if showXPPercent then
@@ -2608,7 +2750,7 @@ end
 
 -- Get LDB text with caching - only rebuilds if values changed
 local function GetCachedLDBDisplayText()
-    local speedValue, limitValue, racialValue, adrValue, xpValue, repValue = GetCurrentLDBValues()
+    local speedValue, limitValue, racialValue, adrValue, xpValue, restedValue, repValue = GetCurrentLDBValues()
 
     -- Check if any value changed
     local changed = false
@@ -2621,6 +2763,8 @@ local function GetCachedLDBDisplayText()
     elseif adrValue ~= ldbTextCache.lastADRValue then
         changed = true
     elseif xpValue ~= ldbTextCache.lastXPValue then
+        changed = true
+    elseif restedValue ~= ldbTextCache.lastRestedValue then
         changed = true
     elseif repValue ~= ldbTextCache.lastREPValue then
         changed = true
@@ -2640,6 +2784,7 @@ local function GetCachedLDBDisplayText()
     ldbTextCache.lastRacialValue = racialValue
     ldbTextCache.lastADRValue = adrValue
     ldbTextCache.lastXPValue = xpValue
+    ldbTextCache.lastRestedValue = restedValue
     ldbTextCache.lastREPValue = repValue
     ldbTextCache.lastDisplayText = newText
 

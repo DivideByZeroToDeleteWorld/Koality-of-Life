@@ -889,6 +889,22 @@ function KOL:InitializeUI()
                                 width = 0.45,
                                 order = 3.544,
                             },
+                            ldbColorXPRested = {
+                                type = "color",
+                                name = "XP Rested",
+                                desc = "Color for the rested XP portion of the XP bar (bonus XP available).",
+                                hasAlpha = false,
+                                get = function()
+                                    local c = self.db.profile.ldbColorXPRested or {r = 0.4, g = 0.4, b = 0.8}
+                                    return c.r, c.g, c.b
+                                end,
+                                set = function(_, r, g, b)
+                                    self.db.profile.ldbColorXPRested = {r = r, g = g, b = b}
+                                    if self.LDB and self.LDB.UpdateLDBText then self.LDB:UpdateLDBText() end
+                                end,
+                                width = 0.45,
+                                order = 3.5445,
+                            },
                             ldbColorREPActive = {
                                 type = "color",
                                 name = "REP Active",
@@ -2989,6 +3005,7 @@ function KOL:InitializeUI()
     if self.Tweaks and self.Tweaks.Initialize then self.Tweaks:Initialize() end
     if self.fishing and self.fishing.InitializeConfig then self.fishing:InitializeConfig() end
     if self.Scoots and self.Scoots.Initialize then self.Scoots:Initialize() end
+    if self.QuestPlates and self.QuestPlates.Initialize then self.QuestPlates:Initialize() end
     if self.NotifyModule and self.NotifyModule.Initialize then self.NotifyModule:Initialize() end
     if self.changes and self.changes.InitializeConfig then self.changes:InitializeConfig() end
 
