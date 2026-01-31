@@ -290,6 +290,9 @@ function ColorText(text, colorNameOrHex)
 end
 
 function Colors:GetColor(colorName)
+    if type(colorName) ~= "string" then
+        return nil
+    end
     colorName = string.upper(colorName)
 
     if self.STANDARD[colorName] then
