@@ -5467,12 +5467,17 @@ function Tracker:ShowDefaultLocationPicker()
             hoverBgColor = {r = 0.2, g = 0.35, b = 0.2, a = 1},
             hoverBorderColor = {r = 0.4, g = 0.9, b = 0.4, a = 1},
             onClick = function()
-                -- Get position relative to screen bottom-left
+                -- Get position relative to screen (bottom-left when growUpward, top-left when not)
                 local left = frame:GetLeft()
-                local bottom = frame:GetBottom()
+                local y
+                if config.growUpward then
+                    y = frame:GetBottom()
+                else
+                    y = frame:GetTop()
+                end
 
                 config.defaultFrameX = left
-                config.defaultFrameY = bottom
+                config.defaultFrameY = y
 
                 KOL:PrintTag(GREEN("Default frame location saved!"))
                 frame:Hide()
@@ -5486,9 +5491,14 @@ function Tracker:ShowDefaultLocationPicker()
         saveBtn:SetText("Save")
         saveBtn:SetScript("OnClick", function()
             local left = frame:GetLeft()
-            local bottom = frame:GetBottom()
+            local y
+            if config.growUpward then
+                y = frame:GetBottom()
+            else
+                y = frame:GetTop()
+            end
             config.defaultFrameX = left
-            config.defaultFrameY = bottom
+            config.defaultFrameY = y
             KOL:PrintTag(GREEN("Default frame location saved!"))
             frame:Hide()
             Tracker.defaultLocationPickerFrame = nil
